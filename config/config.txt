@@ -1,0 +1,10 @@
+#program_path=/data/home/vlink/mouse_strains/software
+chromosome=/data/home/vlink/mouse_strains/software/config/chromosomes.txt
+database=test_db_2
+database_user=test_2
+database_pw=test
+#database=test_db
+#database_user=test
+#database_pw=test_pw
+host=localhost
+homer_path=/bioinformatics/homer/
