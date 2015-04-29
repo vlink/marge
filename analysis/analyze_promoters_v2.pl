@@ -48,6 +48,8 @@ if(@ARGV < 1) {
         &printCMD();
 }
 
+my $noise = 0.00000001;
+
 #define variables
 my %diff_motifs = ();
 my %motif_score = ();
@@ -553,16 +555,22 @@ sub calculate_motif_differences {
 	my $l;
 	my @save_tmp;
 	my $save_in_array = 0;
+	my $current_orientation = "";
 	foreach my $motif (keys %motif_pos) {
 		foreach my $pos (keys %{$motif_pos{$motif}}) {
-			$ref_score = 0;
-			if(!exists $save_motifs_aligned{$motif}{'reference'}{$pos}{'score'}) {
-				$save_motifs_aligned{$motif}{'reference'}{$pos}{'score'} = "not found";
-			}
-			if(!exists $perfect_motif_score{$motif}) {
-				$perfect_motif_score{$motif} = &calculate_perfect_motif_score($motif);
-			}
+			for(my $i = 0; $i < @strains; $i++) {
+				if($current_orientation eq "") {
+					$current_orientation = $save_motifs_aligned{$motif}{$strains[$i]}{$pos}{'orientation'};
+				}
+				if(!exists $save_motifs_aligned{$motif}{$strains[$i]}{$pos}{'score'}) {
+					$save_motifs_aligned{$motif}{$strains[$i]}{$pos}{'score'} = "not found";
+				}
 
+			}
+			$ref_score = 0;
+			if(!exists $perfect_motif_score{$motif}) {
+				$perfect_motif_score{$motif} = &calculate_perfect_motif_score($motif, $motif_pos{$motif}{$pos});
+			}
 			for(my $i = 0; $i < @strains; $i++) {
 				$run = $pos;
 				$l = $pos;
@@ -574,8 +582,11 @@ sub calculate_motif_differences {
 						$l++;
 					}
 					$run++;
-				}	
-				$score = &calculate_motif_score($motif, $motif_seq);
+				}
+				if(!exists $save_motifs_aligned{$motif}{$strains[$i]}{$pos}{'orientation'}) {
+					$save_motifs_aligned{$motif}{$strains[$i]}{$pos}{'orientation'} = $current_orientation;
+				}
+				$score = &calculate_motif_score($motif, $motif_seq, $save_motifs_aligned{$motif}{$strains[$i]}{$pos}{'orientation'});
 				if($ref_score == 0) { $ref_score = $score; }
 				$save_tmp[$i] = $score;
 				if($ref_score != $score) { 
@@ -588,6 +599,7 @@ sub calculate_motif_differences {
 				}
 			}
 			$save_in_array = 0;
+			$current_orientation = "";
 		}
 	}
 }
@@ -652,7 +664,7 @@ sub align_motifs {
 				}
 				$save_motifs_aligned{$motif}{$strain}{$run}{'orientation'} = $save_motifs{$motif}{$strain}{$pos}{'orientation'};
 				$save_motifs_aligned{$motif}{$strain}{$run}{'seq'} = $save_motifs{$motif}{$strain}{$pos}{'seq'};
-				$save_motifs_aligned{$motif}{$strain}{$run}{'score'} = $save_motifs{$split[3]}{$split[0]}{$split[1]}{'score'};
+				$save_motifs_aligned{$motif}{$strain}{$run}{'score'} = $save_motifs{$motif}{$strain}{$pos}{'score'};
 				while($l < $motif_start + length($motif_seq_from_file)) {
 					if($seq_with_gaps[$run] eq "-") {
 						$aligned_seq .= "-";
@@ -763,23 +775,18 @@ sub calculate_motif_score{
 	my $motif_score = 0;
 	my $local_motif = $_[0];
 	my $strain_seq = $_[1];
+	my $orientation = $_[2];
 	my $greater = 0;
 	#That needs to move someqhere else
+	if($orientation eq "-") {
+		$strain_seq = &rev_comp($strain_seq);
+	}
 	@split = split('', $strain_seq);
 	$motif_score = 0;
 	for(my $i = 0; $i < @split; $i++) {
-		$motif_score += $motif_matrix{$local_motif}{$i}{$split[$i]};
+		$motif_score += log(($motif_matrix{$local_motif}{length($strain_seq)}{$i}{$split[$i]}+$noise)/0.25);
 	}
-	$greater = $motif_score;
-	$strain_seq = &rev_comp($strain_seq);
-	@split = split('', $strain_seq);
-	$motif_score = 0;
-	for(my $i = 0; $i < @split; $i++) {
-		$motif_score += $motif_matrix{$local_motif}{$i}{$split[$i]};
-	}
-	if($motif_score < $greater) {
-		$motif_score = $greater;
-	}
+	$motif_score = sprintf("%.6f", $motif_score);
 	return $motif_score;
 }
 
@@ -787,15 +794,23 @@ sub calculate_perfect_motif_score {
 	my $perfect_score = 0;
 	my $local_motif = $_[0];
 	my $max = 0;
-	foreach my $pos (keys %{$motif_matrix{$local_motif}}) {
+	my $length = $_[1];
+#	%{$motif_matrix{$save_header}{$save_length}} = %matrix;
+#	print $local_motif . "\n";
+	foreach my $pos (sort {$a <=> $b } keys %{$motif_matrix{$local_motif}{$length}}) {
 		$max = 0;
-		foreach my $base (keys %{$motif_matrix{$local_motif}{$pos}}) {
-			if($max < $motif_matrix{$local_motif}{$pos}{$base}) {
-				$max = $motif_matrix{$local_motif}{$pos}{$base};
+		foreach my $base (keys %{$motif_matrix{$local_motif}{$length}{$pos}}) {
+	#		print $pos . "\t" . $base . "\t" . $motif_matrix{$local_motif}{$length}{$pos}{$base} . "\n";
+			if($max < log(($motif_matrix{$local_motif}{$length}{$pos}{$base}+$noise)/0.25)) {
+				$max = log(($motif_matrix{$local_motif}{$length}{$pos}{$base}+$noise)/0.25);
 			}
 		}
+	#	print $max . "\n";
 		$perfect_score += $max;
+	#	print "perfect: " . $perfect_score . "\n";
 	}
+        $perfect_score = sprintf("%.6f", $perfect_score);
+#	print $perfect_score . "\n";
 	return $perfect_score;
 }
 #Function to create the reverse complementary motif seqeunce
@@ -816,7 +831,7 @@ sub read_in_motif_files{
 	my %matrix = ();
 	my $motif_counter = 0;
 	my $save_header = "";
-
+	my $save_length = 0;
 	$motif_counter = 0;
 	open FH, "<$motif_file";
 	foreach my $line (<FH>) {
@@ -826,20 +841,22 @@ sub read_in_motif_files{
 			if(keys %matrix == 0) { 
 				next; 
 			} else {
-				%{$motif_matrix{$save_header}} = %matrix;
+				%{$motif_matrix{$save_header}{$save_length}} = %matrix;
 				%matrix = ();
 				$motif_counter = 0;	
 			}
 			$save_header = $split[1];
+			$save_length = length($split[0]) - 1;
 		} else {
 			$matrix{$motif_counter}{'A'} = $split[0];	
-			$matrix{$motif_counter}{'G'} = $split[1];	
-			$matrix{$motif_counter}{'C'} = $split[2];	
+			$matrix{$motif_counter}{'C'} = $split[1];	
+			$matrix{$motif_counter}{'G'} = $split[2];	
 			$matrix{$motif_counter}{'T'} = $split[3];	
 			$motif_counter++;
 		}
 	}
-	$motif_matrix{$save_header} = \%matrix;
+	
+	%{$motif_matrix{$save_header}{$save_length}} = %matrix;
 }
 
 #Function to output a html file with the alignment of the sequences for the different strains and the motif alignments
@@ -884,22 +901,25 @@ sub print_bedGraph_output{
 	my %combined = (%strains_down_for_stats, %strains_up_for_stats);
 	my $strain;
 	my $length = 0;
+	my $gaps = 0;
 	foreach my $motif (keys %combined) {
 		my @short_name = split('/', $motif);
 		if($quant == 0) {
 			for(my $i = 0; $i < @strains; $i++) {
 				$strain = $strains[$i];
 				foreach my $pos (keys %{$save_motifs_aligned{$motif}{$strain}}) {
-					$fileHandles[$i]->print($chr . "\t" . ($tss_start + $pos) . "\t" . ($tss_start + $pos + length($save_motifs_aligned{$motif}{$strain}{$pos}{'seq'})) . "\t" . $short_name[0] . "\t1\t+\n");
+					$gaps = () = substr($seqs{'reference'}, 0, $pos) =~ /-/g;
+					$fileHandles[$i]->print($chr . "\t" . ($tss_start + $pos - $gaps) . "\t" . ($tss_start + $pos - $gaps + length($save_motifs_aligned{$motif}{$strain}{$pos}{'seq'})) . "\t" . $short_name[0] . "($save_motifs_aligned{$motif}{$strain}{$pos}{'seq'}) \t1\t+\n");
 				}
 			}
 		} else {
 			foreach my $pos (keys %{$combined{$motif}}) {
+				$gaps = () = substr($seqs{'reference'}, 0, $pos) =~ /-/g;
 				for(my $i = 0; $i < @strains; $i++) {
 					if(exists $save_motifs_aligned{$motif}{$strains[$i]}{$pos}{'seq'}) { $length = length($save_motifs_aligned{$motif}{$strains[$i]}{$pos}{'seq'}); }
 				}
 				for(my $i = 0; $i < @strains; $i++) {
-					$fileHandles[$i]->print($chr . "\t" . ($tss_start + $pos) . "\t" . ($tss_start + $pos + $length) . "\t" . $short_name[0] . " (" . $motif_score{$motif}{$pos}{$strains[$i]} . ")\t1\t+\n");
+					$fileHandles[$i]->print($chr . "\t" . ($tss_start + $pos - $gaps) . "\t" . ($tss_start + $pos - $gaps + $length) . "\t" . $short_name[0] . ":" . $motif_score{$motif}{$pos}{$strains[$i]} . "\t1\t+\n");
 				}
 			}
 		}
@@ -1108,7 +1128,6 @@ sub analyze_patterns {
 		my $ref;
 		my $cand_score;
 		if($quant == 0) {
-			print "Check only the occurrence of motifs!\n";
 			foreach my $motif (keys %diff_motifs) {
 				$follows_up = $follows_down = $follows_equal  = $p_up = $p_down = 0;
 			#	print $motif . "\n";
@@ -1266,12 +1285,12 @@ sub analyze_patterns {
 								my @short_name = split('/', $motif);
 								$cand_tricky .= $short_name[0] . "(up: " .  $motif_score{$motif}{$pos}{$candidate_strains_down[0]} . " vs down: " . $motif_score{$motif}{$pos}{$candidate_strains_up[0]} . " vs ref: " . $ref . " - perfect: " . $perfect_motif_score{$motif} . "),";
 								if(($stats == 0 || $bed_output == 1) && $p_up != 0) {
-									print STDERR "TODO stats for motif score\n";
-									$strains_up_for_stats{$motif} = 1;
+						#			print STDERR "TODO stats for motif score\n";
+									$strains_up_for_stats{$motif}{$pos} = 1;
 								}
 								if(($stats == 0 || $bed_output == 1) && $p_down != 0) {
-									$strains_down_for_stats{$motif} = 1;
-									print STDERR "TODO stats for motif score\n";
+									$strains_down_for_stats{$motif}{$pos} = 1;
+						#			print STDERR "TODO stats for motif score\n";
 								}
 							} 
 							$follows_up = 1;
