@@ -608,9 +608,10 @@ sub get_genomic_seq{
 	my $align_gene = $_[5];
 	my $print_protein = $_[6];
 	my $align_protein = $_[7];
-	if(@_ > 7) {
-		$strains = $_[8];
-	}
+	my @a = ();
+#	if(@_ > 7) {
+#		$strains = $_[8];
+#	}
 	my $alleles;
 	my $return;
 

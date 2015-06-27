@@ -28,6 +28,7 @@ sub printCMD {
 	print STDERR "\t-filter <count>: Filters out genes with less than <count> tag counts in all exons together\n";
 	print STDERR "\nOutput:\n";
 	print STDERR "\t-html: Outputs a html file with the sequence and the motifs\n";
+	print STDERR "\t-bed: Outputs a bedgraph with candidates motif per strain\n";
 	print STDERR "\n\nBackground (Default: all TSS):\n";
 	print STDERR "\t-bgfile: <File with RefSeq Identifiers to use as background\n";
 	print STDERR "\t-bgtagdir: <reference and strain RNA-Seq tag dir to calculate equally expressed genes\n";
@@ -45,9 +46,14 @@ if(@ARGV < 1) {
 }
 
 $_ = "" for my ($genome, $table_name, $ann_file, $name, $file, $seqs, $command, $bgfile, $bgtagdir, $motif_file);
-$_ = 0 for my ($homo, $num, $skip_first, $skip_diff, $tss_up, $tss_down, $filter, $html, $html_output, $tasks, $stats, $pattern, $occurrence, $zscore_significant_value, $quant, $get_detailed_information);
-my ($dbh, $sth, @strains, @dirs, %tss, %first, %diff, @split, %to_del, @part, %genes, @tss, %filter, %del, %file_genes, %seqs, $cand_up, $cand_down, @candidate_strains_up, @candidate_strains_down);
+$_ = 0 for my ($homo, $num, $skip_first, $skip_diff, $tss_up, $tss_down, $filter, $html, $html_output, $tasks, $stats, $pattern, $occurrence, $zscore_significant_value, $quant, $get_detailed_information, $bed_output);
+my ($dbh, $sth, @strains, @dirs, %tss, %first, %diff, @split, %to_del, @part, %genes, @tss, %filter, %del, %file_genes, %seqs, $cand_up, $cand_down, @candidate_strains_up, @candidate_strains_down, @candidate_strains_equal, @fileHandles);
 my $homo = 1;
+my %cand_motif = ();
+my %cands;
+my %save_pos = ();
+my %seq_motif = ();
+my %orientation = ();
 
 
 my %rev_comp = ();
@@ -78,7 +84,8 @@ GetOptions(     "genome=s" => \$genome,
 		"-fc=s" => \$fc, 
 		"-tss=s{,}" => \@tss, 
 		"-filter=s" => \$filter, 
-		"-html" => \$html_output, 
+		"-html" => \$html_output,
+		"-bed" => \$bed_output, 
 		"-bgfile=s" => \$bgfile,
 		"-bgtagdir" => \$bgtagdir,
 		"-no-stats" => \$stats, 
@@ -88,7 +95,8 @@ GetOptions(     "genome=s" => \$genome,
 		"-quant" => \$quant)
 	or die("Error in command line options!\n");
 
-if($html_output == 1 || $quant == 1) {
+
+if($html_output == 1 || $quant == 1 || $bed_output == 1) {
 	$get_detailed_information = 1;
 }
 
@@ -155,8 +163,24 @@ for(my $i = 0; $i < @strains; $i++) {
 		$ref_in_array = 1;
 	}
 }
+
 if($ref_in_array == 0) {
 	unshift @strains, "reference";
+}
+
+
+#foreach my $filename (@filenames) {
+#    open my $fh, '<', $filename or die "Could not open $filename; $!";
+#    push @filehandles, $fh;
+#} ## end foreach my $filename (@filenames)
+my $filename;
+if($bed_output == 1) {
+	for(my $i = 0; $i < @strains; $i++) {
+		$filename = $strains[$i];
+		open my $fh, ">", "diff_motifs_$filename.bed" or die "Can't open $filename: $!";
+		push @fileHandles, $fh;
+		$fileHandles[$i]->print("track name=\"candidate-mutations-$filename\"\n");
+	}
 }
 
 if($skip_first == 0) {
@@ -257,6 +281,9 @@ my %strain_is_different_down = ();
 if($quant == 1) {
 	&read_in_motif_files();
 }
+my $promoter_start = 0;
+my $promoter_end = 0;
+my $current_chr;
 
 foreach my $line (keys %tss) {
 	if(exists $filter{$line}) { next; }
@@ -264,9 +291,11 @@ foreach my $line (keys %tss) {
 	@split = split('\t', $tss{$line}->{'tss'});
 	#Gene in file - get motif differences
 	if(exists $file_genes{$line}) {
-		print $line . "\n";
 		$output = &extract_and_analyze_motifs($split[0], ($split[1] - $tss_down), ($split[1] + $tss_up), $get_detailed_information);
-		print Dumper $output;
+	#	print Dumper %{$output} . "\n";
+		$promoter_start = ($split[1] - $tss_down);
+		$promoter_end = ($split[1] + $tss_up);
+		$current_chr = $split[0];
 		chomp $file_genes{$line};
 		print PROMOTER $file_genes{$line};
 		$cand_up = "";
@@ -283,17 +312,18 @@ foreach my $line (keys %tss) {
 				print PROMOTER $res->{'pos'} . ":" . $res->{'reference'} . "->" . $res->{'strain'} . ";";
 			}
 		}
-		print "we are done with that\n";
+	#	print "we are done with that\n";
 		#Try to find a pattern in motif mutations that corresponds to the pattern in gene expression between the different strains
 		if($pattern == 0) {
 			&analyze_patterns($file_genes{$line});
 			if($stats == 0) {
 				print PROMOTER "\tsig: ";
 				&calculate_stats($cand_up, \@candidate_strains_up);
+				&calculate_stats($cand_down, \@candidate_strains_down);
 			}
-			print "quant: " . $quant . "\n";
+	#		print "quant: " . $quant . "\n";
 			if($quant == 1) {
-				print "here\n";
+	#			print "here\n";
 				&score_motif_for_every_strain($line);	
 			}
 
@@ -303,6 +333,9 @@ foreach my $line (keys %tss) {
 		if($stats == 0 && $pattern == 1) {
 			print PROMOTER "\tsig: ";
 			&calculate_stats();
+		}
+		if($bed_output == 1) {
+			&print_bedGraph_output($line);
 		}
 
 		if($html_output == 1) {
@@ -349,6 +382,7 @@ foreach my $line (keys %tss) {
 						print OUT "\t";
 					} 
 				}
+				print "diff\n";
 				&extract_and_analyze_motifs($diff{$line}->{$strains[$i]}->{$strains[$j]}->{'exon_chr'},  ($diff{$line}->{$strains[$i]}->{$strains[$j]}->{'exon_start'} - $tss_down), ($diff{$line}->{$strains[$i]}->{$strains[$j]}->{'exon_start'} + $tss_up), $get_detailed_information);
 				if($html_output == 1) {
 					&print_html_output("diff_" . $line);
@@ -361,6 +395,13 @@ foreach my $line (keys %tss) {
 		$done_tasks++;
 	}
 	print STDERR "Status\tdone: $done_tasks\t vs \ttaks: $tasks Completed\r";
+}
+
+if($bed_output == 1) {
+	for(my $i = 0; $i < @strains; $i++) {
+		close $fileHandles[$strains[$i]];
+	}
+
 }
 
 #Connects to the database and saves the annotated TSS for this genome
@@ -424,7 +465,6 @@ sub tss_from_homer{
 			$tss{substr($split[0], 14, length($split[0]) - 15)}->{'strand'} = $split[4];
 		}
 	}	
-
 }
 
 #Needs tag directories to function
@@ -529,12 +569,6 @@ my %output = ();
 my %save = ();
 my @split;
 my @second;
-#if($get_detailed_information == 1) {
-	my %cands;
-	my %save_pos = ();
-	my %seq_motif = ();
-	my %orientation = ();
-#}
 
 sub extract_seqs_bg {
 	database_interaction::set_global_variables(\@strains, $genome, $homo, $html, "genomic");
@@ -571,16 +605,21 @@ sub calculate_bg {
 	}
 }
 
+my %mot_pos = ();
 #Method to extract sequences from database and scan them for motif 
 #It also saves the MSA for all strains, so we can align the motifs later
 #Saves motifs for every strain and every position and compares the number of motifs for each strain - saves motifs with different occurrences in a hash calld %cands
 sub extract_and_analyze_motifs {
+	my $blub = 0;
 	my $html_output_for_this_function = $_[3];
 	#Step 1: Extract sequences from database and also get MSA
 	open OUT, ">seqs.txt";
+#	print "POSITION: " . $_[1] . "\t" . $_[2] . "\n";
 	database_interaction::set_global_variables(\@strains, $genome, $homo, $html, "genomic");
 	my $ref = database_interaction::get_multiple_alignment($_[1], $_[2], $_[0], "+", 0, 0, 0, 0);
 	$length = 0;
+	%output = ();
+	%mot_pos = ();
 	#Get the longest sequences from MSA
 	for(my $i = 0; $i < @{$ref}; $i++) {
 		if($length < length($ref->[$i])) {
@@ -617,6 +656,10 @@ sub extract_and_analyze_motifs {
 		@second = split("_", $split[0]);
 		#Count the occurrence of the motif
 		if(exists $save{$second[1]}{$split[3]}{$second[0]}) {
+			if(exists $mot_pos{$second[0]}{$split[3]}{$split[1]}) {
+				next;
+			}
+			$mot_pos{$second[0]}{$split[3]}{$split[1]} = 1;
 			$save{$second[1]}{$split[3]}{$second[0]}++;
 			#Also save the exact position and the orientation of this motif for further analysis
 			if($html_output_for_this_function == 1) {
@@ -625,6 +668,7 @@ sub extract_and_analyze_motifs {
 				$orientation{$second[1]}{$split[3]}{$second[0]}{$split[1]} = $split[4];
 			}
 		} else {
+			$mot_pos{$second[0]}{$split[3]}{$split[1]} = 1;
 			$save{$second[1]}{$split[3]}{$second[0]} = 1;
 			if($html_output_for_this_function == 1) {
 				$seq_motif{$split[3] . "_" . $split[1] . "_" . $second[0]} = $split[2];
@@ -639,28 +683,31 @@ sub extract_and_analyze_motifs {
 	for(my $i = 0; $i < @strains; $i++) {
 		$output{$strains[$i]} = "";
 	}
+	%cands = %save;
+	&score_motif_for_every_strain(\%save);
+	exit;
 	foreach my $pos (keys %save) {
 		$first = 0;
 		foreach my $motif (keys $save{$pos}) {
 			$equal = 0;
 			for(my $i = 0; $i < @strains; $i++) {
 				my $strain = $strains[$i];
+			#	print $strain . "\t" . $motif . "\t" . $pos . "\n";
 				if(!exists $save{$pos}{$motif}{$strain}) { $save{$pos}{$motif}{$strain} = 0; }
-			
+				my @short_name = split('/', $motif);
 				if($save{$pos}{$motif}{$strain} > 10 && $first == 0) { last; }
 				#Check if occurrence of motifs is different in the different strains
-				if($first == 0) {
-					$val = $save{$pos}{$motif}{$strain};
-				} else {
+				$val = $save{$pos}{$motif}{'reference'};
+		#		if($first == 0) {
+		#			$output{$strain} .= $short_name[0] . "(" . $val . ")";
+		#		} else {
 					if($val != $save{$pos}{$motif}{$strain}) {
 						$equal = 1;
-						my @short_name = split('/', $motif);
-						$output{$strain} .= $short_name[0] . "(" . ($val - $save{$pos}{$motif}{$strain}) . "), ";
+						$output{$strain} .= $short_name[0] . "(" . ($save{$pos}{$motif}{$strain} - $val) . "), ";
 					} else {
-						my @short_name = split('/', $motif);
 						$output{$strain} .= $short_name[0] . "(0),";
 					}
-				}
+	#			}
 				$first++;
 			}
 			if($html_output_for_this_function == 1 && $equal == 1) {
@@ -669,7 +716,10 @@ sub extract_and_analyze_motifs {
 			}
 			$first = 0;
 		}
+		$blub = $pos;
 	}
+		
+	exit;
 	return \%output;
 }
 my @tmp_array;
@@ -687,14 +737,19 @@ my $m_from_file = "";
 my %save_strains = ();
 my $num_strains	 = 0;
 my %save_pos_motif = ();
-
+my %ref_pos_per_motif_and_strain_for_all = ();
+my %ref_pos_per_motif_and_strain_for_diff_motifs = ();
 #Function to create an alignment of all motifs to the MSA including the gaps in the different strains
 sub align_sequences{
+	%ref_pos_per_motif_and_strain_for_all = ();
+	%ref_pos_per_motif_and_strain_for_diff_motifs = ();
+	%save_strains = ();
 	#Create alignments for the motifs
 	my $pos = $_[0];
 	@chr = split(",", $pos);
 	$middle = $chr[1] + (($chr[2] - $chr[1])/2);
 	@name = ();
+	@array = ();
 	$num = 0;
 	my $skip = 0;
 	foreach my $motif (keys $cands{$pos}) {
@@ -739,6 +794,7 @@ sub align_sequences{
 			my @motif_array = split('', $array[$num]);
 			my $m_pos = 0;
 			my $final = "";
+			#we need to save motif positions for reference here because here are no gaps so far
 			foreach my $sa (@seq_array) {
 				if($sa eq "-") {
 					$final .= "-";
@@ -752,20 +808,54 @@ sub align_sequences{
 			$num++;
 			$save_strains{$s} = $final;
 		}
+		my %save_tmp = ();;
+	
+		my @short_motif = split('/', $motif);
+		foreach my $s (keys %{$save_pos{$pos}{$motif}}) {
+			my $seen = 0;
+			my $gap_ref;
+			my @seq_array = split('', $save_strains{$s});
+			for(my $i = 0; $i < @seq_array; $i++) {
+				if($seq_array[$i] ne " " && $seq_array[$i] ne "-") {
+					if($seen == 0) {
+						$gap_ref = () = substr($save_strains{'reference'}, 0, $i) =~ /-/g;
+					}
+					$seen++;
+				} elsif($seq_array[$i] ne " " && $seen > 0) {
+					$seen++;
+				} elsif($seq_array[$i] eq " " && $seen > 0) {
+					$save_tmp{$promoter_start + ($i - $seen - $gap_ref)} .= $s . ":$seen,";
+					$ref_pos_per_motif_and_strain_for_all{$short_motif[0]}{$s}{$promoter_start + ($i - $seen - $gap_ref)} = 1;
+					$seen = 0;
+				}
+			}
+		}
+		foreach my $keys (keys %save_tmp) {
+			my @a = split(',', $save_tmp{$keys});
+			if(@a != @strains) { 
+				for(my $i = 0; $i < @a; $i++) {
+					my @b = split(":", $a[$i]);
+					$ref_pos_per_motif_and_strain_for_diff_motifs{$short_motif[0]}{$b[0]}{$keys} = $b[1];
+				}
+			}
+		}
 	}
 }
 
 #Instead of just counting the occurrence of each motif this function extracts the motif in every strain (even if it was not found in the initial search) and calculates the motif score
 #This is a way to quantitatevly score differences
 sub score_motif_for_every_strain {
-	foreach my $pos (keys %cands) {
-		print $pos . "\t" . $cands{$pos} . "\n";
+	my $local_cands = $_[0];
+	print "\n";
+	foreach my $pos (keys %{$local_cands}) {
 		&align_sequences($pos);
 		%save_pos_motif = ();
 		my $skip = 0;
-		foreach my $motif (keys $cands{$pos}) {
+		foreach my $motif (keys $local_cands->{$pos}) {
+			print $pos . "\t" . $motif . "\t" . $local_cands->{$pos}->{$motif} . "\n";
 			foreach my $s (keys %save_strains) {
 				my @a = split('', $save_strains{$s});
+				print $save_strains{$s} . "\n";
 				my $found = 0;
 				my $start = 0;
 				for(my $i = 0; $i < @a; $i++) {
@@ -781,6 +871,7 @@ sub score_motif_for_every_strain {
 					}
 				}
 			}
+			print "test\n";
 			&calculate_motif_score($motif);
 			%save_pos_motif = ();
 		}
@@ -795,8 +886,10 @@ sub calculate_motif_score{
 	my $local_motif = $_[0];
 	my $strain_seq = "";
 	my $greater = 0;
+	my $first_motif = 0;
 	#That needs to move someqhere else
 	foreach my $position (keys %save_pos_motif) {
+		print "position: " . $position . "\n";
 		print "MOTIF: " . $local_motif . "\n";
 		for(my $i = 0; $i < @strains; $i++) {
 			my $j = $position;
@@ -807,6 +900,7 @@ sub calculate_motif_score{
 				}
 				$j++;
 			}
+			print $strain_seq . "\n";
 			@split = split('', $strain_seq);
 			$motif_score = 0;
 			for(my $i = 0; $i < @split; $i++) {
@@ -823,6 +917,12 @@ sub calculate_motif_score{
 				print "rev comp is greater for strain: " . $strains[$i] . " (" . $motif_score . ")\n";
 			} else {
 				print "forward is greater for strain: " . $strains[$i] . " (" . $greater . ")\n";
+				$motif_score = $greater;
+			}
+			if($i == 0) { $first_motif = $motif_score; }
+			if($first_motif < $motif_score || $first_motif > $motif_score) {
+				print "Quantitaive change!\n";
+				print STDERR "Quantitaive change!\n";
 			}
 		}
 	}	
@@ -910,6 +1010,54 @@ sub print_html_output{
 	}
 }
 
+
+#foreach my $key (keys %save) {
+#        @split = split(',', $save{$key});
+#        if(@split == 1) {
+#        #       print ${$fileHandles[$split[0]]} . "" .  $key . "\n";
+#                $fileHandles[$split[0]]->print("" .  $key . "\n");
+#        }
+#}
+
+
+sub print_bedGraph_output{
+	
+	foreach my $pos (keys %cands) {
+		&align_sequences($pos);
+	#	foreach my $strain (keys %ref_pos_per_motif_and_strain_for_all) {
+	#		foreach my $motif (keys %{$ref_pos_per_motif_and_strain_for_all{$strain}}) {
+	#			print $strain . "\t" . $motif . "\n";
+	#		}
+	#	}
+	#	print "\n\nCAND:\n";
+	#	foreach my $motif (keys %cand_motif) {
+	#		print $motif . "\n";
+	#	}
+	#	print "fuck fuck fuck\n";
+	#	foreach my $motif (keys %ref_pos_per_motif_and_strain_for_diff_motifs) {
+	#		print $motif . "\n";
+	#	}
+	#	exit;
+		foreach my $motif (keys %cand_motif) {
+	#		@b = split('/', $motif);
+	#		print $b[0] . "\n";
+	#		if(exists $cand_motif{$b[0]}) {
+	#			print "CANDIDATE\n";
+				for(my $i = 0; $i < @strains; $i++) {
+					my $strain = $strains[$i];
+			#	foreach my $strain (keys %{$ref_pos_per_motif_and_strain_for_diff_motifs{$motif}}) {
+					foreach my $motif_pos (keys %{$ref_pos_per_motif_and_strain_for_diff_motifs{$motif}{$strain}}) {
+						$fileHandles[$i]->print("chr" . $pos . "\t" . $motif_pos . "\t" . ($motif_pos + $ref_pos_per_motif_and_strain_for_diff_motifs{$motif}{$strain}{$motif_pos}) . "\t" . $motif . "\t1\t+\n");
+					}
+				}
+			}
+	#	}
+	}
+}
+
+
+
+
 #Add header to promoter analysis output file
 sub add_header{
 	print PROMOTER "ID\tchr\tstart\tstop\tstrand\tlength\tcopy\tannotation";
@@ -959,6 +1107,7 @@ sub read_in_background {
 			if(substr($line, 0, 1) ne "N") { next; } 
 			@split = split('\t', $line);
 			#Get sequences for every gene
+			print "background\n";
 			$output = &extract_and_analyze_motifs(substr($split[1],3), ($split[2] - $tss_down), ($split[2] + $tss_up), 0);
 			foreach my $strain (keys %{$output}) {
 				if($strain eq "reference") { next; }
@@ -1060,6 +1209,7 @@ sub analyze_patterns {
 		print STDERR "Number of strains does not match number of entries in file!\n";
 		exit;
 	} else {
+		%cand_motif = ();
 		$pattern_up = "";
 		$pattern_down = "";
 		%strain_is_different_down = ();
@@ -1069,6 +1219,7 @@ sub analyze_patterns {
 		if($split[8] < 16) { $split[8] = 16; }
 		@candidate_strains_up = ();
 		@candidate_strains_down = ();
+		@candidate_strains_equal = ();
 		for(my $i = 9; $i < @split; $i++) {
 			if($split[$i] < 16) {
 				$split[$i] = 16;
@@ -1083,7 +1234,11 @@ sub analyze_patterns {
 			if($split[$i]/$split[8] < 0.5) {
 				push(@candidate_strains_down, $strains[$i-8]);
 			}
+			if($split[$i]/$split[8] < 2 && $split[$i]/$split[8] > 0.5) {
+				push(@candidate_strains_equal, $strains[$i-8]);
+			}
 		}
+		push(@candidate_strains_equal, "reference");
 		print PROMOTER "\tUP: ";
 		for(my $i = 0; $i < @candidate_strains_up; $i++) {
 			print PROMOTER $candidate_strains_up[$i] . ",";
@@ -1096,8 +1251,10 @@ sub analyze_patterns {
 #			print "down: " . $candidate_strains_down[$i] . "\n";
 			$strain_is_different_down{$candidate_strains_down[$i]} = 1;
 		}
-		$output = &extract_and_analyze_motifs(substr($split[1], 3), ($split[2] - $tss_down), ($split[2] + $tss_up), $html_output);
+#		$output = &extract_and_analyze_motifs(substr($split[1], 3), ($split[2] - $tss_down), ($split[2] + $tss_up), $html_output);
 		my %save_motif_per_strain;
+#GO
+#		&align_sequences($pos);
 		foreach my $strains (keys %{$output}) {
 			my @a = split('\),', $output->{$strains});
 			for(my $j = 0; $j < @a; $j++) {
@@ -1111,10 +1268,11 @@ sub analyze_patterns {
 		my $pot = 0;
 		#Try to find a motif that follows the gene expression pattern
 		foreach my $motif (keys %save_motif_per_strain) {
+			$rest_is_diff_up = $rest_is_diff_down = 1;
+			$cand_in_up_are_equal = $cand_in_down_are_equal = 0;
+
 			foreach my $strains (keys %{$save_motif_per_strain{$motif}}) {
 				#The motif occurrence differs between strain and reference and the gene expression in this strain is either up- or downregulated
-				$rest_is_diff_up = $rest_is_diff_down = 1;
-				$cand_in_up_are_equal = $cand_in_down_are_equal = 0;
 				if($save_motif_per_strain{$motif}{$strains} != 0 && (exists $strain_is_different_up{$strains} || exists $strain_is_different_down{$strains})) {
 					#We need following pattern
 					#Candidates in up and down have to be different
@@ -1187,12 +1345,21 @@ sub analyze_patterns {
 				} 
 			}
 
+			#check the rest of the mofis
+			for(my $i = 0; $i < @candidate_strains_equal; $i++) {
+				if($save_motif_per_strain{$motif}{$candidate_strains_equal[$i]} != 0) {
+					$rest_is_diff_up = 1;
+					$rest_is_diff_down = 1;
+				}
+			}
 			if($rest_is_diff_up == 0) {
 				$cand_up .= $motif . "($first_cand_in_up), ";
+				$cand_motif{$motif} = 1;
 				$pot = 1;
 			}
 			if($rest_is_diff_down == 0) {
 				$cand_down .= $motif . "($first_cand_in_down), ";
+				$cand_motif{$motif} = 1;
 				$pot = 1;
 			}
 		}

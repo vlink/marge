@@ -16,10 +16,11 @@ pan_name:skip	skip	skip	transcript	skip	skip	skip	skip	skip	skip	skip	skip	skip	
 #after format: please specify the separation sign (\t = tabulator, \s = space, , = , and so on)
 sam_format:\t	print	print	chr	shift
 homer_format:\t	print	chr	shift	shift
-user_format:\t	print	chr	shift	print
+#user_format:\t	print	chr	shift	print
+user_format:\t	print	chr	shift	print	print	print
 
 #Format for annotation: start - start coordinate, end - end coordiante, chr - chromosome, print - just printed, transcript - specifies transcript name here: important if you want to use -exons
-annotation_format:\t	transcript	chr	start	end
+annotation_format:\t	chr	start	end
 header_format:#header
 annotation_homer:\t	transcript	chr	start	end
 header_homer:Transcript/RepeatID, #PeakID

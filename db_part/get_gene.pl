@@ -59,6 +59,10 @@ if($strand eq "") {
 	$strand = "+";
 }
 
+if(@strains < 1) {
+	$strains[0] = "reference";
+}
+
 if($gene ne "") {
 	database_interaction::set_global_variables(\@strains, $genome, $homo, $html, $gene);
 } elsif($method eq "genomic" || $method eq "align_genomic") {

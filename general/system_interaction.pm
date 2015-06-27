@@ -4,6 +4,15 @@ package system_interaction;
 
 use strict;
 
+sub check_if_homer_is_installed{
+	my $installed = `which homer`;
+	if(length($installed) > 2) {
+		return 0;
+	} else {
+		return 1;
+	}
+}
+
 sub check_module_installed{
 	eval("use $_[0]");
         if($@) {

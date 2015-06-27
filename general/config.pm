@@ -7,7 +7,7 @@ use DBI;
 my @split;
 
 sub read_config{
-	open CONFIG, "</data/home/vlink/mouse_strains/marge/config/config.txt";
+	open CONFIG, "</home/vlink/mouse_strains/marge/config/config.txt";
 	my %parameters;
 	my @split;
 	foreach my $line (<CONFIG>) {
@@ -23,7 +23,7 @@ sub read_config{
 }
 #Do what every necessary in the future
 sub database_connection{
-	open CONFIG, "</data/home/vlink/mouse_strains/marge/config/config.txt";
+	open CONFIG, "</home/vlink/mouse_strains/marge/config/config.txt";
 	my $dbname;
 	my $host;
 	my $user;
@@ -52,7 +52,7 @@ sub database_connection{
 
 sub chromosome_number{
 	my %chr;
-	open CHR, "</data/home/vlink/mouse_strains/marge/config/chromosomes.txt";
+	open CHR, "</home/vlink/mouse_strains/marge/config/chromosomes.txt";
 	foreach my $line (<CHR>) {
 		chomp $line;
 		if($line eq "") { next; }
@@ -71,7 +71,7 @@ sub chromosome_number{
 }
 
 sub gene_format{
-	open GENE, "</data/home/vlink/mouse_strains/marge/config/formats.txt" or die ("formats.txt does not exist!\n");;
+	open GENE, "</home/vlink/mouse_strains/marge/config/formats.txt" or die ("formats.txt does not exist!\n");;
 	my %gf;
 	my @s;
 	foreach my $line (<GENE>) {
@@ -90,7 +90,7 @@ sub gene_format{
 }
 
 sub name_format{
-	open NAME, "</data/home/vlink/mouse_strains/marge/config/formats.txt" or die("formats.txt does not exist!\n");
+	open NAME, "</home/vlink/mouse_strains/marge/config/formats.txt" or die("formats.txt does not exist!\n");
 	my %nf;
 	my $name;
 	my $run = 0;
@@ -117,7 +117,7 @@ sub name_format{
 }	
 
 sub promoter_format{
-	open NAME, "</data/home/vlink/mouse_strains/marge/config/formats.txt" or die("formats.txt does not exist!\n");
+	open NAME, "</home/vlink/mouse_strains/marge/config/formats.txt" or die("formats.txt does not exist!\n");
 	my %nf;
 	my $split;
 	my $ann;
