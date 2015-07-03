@@ -975,6 +975,10 @@ sub shift_vector{
 		$dbh->do($command);
 		$command = "CREATE INDEX  ON " . $table_name . " (chr, pos)";
 		$dbh->do($command);
+		$command = "CREATE INDEX ON " . $table_name . " (chr)";
+		$dbh->do($command);
+		$command = "CREATE INDEX ON " . $table_name . " (pos)";
+		$dbh->do($command);
 		$dbh->{ Warn } = 1;
 		print STDERR "\n\nInserting mutations into database for $s for allele " . ($a + 1) . "\n";
 		print STDERR "This may take a while\n";
