@@ -150,6 +150,8 @@ foreach my $line (<FH>) {
 		}
 	} elsif($mut_overlap_with_peak > 0 && $mut_overlap_with_peak < keys %peak_in_strain) {
 		print STDERR "That is the part for the not unique merging!\n";
+		print STDERR "Still todo\n";
+		exit;
 	} else {
 		#The mutations do not overlap with the peak
 		#Are there any mutations at all?

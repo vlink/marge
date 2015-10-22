@@ -30,7 +30,7 @@ sub printCmd {
         print STDERR "General commands:\n";
         print STDERR "\t-method <merge|foldchange|diffPeaks>\n";
 	print STDERR "\t-files <list of files, comma separated>\n";
-	print STDERR "\t-out <output file>\n";
+	print STDERR "\t-output <output file>\n";
 	print STDERR "\nMethod merge:\n";
 	print STDERR "\t-unique: <Just keeps unique peaks in output file> (default)\n";
 	print STDERR "\t-all: <Keeps all peaks in output file>\n";
@@ -128,12 +128,14 @@ if($method eq "merge") {
 		print STDERR "Please define order of strains!\n";
 		exit;
 	}
+
 	for(my $i = 0; $i < @order; $i++) {
 		$order[$i] =~ s/,//g;
 		if($order[$i] eq "reference") {
 			$ref_pos = (@split - @order) + $i;
 		}
 	}
+
 	if($ref_pos eq "") {
 		print STDERR "Please specify the position of the reference in order!\n";
 		exit;
@@ -143,17 +145,20 @@ if($method eq "merge") {
 	if(@files > 1) {
 		print STDERR "Only first file is considered! Ignore the rest!\n";
 	}
+
 	#First line check format
 	foreach my $line (<FH>) {
 		if($first == 0) {
-			if(substr($line, 0, 6) ne "PeakID") {
+			if(substr($line, 0, 6) ne "PeakID" && substr($line, 0, 5) ne "#name") {
 				print STDERR "Please check file format!\n";
 				print STDERR "Does not look like an original peak file!\n";
+				exit;
 			}
 			@split = split('\t', $line);
-			if(@split < 6) {
+			if(@split < 16) {
 				print STDERR "Please check file format!\n";
 				print STDERR "Is this peak file annotated?\n";
+				exit;
 			}
 			$first++;
 			print OUT "#id\tchr\tstart\tend\tstrand\tStat\tParent files\n";
@@ -165,7 +170,6 @@ if($method eq "merge") {
 		$up = "up_";
 		$down = "down_";
 		$over_filter = 0;
-		print $line . "\n";
 		for(my $i = @split - @order; $i < @split; $i++) {
 			if($i == $ref_pos) {
 				if($split[$ref_pos] > $filter) {

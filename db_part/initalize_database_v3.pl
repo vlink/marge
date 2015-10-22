@@ -1124,3 +1124,97 @@ sub shift_vector{
 	print LOG "strain_" . $genome . "_" . $s . "\n";
 	$dbh->disconnect();
 }
+
+
+
+sub merge{
+        my $line = $_[0];
+        if($line eq "") {
+                return;
+        }
+        chomp $line;
+        @current = split('\t', $line);
+        #Save reference and position
+        if(substr($current[0], 0, 3) eq "chr") {
+                $current[0] = substr($current[0], 3);
+        }
+        my $pos = $current[1];
+        my $ref = $current[3];
+        my $merge_line;
+        my @last;
+        my @allele;
+        my @all;
+#       $current[4] =~ s/^\./$current[3]/g;
+        $current[4] =~ s/\.//g;
+        my @variants = split(',', $current[4]);
+
+        unshift @variants, $current[3];
+
+        if($filter == 1 && $current[6] ne "PASS") {
+                return 1;
+        }
+
+
+        my $var;
+        for(my $i = 9; $i < @current; $i++) {
+                @all = split('/', ((split(':', $current[$i]))[0]));
+                if($all[0] eq ".") {
+                        $all[0] = 0;
+                }
+                if(@all == 1) {
+                        $all[1] = 0;
+                } else {
+                        if($all[1] eq ".") {
+                                $all[1] = 0;
+                        }
+                }
+                if($homo == 1) {
+                        shift @all;
+                }
+                @merge_line = ();
+                for(my $h = 0; $h < @all; $h++) {
+                        $var = $variants[$all[$h]];
+                        $ref = $current[3];
+                        $pos = $current[1];
+                        #Check if reference and mutations are different
+                        if($ref ne $var) {
+                                if(length($ref) > 1 && length($var) > 1) {
+                                        #Remove the first bases if they are the same
+                                        while(substr($ref, -1) eq substr($var, -1) && length($ref) > 1 && length($var) > 1) {
+                                                chop $ref;
+                                                chop $var;
+                                        }
+                                        #Now start from the beginning
+                                        my $max = (length($ref) > length($var)) ? length($var) : length($ref);
+                                        my $max = (length($ref) > length($var)) ? length($var) : length($ref);
+                                        for(my $l = 0; $l < $max - 1; $l++) {
+                                                if(length($ref) > 1 && length($var) > 1 && substr($ref, 0, 1) eq substr($var, 0, 1)) {
+                                                        $pos++;
+                                                        $ref = unpack "xA*", $ref;
+                                                        $var = unpack "xA*", $var;
+                                                }
+                                        }
+                                }
+                                if(length($ref) > $length_mut) { $length_mut = length($ref); }
+                                if(length($var) > $length_mut) { $length_mut = length($var); }
+
+                                #Check if there was already a mutation before this one
+                                @last = split(',', $lines->[$h]->[$i-9]->[-1]) if @{$lines->[$h]->[$i-9]} > 0;
+                                if(@{$lines->[$h]->[$i-9]} < 1 || $last[0] ne $current[0]) {
+                                        $merge_line = $current[0] . "," . $pos . "," . $ref . "," . $var;
+                                        push(@{ $lines->[$h]->[$i-9] }, $merge_line);
+                                        next;
+                                }
+                                #Deletion in the strain so that the new mutation can not exist = ignore second mutation
+                                if($last[1] == $pos) { next; }
+                                if($current[1] < $last[1] + length($last[2])) {
+                                #Deletion in the strain so that the new mutation can not exist = ignore second mutation
+                                        next;
+                                }
+                                #Deletion in the strain so that the new mutation can not exist = ignore second mutation
+                                $merge_line = $current[0] . "," . $pos . "," . $ref . "," . $var;
+                                push(@{ $lines->[$h]->[$i-9]}, $merge_line);
+                        }
+                }
+        }
+}

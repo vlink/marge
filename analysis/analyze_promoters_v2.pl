@@ -143,6 +143,18 @@ GetOptions(     "genome=s" => \$genome,
 		"-motif-diff" => \$motif_diff)
 	or die("Error in command line options!\n");
 
+my $ref_in_array = 0;
+for(my $i = 0; $i < @strains; $i++) {
+	$strains[$i] =~ s/,//g;
+	if($strains[$i] eq "reference") {
+		$ref_in_array = 1;
+	}
+}
+
+if($ref_in_array == 0) {
+	unshift @strains, "reference";
+}
+
 
 if($html_output == 1 || $quant == 1 || $bed_output == 1) {
 	$get_detailed_information = 1;
@@ -209,20 +221,7 @@ if($method eq "rna") {
 	print STDERR "Add enhancer routine!\n";
 	$skip_first = 1;
 	$skip_diff = 1;
-	
 	exit;
-}
-
-my $ref_in_array = 0;
-for(my $i = 0; $i < @strains; $i++) {
-	$strains[$i] =~ s/,//g;
-	if($strains[$i] eq "reference") {
-		$ref_in_array = 1;
-	}
-}
-
-if($ref_in_array == 0) {
-	unshift @strains, "reference";
 }
 
 
@@ -371,6 +370,73 @@ foreach my $line (keys %tss) {
 	print STDERR "Status\tdone: $done_tasks\t vs \ttaks: $tasks Completed\r";
 
 }
+print STDERR "TSS is done!\n";
+my %seen = ();
+foreach my $line (keys %first) {
+	print "show: " . $line . "\n";
+	if(exists $file_genes{$line}) {
+		%seen = ();
+		foreach my $strain (keys %{$first{$line}}) {
+			print $first{$line}{$strain}->{'exon_start'} . "\t" . $first{$line}{$strain}->{'exon_chr'} . "\t" . $first{$line}{$strain}->{'exon_strand'} . "\n";;
+			if(exists $seen{$first{$line}{$strain}->{'exon_start'}}) {
+				next;
+			}
+			$seen{$first{$line}{$strain}->{'exon_start'}} = 1;
+			if($first{$line}{$strain}->{'exon_strand'} eq "+") {
+				&scan_seq_for_motifs($first{$line}{$strain}->{'exon_chr'}, $first{$line}{$strain}->{'exon_start'} - (2 * $tss_up), $first{$line}{$strain}->{'exon_start'});
+			} else {
+				&scan_seq_for_motifs($first{$line}{$strain}->{'exon_chr'}, $first{$line}{$strain}->{'exon_start'}, $first{$line}{$strain}->{'exon_start'} + (2 * $tss_up));
+			}
+			&save_motifs();
+			print Dumper %save_motifs . "\n";
+			exit;
+#			&align_motifs();
+#			if($quant == 0) {
+#				%diff_motifs = ();
+#				&count_motifs();
+#			} else {
+#				%motif_score = ();
+#				&calculate_motif_differences();
+#			}
+#			#Now find pattern
+#			$cand_up = "";
+#			$cand_down = "";
+#			$cand_tricky = "";
+#			&analyze_patterns($file_genes{$line});
+#			if($pot == 1) {
+#				print PROMOTER "UP: " . $cand_up . "\tDOWN: " . $cand_down . "\tTRICKY: " . $cand_tricky;
+#			} else {
+#				print PROMOTER "no candidate";
+#			}
+#			if($stats == 0) {
+#				if($quant == 1) {
+#
+#				#	print STDERR "TODO STATS FOR MOTIF DIFFERENCES\n";
+#				} else {
+#					&calculate_stats($cand_up, \@candidate_strains_up);
+#					&calculate_stats($cand_down, \@candidate_strains_down);
+#				}
+#			}
+#
+#			if($bed_output == 1) {
+#				&print_bedGraph_output(($split[1] - $tss_down));
+#			}
+#
+#			if($html_output == 1) {
+#				&print_html_output("tss_" . $line);
+#			}
+#
+#			#Add logic for the other promoters!
+#		}
+#		if(exists $file_genes{$line} || exists $first{$line} || exists $diff{$line}) {
+#			print PROMOTER "\n";
+#			$done_tasks++;
+#		}
+#		print STDERR "Status\tdone: $done_tasks\t vs \ttaks: $tasks Completed\r";
+		}	
+	}
+}
+exit;
 print "\n\n";
 print STDERR "Now add rest of TSS and enhancers!!!!\n";
 
@@ -454,8 +520,8 @@ sub first_expressed_exon{
 	}
 	$command .= " -noCondensingParts > genes.tmp";
 	$to_del{'genes.tmp'} = 1;
-
-	`$command`; 
+	print STDERR "COMMENT COMMAND IN AGAIN!!!\n";
+#	`$command`; 
 
 	open FH, "<genes.tmp";
 	my $f = 0;

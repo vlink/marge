@@ -6,7 +6,14 @@ use DBI;
 #Define variables
 
 my $con = config::database_connection();
+print $con . "\n";
+use Data::Dumper;
+print Dumper($con) . "\n";
 my $dbh = DBI->connect("DBI:Pg:dbname=$con->{'dbname'};host=$con->{'host'}",  $con->{'user'}, $con->{'pw'}, {'RaiseError' => 1});
+print $dbh . "\n";
+exit;
+print "connected!\n";
+exit;
 my $sth;
 my $strains;
 

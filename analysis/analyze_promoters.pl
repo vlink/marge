@@ -90,7 +90,7 @@ GetOptions(     "genome=s" => \$genome,
 		"-bgtagdir" => \$bgtagdir,
 		"-no-stats" => \$stats, 
 		"-no-pattern" => \$pattern, 
-		"-motif_file=s" => \$motif_file, 
+		"-motif-file=s" => \$motif_file, 
 		"-zscore=s" => \$zscore_significant_value, 
 		"-quant" => \$quant)
 	or die("Error in command line options!\n");
@@ -139,7 +139,6 @@ if($ann_file eq "" && &check_if_table_exists($table_name) == 1) {
 }
 print STDERR "Officially annotated TSS is stored!\n";
 print STDERR "Go to first expressed exon!\n";
-
 #Report first expressed exon
 if(@dirs == 0) {
 	print STDERR "No tag directories are specified!\n";
@@ -260,7 +259,6 @@ if($stats == 0) {
 	&cal_mean_and_stddev();
 }
 
-
 my $f = 0;
 open PROMOTER, ">promoter_analysis.txt";
 my %pos;
@@ -292,7 +290,6 @@ foreach my $line (keys %tss) {
 	#Gene in file - get motif differences
 	if(exists $file_genes{$line}) {
 		$output = &extract_and_analyze_motifs($split[0], ($split[1] - $tss_down), ($split[1] + $tss_up), $get_detailed_information);
-	#	print Dumper %{$output} . "\n";
 		$promoter_start = ($split[1] - $tss_down);
 		$promoter_end = ($split[1] + $tss_up);
 		$current_chr = $split[0];
@@ -308,12 +305,15 @@ foreach my $line (keys %tss) {
 			$sth = $dbh->prepare("SELECT * FROM " . $genome . "_mutations_" . $strains[$j] . "_allele_1 WHERE chr = \'" . $split[0] . "\' AND pos >= " . ($split[1] - $tss_down) . " AND pos <= " . ($split[1] + $tss_up));
 			$sth->execute();
 			print PROMOTER "\t";
+			$file_genes{$line} .= "\t";
 			while(my $res = $sth->fetchrow_hashref()) {
 				print PROMOTER $res->{'pos'} . ":" . $res->{'reference'} . "->" . $res->{'strain'} . ";";
+				$file_genes{$line} .= $res->{'pos'} . ":" . $res->{'reference'} . "->" . $res->{'strain'} . ";";
 			}
 		}
 	#	print "we are done with that\n";
 		#Try to find a pattern in motif mutations that corresponds to the pattern in gene expression between the different strains
+		print $file_genes{$line} . "\n";
 		if($pattern == 0) {
 			&analyze_patterns($file_genes{$line});
 			if($stats == 0) {
@@ -617,6 +617,7 @@ sub extract_and_analyze_motifs {
 #	print "POSITION: " . $_[1] . "\t" . $_[2] . "\n";
 	database_interaction::set_global_variables(\@strains, $genome, $homo, $html, "genomic");
 	my $ref = database_interaction::get_multiple_alignment($_[1], $_[2], $_[0], "+", 0, 0, 0, 0);
+	print $ref->[1] . "\n";
 	$length = 0;
 	%output = ();
 	%mot_pos = ();
@@ -640,9 +641,8 @@ sub extract_and_analyze_motifs {
 	close OUT;
 
 	#Step 2: Scan all gapless sequences for all motifs in the motif file
-	my $command = "homer2 find -i seqs.txt -m all.motifs > seqs_with_motifs.txt 2> output_homer.tmp";
+	my $command = "homer2 find -i seqs.txt -m $motif_file > seqs_with_motifs.txt 2> output_homer.tmp";
 	`$command`;
-
 	#Step 3: Read in the result from this analysis and analyze the occurrence of the motifs in detail
 	open FH, "<seqs_with_motifs.txt";
 	if($html_output_for_this_function == 1) {
@@ -650,6 +650,7 @@ sub extract_and_analyze_motifs {
 		%save_pos = ();
 		%orientation = ();
 	}
+	
 	foreach my $line (<FH>) {
 		chomp $line;
 		@split = split('\t', $line);
@@ -685,7 +686,7 @@ sub extract_and_analyze_motifs {
 	}
 	%cands = %save;
 	&score_motif_for_every_strain(\%save);
-	exit;
+#	exit;
 	foreach my $pos (keys %save) {
 		$first = 0;
 		foreach my $motif (keys $save{$pos}) {
@@ -718,8 +719,9 @@ sub extract_and_analyze_motifs {
 		}
 		$blub = $pos;
 	}
-		
-	exit;
+#		
+#	exit;
+	print Dumper %output;
 	return \%output;
 }
 my @tmp_array;
@@ -1202,9 +1204,10 @@ sub read_in_background {
 #Then it analyzes gain or loss of motifs that follow the up or downregulated pattern of genes
 sub analyze_patterns {
 	$_ = 0 for my($cand_in_up_are_equal, $cand_in_down_are_equal, $first_cand_in_up, $first_cand_in_down, $occ_in_motif_for_up, $occ_in_motif_for_down, $rest_is_diff_up, $rest_is_diff_down);
-	
+	print $_[0] . "\n";	
 	@split = split('\t', $_[0]);
 #	print $split[0] . "\n";
+	print @split. "\n";
 	if(@strains != (@split - 8)) {
 		print STDERR "Number of strains does not match number of entries in file!\n";
 		exit;
