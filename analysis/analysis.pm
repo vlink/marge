@@ -229,15 +229,12 @@ sub get_motif_name{
 	#First check if it comes from homer motif analysis or database
 	if(index($name, "BestGuess") != -1) {
 		#Get rid of consensus sequence at the beginning
-		my @clean1 = split(",", $name);
+		my @clean1 = split("BestGuess:", $name);
 		#Get rid of best guess
-		my @clean2 = split(":", $clean1[1]);
 		#Get rif of everything in paraenthesis 
-		my @clean3 = split('\(', $clean2[-1]);
-
-		my @a = split('/', $clean3[0]);
-		$name = $a[0];
-		my @underscore = split('_', $a[0]);
+		my @clean2 = split/[\(,\/]+/, $clean1[-1];
+		$name = $clean2[0];
+		my @underscore = split('_', $clean2[0]);
 		for(my $i = @underscore - 1; $i > 0; $i--) {
 			if(length($underscore[$i]) > 2 && $underscore[$i] =~ /[a-zA-Z]+/) {
 				$name = $underscore[$i];
@@ -248,8 +245,14 @@ sub get_motif_name{
 		my @paren = split('\(', $name);
 		$name = $paren[0];
 	} else {
-		my @clean1 = split/[\(,\/]+/, $name;
-		$name = $clean1[0];
+		my @clean1 = split(',', $name);
+		if(@clean1 > 1) {
+			$name = $clean1[1];
+		} else {
+			$name = $clean1[0];
+		}
+		my @clean2 = split/[\(,\/]+/, $name;
+		$name = $clean2[0];
 	}
 	return $name;
 }
