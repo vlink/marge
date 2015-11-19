@@ -10,27 +10,27 @@ use Data::Dumper;
 #require '../db_part/database_interaction.pm';
 
 
-$_ = "" for my($genome, $file, $tf, $filename, $last_line, $name);
-$_ = () for my(@strains, %peaks, @split, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score);
-$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta);
+$_ = "" for my($genome, $file, $tf, $filename, $last_line, $name, $output, $ab);
+$_ = () for my(@strains, %peaks, @split, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove);
+$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg);
 my $data = config::read_config()->{'data_folder'};
 #$data = "/Users/verenalink/workspace/strains/data/";
-
-my %comp;
-$comp{'A'} = 'T';
-$comp{'C'} = 'G';
-$comp{'G'} = 'C';
-$comp{'T'} = 'A';
 
 sub printCMD {
         print STDERR "Usage:\n";
         print STDERR "\t-genome: Genome\n";
         print STDERR "\t-strains <strains>: Comma-separated list of strains - Order must overlay with order in annotated peak file\n";
         print STDERR "\t-file <file>: annotated peak file (including tag counts)\n";
+	print STDERR "\t-AB: Antibody that was used for this ChIP (to exclude mutations in this motif from analysis)\n";
 	print STDERR "\t-TF <transcription factor motif matrix>: Matrix of the TF that was chipped for\n";
         print STDERR "\t-homo: Data is homozygouse\n";
 	print STDERR "\t-region: Size of the region used to look for other motifs (Default: 200)\n";
 	print STDERR "\t-delta: Uses motif score differences instead of binary existance\n";
+	print STDERR "\t-output: Name of the output files\n";
+	print STDERR "\t-keep: keep temporary files\n";
+	print STDERR "\n\nFiltering options:\n";
+	print STDERR "\t-tg <minmal tag count>: Filters out all peaks with less than x tag counts\n";
+	print STDERR "\t-mut_only: just keeps peaks where one strains is mutated\n";
         exit;
 }
 
@@ -42,23 +42,30 @@ my $param = config::read_config();
 
 $region = 200;
 
+$output = "output_motif_" . rand(5);
 GetOptions(     "genome=s" => \$genome,
                 "file=s" => \$file,
                 "strains=s{,}" => \@strains,
                 "homo" => \$homo, 
 		"-TF=s" => \$tf, 
 		"-region=s" => \$region,
-		"-delta" => \$delta)
+		"-delta" => \$delta, 
+		"-output=s" => \$output,
+		"-AB=s" => \$ab,
+		"-keep" => \$keep, 
+		"-tg=s" => \$tg,
+		"-mut_only" => \$mut_only)
         or die("Error in command line options!\n");
 #First step: Get the sequences for the peaks
 $allele = 1;
 my $ref_save = 0;
 
 #Save motif files
-my ($index_motif_ref, $PWM_ref, $fileHandlesMotif_ref) = analysis::read_motifs($tf);
+my ($index_motif_ref, $PWM_ref, $fileHandlesMotif_ref, $del_ref) = analysis::read_motifs($tf, $output, \%delete);
 %index_motifs = %$index_motif_ref;
 %PWM = %$PWM_ref;
 @fileHandlesMotif = @$fileHandlesMotif_ref;
+%delete = %$del_ref;
 
 #Make sure the reference is in the strains array
 for(my $i = 0; $i < @strains; $i++) {
@@ -67,6 +74,7 @@ for(my $i = 0; $i < @strains; $i++) {
 }
 
 print STDERR "Saving peaks\n";
+my $filter_out = 0;
 open FH, "<$file";
 my $line_number = 0;
 foreach my $line (<FH>) {
@@ -80,6 +88,17 @@ foreach my $line (<FH>) {
 		exit;
 	}
 	if(length($split[1]) > 10) { next; }
+	$filter_tg = 0;
+	#Filter out peaks with too few tag counts
+	for(my $i = 19; $i < @split; $i++) {
+		if($split[$i] > $tg) {
+			$filter_tg = 1;
+		} 
+	}	
+	if($filter_tg == 0) {
+		$filter_out++;
+		next;
+	}
 	$peaks{substr($split[1], 3)}{$split[2]} = $split[3];
 	$line_number++;
 	$tag_counts{substr($split[1], 3)}{$split[2]} = "";		
@@ -95,47 +114,85 @@ foreach my $line (<FH>) {
 }
 close FH;
 
+print STDERR "" . $filter_out . " peaks filtered because of low tag counts\n\n";
 my $tmp_out = "tmp" . rand(15);
+$delete{$tmp_out} = 1;
 print STDERR "Extracting sequences from strain genomes\n";
 print STDERR $tmp_out . "\n";
-my ($seq_ref, $save_local_shift_ref) = analysis::get_seq_for_peaks($tmp_out, \%peaks, \@strains, $data, $allele, $line_number);
+my ($seq_ref, $save_local_shift_ref) = analysis::get_seq_for_peaks($tmp_out, \%peaks, \@strains, $data, $allele, $line_number, $mut_only);
 %seq = %$seq_ref;
 %save_local_shift = %$save_local_shift_ref;
 
 my $tmp_out_main_motif = "tmp" . rand(15);
+$delete{$tmp_out_main_motif} = 1;
 analysis::scan_motif_with_homer($tmp_out, $tmp_out_main_motif, $tf);
 
 analysis::write_header(\@fileHandlesMotif, \@strains, 0);
 
-analysis::analyze_motifs($tmp_out_main_motif, \%seq, \%save_local_shift, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, \%fc);
+my $remove_ref = analysis::analyze_motifs($tmp_out_main_motif, \%seq, \%save_local_shift, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, $ab, \%remove, \%fc);
+%remove = %$remove_ref;
 
 for(my $i = 0; $i < @fileHandlesMotif; $i++) {
         close $fileHandlesMotif[$i];
 }
 
 print STDERR "Generating R files!\n";
-&generate_R_files();
+&generate_R_files("output_all_motifs.R", 1);
 
+if($ab eq "") {
+	print STDERR "No antibody specified, analysis ends here\n";
+	exit;
+}
 
+@fileHandlesMotif = ();
+
+#Remove all positions from the files with mutations in chipped motif
+foreach my $key (keys %index_motifs) {
+	open FH, "<", $output . "_" . $key . ".txt";
+	my $filename  = $output . "_" . $key . "_removed.txt";
+	$delete{$filename} = 1;
+	open my $fh, ">", $filename or die "Can't open $filename: $!\n";
+	$fileHandlesMotif[$index_motifs{$key}] = $fh;
+	foreach my $line (<FH>) {
+		chomp $line;
+		@split = split("\t", $line);
+		if(!exists $remove{$split[1]}) {
+			$fileHandlesMotif[$index_motifs{$key}]->print($line . "\n");
+		}
+	}
+}
+
+&generate_R_files("output_all_motifs_removed.R", 0);
+
+if($keep == 0) {
+	foreach my $d (keys %delete) {
+		`rm $d`;
+	}
+}
 #Generate R files
 sub generate_R_files {
 	my $filename;
 	my $f = 0;
 	my $num_of_muts;
-
+	my $output_R_file = $_[0];
+	my $removed = $_[1];
 	print STDERR "Add filtering for number of motifs!\n";
-	open R, ">output_all_plots.R";
-	print R "pdf(\"all_plots.pdf\", width=10, height=5)\n";
+	open R, ">", $output_R_file;
+	print R "pdf(\"" . substr($output_R_file, 0, length($output_R_file) - 2) . ".pdf\", width=10, height=5)\n";
 	my $cal_pvalue = 0;
 	my $count_obs_one = 0;
 	my $count_obs_two = 0;
 	my $count_obs_both = 0;
-	foreach my $motif (keys %index_motifs) {
+	foreach my $motif (sort {$index_motifs{$a} cmp $index_motifs{$b}} keys %index_motifs) {
 		#Make sure there a mutations in this motif
-		$filename = "output_mutation_" . $motif . ".txt";
+		if($removed == 0) {
+			$filename = $output . "_" . $motif . "_removed.txt";
+		} else {
+			$filename = $output . "_" . $motif . ".txt";
+		}
 		$num_of_muts = `wc -l $filename`;
 		@split = split('\s+', $num_of_muts);
-		if($split[0] == 1) {
+		if($split[0] == 1 && $removed == 1) {
 			print "No mutations in motif for " . $motif . "\n";
 			next;
 		}
@@ -245,14 +302,13 @@ sub generate_R_files {
 					}
 					$x_count++;	
 				}
-				print R "legend(\"topleft\", c(\"" . $strains[$i] . "\",\"" . $strains[$j] . "\"), col=c(\"red\", \"blue\"), pch=16)\n";
 				if(length($dist_one) > 10) {
 					chop $dist_one;
 				}
 				if(length($dist_two) > 10) {
 					chop $dist_two;
 				}
-				if(length($dist_no_mut) > 10) {
+				if(length($dist_no_mut) > 15) {
 					chop $dist_no_mut;
 				}
 				$dist_one .= ")";
@@ -267,6 +323,7 @@ sub generate_R_files {
 				print R $dist_one . "\n";
 				print R $dist_two . "\n";
 				print R $dist_no_mut . "\n";
+				print R "legend(\"topleft\", c(paste(\"" . $strains[$i] . ": \", length(one), \" muts\", sep=\"\"), paste(\"" . $strains[$j] . ": \", length(two), \" muts\", sep=\"\")), col=c(\"red\", \"blue\"), pch=16)\n";
 				if($delta == 1) {
 					$cal_pvalue = 0;
 					if(length($delta_one) > 10) {
@@ -275,7 +332,7 @@ sub generate_R_files {
 					if(length($delta_two) > 10) {
 						chop $delta_two;
 					}
-					if(length($delta_no_mut) > 10) {
+					if(length($delta_no_mut) > 15) {
 						chop $delta_no_mut;
 					}
 					$delta_one .= ")";
@@ -315,7 +372,7 @@ sub generate_R_files {
 	}
 	print R "dev.off()\n";
 	close R;
-	
+	`Rscript $output_R_file`;	
 }
 
 sub fakrek{

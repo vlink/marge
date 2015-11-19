@@ -73,9 +73,12 @@ sub analyze_motifs{
 	my %tag_counts = %{$_[4]};
 	my @strains = @{$_[5]};
 	my %index_motifs = %{$_[6]};
+	my $ab = $_[7];
+	my %remove = %{$_[8]};
 	my %fc = ();
-	if(@_ > 7) {
-		%fc = %{$_[7]};
+	my $ab_mut = 0;
+	if(@_ > 9) {
+		%fc = %{$_[9]};
 	}
         open FH, "<$motif_file";
         my $last_line = "";
@@ -85,10 +88,14 @@ sub analyze_motifs{
                 @split = split('\t', $line);
 		$split[3] = &get_motif_name($split[3]);
                 @header = split('_', $split[0]);
-                #Read in blocks - stop after gathering all information about one position
+               #Read in blocks - stop after gathering all information about one position
                 if($last_line ne "" && $header[0] . "_" . $header[1] . "_" . $header[2] ne $last_line) {
                         my @a = split("_", $last_line);
-                        &print_results(substr($a[0], 3), $a[1], \%block, $fileHandlesMotif_ref, $last_line, \%tag_counts, \@strains, \%index_motifs, \%fc);
+                        $ab_mut = &print_results(substr($a[0], 3), $a[1], \%block, $fileHandlesMotif_ref, $last_line, \%tag_counts, \@strains, \%index_motifs, \%fc, $ab);
+			if($ab_mut == 1) {
+				$remove{$last_line} = 1;
+			}
+			%block=();
                 }
                 $last_line = $header[0] . "_" . $header[1] . "_" . $header[2];
                 my $half = length($seq{$split[0]})/2;
@@ -111,7 +118,11 @@ sub analyze_motifs{
                 $block{$split[3]}{$motif_start + $save_local_shift{$split[0]}{$motif_start}}{'length'} = length($split[2]);
         }
         my @a = split("_", $last_line);
-	&print_results(substr($a[0], 3), $a[1], \%block, $fileHandlesMotif_ref, $last_line, \%tag_counts, \@strains, \%index_motifs, \%fc);
+	$ab_mut = &print_results(substr($a[0], 3), $a[1], \%block, $fileHandlesMotif_ref, $last_line, \%tag_counts, \@strains, \%index_motifs, \%fc, $ab);
+	if($ab_mut == 1) {
+		$remove{$last_line} = 1;
+	}
+	return \%remove;
 }
 
 sub print_results {
@@ -127,6 +138,8 @@ sub print_results {
 	my %index_motifs = %{$_[7]};
 	my %fc = %{$_[8]};
 	my $fc_exists = 0;
+	my $ab = $_[9];
+	my $ab_mut = 0;
 	if((keys %fc) > 1) {
 		$fc_exists = 1;
 	}
@@ -176,6 +189,9 @@ sub print_results {
                 for(my $i = 0; $i < @strains; $i++) {
                         if(exists $existance{$strains[$i]}) {
                                 $fileHandlesMotif[$index_motifs{$motif}]->print("1\t");
+				if($motif eq $ab) {
+					$ab_mut = 1;
+				}
                         } else {
                                 $fileHandlesMotif[$index_motifs{$motif}]->print("0\t");
                         }
@@ -183,6 +199,7 @@ sub print_results {
                 $fileHandlesMotif[$index_motifs{$motif}]->print("" . (keys %{$block{$motif}}) . "\n");
         }
         %block = ();
+	return $ab_mut;
 }
 
 
@@ -259,6 +276,8 @@ sub get_motif_name{
 
 sub read_motifs{
 	open FH, "<$_[0]";
+	my $output_mut = $_[1];
+	my %del = %{$_[2]};
 	my $pos = 0;
 	my $motif = "";
 	my $index = 0;
@@ -273,7 +292,8 @@ sub read_motifs{
 			$pos = 0;
 			#Open file per motif
 			$name = &get_motif_name($motif);
-			my $filename = "output_mutation_" . $name . ".txt";
+			my $filename = $output_mut . "_" . $name . ".txt";
+			$del{$filename} = 1;
 			open my $fh, ">", $filename or die "Can't open $filename: $!\n";
 			$index_motifs{$name} = $index;
 			$fileHandlesMotif[$index] = $fh;
@@ -287,7 +307,7 @@ sub read_motifs{
 			$pos++;
 		}
 	}
-	return (\%index_motifs, \%PWM, \@fileHandlesMotif);
+	return (\%index_motifs, \%PWM, \@fileHandlesMotif, \%del);
 }
 
 sub scan_motif_with_homer{
@@ -306,6 +326,7 @@ sub get_seq_for_peaks {
 	my $data = $_[3];
 	my $allele = $_[4];
 	my $line_number = $_[5];
+	my $mut_only = $_[6];
 	my $general_offset = 0;
 	my $seq_number = 0;
 	my $seq = "";
@@ -319,6 +340,10 @@ sub get_seq_for_peaks {
 	my $strain_spec_stop;
 	my $mut_number_start = 0;
 	my $mut_number_stop = 0;
+	my %current_pos;
+	my $equal = 0;
+	my $ref_seq = "";
+	my $h;
 	foreach my $p (keys %peaks) {
 		#Start with offset for first line
 		$general_offset = 5 + length($p);
@@ -386,7 +411,7 @@ sub get_seq_for_peaks {
 					}				
 				}
 				my $header = "chr" . $p . "_" . $start . "_" . $peaks{$p}{$start} . "_" . $strains[$i];
-				print OUT ">chr" . $p . "_" . $start . "_" . $peaks{$p}{$start} . "_" . $strains[$i] . "\n";
+			#	print OUT ">chr" . $p . "_" . $start . "_" . $peaks{$p}{$start} . "_" . $strains[$i] . "\n";
 				$length = $strain_spec_stop - $strain_spec_start;
 				$newlines = int($strain_spec_stop/50) - int($strain_spec_start/50);
 				$length = $length + $newlines;
@@ -395,7 +420,8 @@ sub get_seq_for_peaks {
 				seek($fileHandles[$i], $byte_offset, 0);
 				read $fileHandles[$i], $seq, $length;
 				$seq =~ s/\n//g;
-				print OUT uc($seq) . "\n";
+				$current_pos{$strains[$i]} = uc($seq);
+			#	print OUT uc($seq) . "\n";
 				$seq{$header} = uc($seq);
 				$seq = "";
 				my $local_shift = 0;
@@ -442,9 +468,31 @@ sub get_seq_for_peaks {
 					}
 				}
 			}
+			#$iPrint here
+			if($mut_only == 1) {
+				$equal = 0;
+				$ref_seq = $current_pos{$strains[0]};
+				for(my $i = 1; $i < @strains; $i++) {
+					if($current_pos{$strains[$i]} ne $ref_seq) {
+						$equal = 1;
+					}
+				}
+				if($equal == 0) {
+					for(my $i = 0; $i < @strains; $i++) {
+						$h = "chr" . $p . "_" . $start . "_" . $peaks{$p}{$start} . "_" . $strains[$i];	
+						delete $save_local_shift{$h};
+						delete $seq{$h};
+					}	
+				}
+			}
 			$seq_number++;
-			print STDERR "" . int(($seq_number/$line_number) * 100) . "% of sequences are gathered\r";
+		#	print STDERR "" . int(($seq_number/$line_number) * 100) . "% of sequences are gathered\r";
+			print STDERR "" . $seq_number . " of " . $line_number . " gathered\r";
 		}
+	}
+	foreach my $key (sort {$a cmp $b} keys %seq) {
+		print OUT ">" . $key . "\n";
+		print OUT $seq{$key}  . "\n";
 	}
 	close OUT;
 	return(\%seq, \%save_local_shift);
