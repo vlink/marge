@@ -10,9 +10,9 @@ use Data::Dumper;
 #require '../db_part/database_interaction.pm';
 
 
-$_ = "" for my($genome, $file, $tf, $filename, $last_line, $name, $output, $ab);
-$_ = () for my(@strains, %peaks, @split, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove);
-$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg);
+$_ = "" for my($genome, $file, $tf, $filename, $last_line, $name, $output, $ab, $seqfile);
+$_ = () for my(@strains, %peaks, @split, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis);
+$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos);
 my $data = config::read_config()->{'data_folder'};
 #$data = "/Users/verenalink/workspace/strains/data/";
 
@@ -21,6 +21,7 @@ sub printCMD {
         print STDERR "\t-genome: Genome\n";
         print STDERR "\t-strains <strains>: Comma-separated list of strains - Order must overlay with order in annotated peak file\n";
         print STDERR "\t-file <file>: annotated peak file (including tag counts)\n";
+	print STDERR "\t-seqfile <file>: File with sequences for peaks\n";
 	print STDERR "\t-AB: Antibody that was used for this ChIP (to exclude mutations in this motif from analysis)\n";
 	print STDERR "\t-TF <transcription factor motif matrix>: Matrix of the TF that was chipped for\n";
         print STDERR "\t-homo: Data is homozygouse\n";
@@ -31,6 +32,9 @@ sub printCMD {
 	print STDERR "\n\nFiltering options:\n";
 	print STDERR "\t-tg <minmal tag count>: Filters out all peaks with less than x tag counts\n";
 	print STDERR "\t-mut_only: just keeps peaks where one strains is mutated\n";
+	print STDERR "\t-mut_pos: Also analyzes the position of the motif that is mutated\n";
+	print STDERR "\t-fc_pos: Foldchange threshold to count peaks as strain specific vs not (Default: 2fold)\n";
+	print STDERR "Script needs R package seqinr\n";
         exit;
 }
 
@@ -45,6 +49,7 @@ $region = 200;
 $output = "output_motif_" . rand(5);
 GetOptions(     "genome=s" => \$genome,
                 "file=s" => \$file,
+		"seqfile=s" => \$seqfile,
                 "strains=s{,}" => \@strains,
                 "homo" => \$homo, 
 		"-TF=s" => \$tf, 
@@ -54,12 +59,17 @@ GetOptions(     "genome=s" => \$genome,
 		"-AB=s" => \$ab,
 		"-keep" => \$keep, 
 		"-tg=s" => \$tg,
-		"-mut_only" => \$mut_only)
+		"-mut_only" => \$mut_only, 
+		"-mut_pos" => \$mut_pos, 
+		"-fc_pos=s" => \$fc_significant)
         or die("Error in command line options!\n");
 #First step: Get the sequences for the peaks
 $allele = 1;
 my $ref_save = 0;
 
+if($mut_pos == 1 && $fc_significant == 0) {
+	$fc_significant = 2;
+}
 #Save motif files
 my ($index_motif_ref, $PWM_ref, $fileHandlesMotif_ref, $del_ref) = analysis::read_motifs($tf, $output, \%delete);
 %index_motifs = %$index_motif_ref;
@@ -117,6 +127,7 @@ close FH;
 print STDERR "" . $filter_out . " peaks filtered because of low tag counts\n\n";
 my $tmp_out = "tmp" . rand(15);
 $delete{$tmp_out} = 1;
+
 print STDERR "Extracting sequences from strain genomes\n";
 print STDERR $tmp_out . "\n";
 my ($seq_ref, $save_local_shift_ref) = analysis::get_seq_for_peaks($tmp_out, \%peaks, \@strains, $data, $allele, $line_number, $mut_only);
@@ -129,8 +140,9 @@ analysis::scan_motif_with_homer($tmp_out, $tmp_out_main_motif, $tf);
 
 analysis::write_header(\@fileHandlesMotif, \@strains, 0);
 
-my $remove_ref = analysis::analyze_motifs($tmp_out_main_motif, \%seq, \%save_local_shift, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, $ab, \%remove, \%fc);
+my ($remove_ref, $mut_pos_analysis_ref) = analysis::analyze_motifs($tmp_out_main_motif, \%seq, \%save_local_shift, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, $ab, \%remove, $fc_significant, $mut_pos, \%fc);
 %remove = %$remove_ref;
+%mut_pos_analysis = %$mut_pos_analysis_ref;
 
 for(my $i = 0; $i < @fileHandlesMotif; $i++) {
         close $fileHandlesMotif[$i];
@@ -138,37 +150,115 @@ for(my $i = 0; $i < @fileHandlesMotif; $i++) {
 
 print STDERR "Generating R files!\n";
 &generate_R_files("output_all_motifs.R", 1);
+&generate_mut_pos_analysis_file("output_mut_pos_motifs.R");
+print STDERR "change output file names for R files\n";
+print STDERR "clean up the code, stop giving so much to other methods in the modules, make it more global\n";
+print STDERR "CLEAN UP CODE\n";
+print STDERR "ADD COMMENTS!!!!\n";
 
-if($ab eq "") {
-	print STDERR "No antibody specified, analysis ends here\n";
-	exit;
-}
 
-@fileHandlesMotif = ();
+if($ab ne "") {
+	@fileHandlesMotif = ();
 
-#Remove all positions from the files with mutations in chipped motif
-foreach my $key (keys %index_motifs) {
-	open FH, "<", $output . "_" . $key . ".txt";
-	my $filename  = $output . "_" . $key . "_removed.txt";
-	$delete{$filename} = 1;
-	open my $fh, ">", $filename or die "Can't open $filename: $!\n";
-	$fileHandlesMotif[$index_motifs{$key}] = $fh;
-	foreach my $line (<FH>) {
-		chomp $line;
-		@split = split("\t", $line);
-		if(!exists $remove{$split[1]}) {
-			$fileHandlesMotif[$index_motifs{$key}]->print($line . "\n");
+	#Remove all positions from the files with mutations in chipped motif
+	foreach my $key (keys %index_motifs) {
+		open FH, "<", $output . "_" . $key . ".txt";
+		my $filename  = $output . "_" . $key . "_removed.txt";
+		$delete{$filename} = 1;
+		open my $fh, ">", $filename or die "Can't open $filename: $!\n";
+		$fileHandlesMotif[$index_motifs{$key}] = $fh;
+		foreach my $line (<FH>) {
+			chomp $line;
+			@split = split("\t", $line);
+			if(!exists $remove{$split[1]}) {
+				$fileHandlesMotif[$index_motifs{$key}]->print($line . "\n");
+			}
 		}
 	}
+	&generate_R_files("output_all_motifs_removed.R", 0);
+} else {
+	print STDERR "No antibody specified, analysis ends here\n";
 }
 
-&generate_R_files("output_all_motifs_removed.R", 0);
-
 if($keep == 0) {
+	print STDERR "Delete output files\n";
 	foreach my $d (keys %delete) {
 		`rm $d`;
 	}
 }
+
+#Gnereate motif position mutation plots
+sub generate_mut_pos_analysis_file{
+	my $output = $_[0];
+	open R, ">$output";
+	my $run = 0;
+	#Step one: generate logo sequence for motif
+	print R "library(seqLogo)\n";
+	print R "library(grid)\n";
+	print R "library(gridBase)\n";
+	print R "mySeqLogo = seqLogo::seqLogo\n";
+	print R "bad = (sapply( body(mySeqLogo), \"==\", \"grid.newpage()\") | sapply( body(mySeqLogo), \"==\", \"par(ask=FALSE)\"))\n";
+	print R "body(mySeqLogo)[bad] = NULL\n";
+	print R "pdf(\"" . substr($output, 0, length($output) - 2) . ".pdf\", width=10, height=5)\n";
+	foreach my $motif (keys %mut_pos_analysis) {
+		my $A = "A <- c(";
+		my $C = "C <- c(";
+		my $G = "G <- c(";
+		my $T = "T <- c(";
+		foreach my $pos (sort {$a <=> $b} keys %{$PWM{$motif}}) {
+			$A .= $PWM{$motif}{$pos}{'A'} . ",";
+			$C .= $PWM{$motif}{$pos}{'C'} . ",";
+			$G .= $PWM{$motif}{$pos}{'G'} . ",";
+			$T .= $PWM{$motif}{$pos}{'T'} . ",";
+		}
+		chop $A;
+		chop $C;
+		chop $G;
+		chop $T;
+		$A .= ")";
+		$C .= ")";
+		$G .= ")";
+		$T .= ")";
+		print R $A . "\n";
+		print R $C . "\n";
+		print R $G . "\n";
+		print R $T . "\n";
+		print R "pwm = data.frame(A, C, G, T)\n";
+		print R "pwm = t(pwm)\n";
+		my $mut_freq_sig = "mut_freq_sig <- c(";
+		my $mut_freq_unsig = "mut_freq_unsig <- c(";
+		foreach my $pos (sort {$a <=> $b} keys %{$mut_pos_analysis{$motif}}) {
+			$mut_freq_sig .= $mut_pos_analysis{$motif}{$pos}{'S'} . ",";
+			$mut_freq_unsig .= $mut_pos_analysis{$motif}{$pos}{'N'} . ",";
+		}
+		chop $mut_freq_sig;
+		chop $mut_freq_unsig;
+		$mut_freq_sig .= ")";
+		$mut_freq_unsig .= ")";
+		print R $mut_freq_sig . "\n";
+		print R $mut_freq_unsig . "\n";
+		if($run > 0) {
+			print R "grid.newpage()\n";
+		}
+		print R "par(mar=c(2.5,2.5,1,1), oma=c(2.5,2.5,1,1))\n";
+		print R "plot(mut_freq_sig, xlab=NA, ylim=c(-0.5, max(mut_freq_sig, mut_freq_unsig) + 1), axes=FALSE, main=\"" . $motif . "\", col=\"red\", pch=16)\n";
+		print R "points(mut_freq_unsig, col=\"blue\", pch=16)\n";
+		print R "axis(2)\n";
+		print R "legend(\"topleft\", c(\"sig\", \"unsig\"), col=c(\"red\", \"blue\"), pch=16)\n";
+		print R "opar <- par(las=1)\n";
+		print R "par(opar)\n";	
+		print R "mtext(\"Frequencies\", 2, 3)\n";
+		print R "vp1 <- viewport(x=0.03, y=0, width=1, height=0.4, just=c(\"left\", \"bottom\"))\n";
+		print R "pushViewport(vp1)\n";
+		print R "par(new=TRUE, mar=c(2.5,1,1,1.5), oma=c(2.5,1,1,1.5))\n";
+		print R "mySeqLogo(pwm, xaxis=FALSE, yaxis=FALSE)\n"; 
+		print R "popViewport()\n";
+		$run++;
+	}
+	print R "dev.off()\n";
+	close R;
+}
+
 #Generate R files
 sub generate_R_files {
 	my $filename;

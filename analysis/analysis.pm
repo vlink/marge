@@ -10,9 +10,20 @@ use Data::Dumper;
 #require '../db_part/database_interaction.pm';
 
 $_ = "" for my($genome, $file, $tf, $filename, $last_line);
-$_ = () for my(@strains, %promoter, %exp, @split, @name, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score);
+$_ = () for my(@strains, %promoter, %exp, @split, @name, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %matrix_pos_muts);
 $_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $tmp_out, $tmp_out_main_motif, $line_number);
 my $data = config::read_config()->{'data_folder'};
+
+my %comp = ();
+$comp{'A'} = 'T';
+$comp{'T'} = 'A';
+$comp{'C'} = 'G';
+$comp{'G'} = 'C';
+
+
+print STDERR "Matrix is defined in read_motifs and it is storred globally in this module!\n";
+print STDERR "Change that!!!!!\n\n";
+
 
 sub write_header{
 	my @fileHandlesMotif = @{$_[0]};
@@ -75,10 +86,12 @@ sub analyze_motifs{
 	my %index_motifs = %{$_[6]};
 	my $ab = $_[7];
 	my %remove = %{$_[8]};
+	my $fc_significant = $_[9];
+	my $mut_pos = $_[10];
 	my %fc = ();
 	my $ab_mut = 0;
-	if(@_ > 9) {
-		%fc = %{$_[9]};
+	if(@_ > 11) {
+		%fc = %{$_[11]};
 	}
         open FH, "<$motif_file";
         my $last_line = "";
@@ -91,7 +104,7 @@ sub analyze_motifs{
                #Read in blocks - stop after gathering all information about one position
                 if($last_line ne "" && $header[0] . "_" . $header[1] . "_" . $header[2] ne $last_line) {
                         my @a = split("_", $last_line);
-                        $ab_mut = &print_results(substr($a[0], 3), $a[1], \%block, $fileHandlesMotif_ref, $last_line, \%tag_counts, \@strains, \%index_motifs, \%fc, $ab);
+                        $ab_mut = &print_results(substr($a[0], 3), $a[1], \%block, $fileHandlesMotif_ref, $last_line, \%tag_counts, \@strains, \%index_motifs, \%fc, $ab, $fc_significant, $mut_pos);
 			if($ab_mut == 1) {
 				$remove{$last_line} = 1;
 			}
@@ -118,11 +131,11 @@ sub analyze_motifs{
                 $block{$split[3]}{$motif_start + $save_local_shift{$split[0]}{$motif_start}}{'length'} = length($split[2]);
         }
         my @a = split("_", $last_line);
-	$ab_mut = &print_results(substr($a[0], 3), $a[1], \%block, $fileHandlesMotif_ref, $last_line, \%tag_counts, \@strains, \%index_motifs, \%fc, $ab);
+	$ab_mut = &print_results(substr($a[0], 3), $a[1], \%block, $fileHandlesMotif_ref, $last_line, \%tag_counts, \@strains, \%index_motifs, \%fc, $ab, $fc_significant, $mut_pos);
 	if($ab_mut == 1) {
 		$remove{$last_line} = 1;
 	}
-	return \%remove;
+	return (\%remove, \%matrix_pos_muts);
 }
 
 sub print_results {
@@ -139,6 +152,8 @@ sub print_results {
 	my %fc = %{$_[8]};
 	my $fc_exists = 0;
 	my $ab = $_[9];
+	my $fc_significant = $_[10];
+	my $mut_pos = $_[11];
 	my $ab_mut = 0;
 	if((keys %fc) > 1) {
 		$fc_exists = 1;
@@ -147,8 +162,8 @@ sub print_results {
         my %ignore = ();
         foreach my $motif (keys %block) {
                 %existance = ();
-                %diff = ();
                 foreach my $motif_pos (keys %{$block{$motif}}) {
+                	%diff = ();
                         if(exists $ignore{$motif_pos}) {
                                 delete $block{$motif}{$motif_pos};
                                 next;
@@ -164,7 +179,6 @@ sub print_results {
                                         $existance{$strains[$i]} = 1;
                                         for(my $run_motif = $motif_pos - ($block{$motif}{$motif_pos}{'length'} - 1); $run_motif < $motif_pos + ($block{$motif}{$motif_pos}{'length'} - 1); $run_motif++) {
                                                 if(exists $block{$motif}{$run_motif} && exists $block{$motif}{$run_motif}{$strains[$i]} && $run_motif != $motif_pos) {
-
                                                         $block{$motif}{$motif_pos}{$strains[$i]} = $block{$motif}{$run_motif}{$strains[$i]};
                                                         delete $existance{$strains[$i]};
                                                         delete $block{$motif}{$run_motif}{$strains[$i]};
@@ -175,6 +189,9 @@ sub print_results {
                                                 }
                                         }
                                 }
+				if($block{$motif}{$motif_pos}{$strains[$i]} eq "") {
+					$block{$motif}{$motif_pos}{$strains[$i]} = &calculate_motif_score(substr($seq{$last_line . "_" . $strains[$i]}, $motif_pos, $block{$motif}{$motif_pos}{'length'}));
+				}
                                 $diff{$strains[$i]} += $block{$motif}{$motif_pos}{$strains[$i]};
                         }
                 }
@@ -197,15 +214,46 @@ sub print_results {
                         }
                 }
                 $fileHandlesMotif[$index_motifs{$motif}]->print("" . (keys %{$block{$motif}}) . "\n");
+		if($mut_pos == 1 && $fc_exists == 1) {
+			&analyze_motif_pos(\%block, $last_line, $fc{$curr_chr}{$curr_pos}, \@strains, $fc_significant);
+		}
         }
         %block = ();
 	return $ab_mut;
 }
 
-
-
-
-
+sub analyze_motif_pos{
+	my %block = %{$_[0]};
+	my $last_line = $_[1];
+	my $fc = $_[2];
+	my @strains = @{$_[3]};
+	my $fc_significant = $_[4];
+	my @fc_split = split('\t', $fc);
+	my @char_one;
+	my @char_two;
+	foreach my $motif (keys %block) {
+		foreach my $motif_pos (keys %{$block{$motif}}) {
+			for(my $i = 0; $i < @strains - 1; $i++) {
+				for(my $j = $i + 1; $j < @strains; $j++) {
+					if($block{$motif}{$motif_pos}{$strains[$i]} != $block{$motif}{$motif_pos}{$strains[$j]}) {
+						@char_one = split("", substr($seq{$last_line . "_" . $strains[$i]}, $motif_pos, $block{$motif}{$motif_pos}{'length'}));
+						@char_two = split("", substr($seq{$last_line . "_" . $strains[$j]}, $motif_pos, $block{$motif}{$motif_pos}{'length'}));
+						for(my $c = 0; $c < @char_one; $c++) {
+							if($char_one[$c] ne $char_two[$c]) {
+								if($fc_split[$i + $j - 1] > log($fc_significant)/log(2) || $fc_split[$i + $j - 1] < log(1/$fc_significant)/log(2)) {
+									#S meaning significant
+									$matrix_pos_muts{$motif}{$c}{'S'}++;
+								} else {
+									$matrix_pos_muts{$motif}{$c}{'N'}++;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
 sub log_fc {
 	my $local_delta = $_[0];
 	if($local_delta < 0) {
@@ -239,6 +287,17 @@ sub calculate_motif_score{
 	} else {
 		return sprintf("%.6f", $score_forward);
 	}
+}
+
+sub rev_comp{
+	my $local_seq = $_[0];
+	my $rev = reverse($local_seq);
+	my @split = split('', $rev);
+	my $comp = "";
+	foreach my $c (@split) {
+		$comp .= $comp{$c};
+	}	
+	return $comp;
 }
 
 sub get_motif_name{
@@ -304,6 +363,8 @@ sub read_motifs{
 			$PWM{$name}{$pos}{'C'} = $split[1];
 			$PWM{$name}{$pos}{'G'} = $split[2];
 			$PWM{$name}{$pos}{'T'} = $split[3];
+			$matrix_pos_muts{$name}{$pos}{'S'} = 0;
+			$matrix_pos_muts{$name}{$pos}{'N'} = 0;
 			$pos++;
 		}
 	}
