@@ -1,16 +1,16 @@
 #!/usr/bin/perl
 
-
+BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
 package analysis;
 use strict;
 use Getopt::Long;
 #require '/Users/verenalink/workspace/strains/general/config.pm';
-require '../general/config.pm';
+use config;
 use Data::Dumper;
 #require '../db_part/database_interaction.pm';
 
 $_ = "" for my($genome, $file, $tf, $filename, $last_line);
-$_ = () for my(@strains, %promoter, %exp, @split, @name, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %matrix_pos_muts);
+$_ = () for my(@strains, %promoter, %exp, @split, @name, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %matrix_pos_muts, %network_save);
 $_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $tmp_out, $tmp_out_main_motif, $line_number);
 my $data = config::read_config()->{'data_folder'};
 
@@ -105,6 +105,7 @@ sub analyze_motifs{
                 if($last_line ne "" && $header[0] . "_" . $header[1] . "_" . $header[2] ne $last_line) {
                         my @a = split("_", $last_line);
                         $ab_mut = &print_results(substr($a[0], 3), $a[1], \%block, $fileHandlesMotif_ref, $last_line, \%tag_counts, \@strains, \%index_motifs, \%fc, $ab, $fc_significant, $mut_pos);
+			&save_all_motifs(\%block, $last_line);
 			if($ab_mut == 1) {
 				$remove{$last_line} = 1;
 			}
@@ -132,10 +133,157 @@ sub analyze_motifs{
         }
         my @a = split("_", $last_line);
 	$ab_mut = &print_results(substr($a[0], 3), $a[1], \%block, $fileHandlesMotif_ref, $last_line, \%tag_counts, \@strains, \%index_motifs, \%fc, $ab, $fc_significant, $mut_pos);
+	&save_all_motifs(\%block, $last_line);
+	&network_analysis(\%fc, $fc_significant, \@strains);
 	if($ab_mut == 1) {
 		$remove{$last_line} = 1;
 	}
 	return (\%remove, \%matrix_pos_muts);
+}
+
+sub save_all_motifs{
+	my $block_ref = $_[0];
+	my $last_line = $_[1];
+	my %block = %$block_ref;
+	foreach my $motif (keys %block) {
+		foreach my $pos (keys %{$block{$motif}}) {
+			$network_save{$last_line}{$pos}{$motif} = $block{$motif}{$pos};
+		}
+	}
+}
+
+sub network_analysis{
+	my %fc = %{$_[0]};
+	print "network save\n\n";
+	print STDERR "Just count co-occurence of two motifs and effect of binding for all combinations - think about stats later\n";
+	my $fc_significant = $_[1];
+	my @strains = @{$_[2]};
+	my @curr;
+	my $sig = 0;
+	my $strain_value = 0;
+	my $same = 0;
+	my @motif_array;
+	my @strain_array;
+	$_ = () for my(%sig_and_diff, %sig_and_same, %unsig_and_diff, %unsig_and_same);
+
+	foreach my $seq (keys %network_save) {
+	#	print $seq . "\t"; 
+		@curr = split("_", $seq);
+	#	print "FC: " . $fc{substr($curr[0], 3)}{$curr[1]} . "\n";
+	#	print "fc significant: " . $fc_significant . "\n";
+	#	print "fc significant log: " . (log($fc_significant)/log(2)) . "\t" . (log(1/$fc_significant)/log(2)) . "\n";
+		if($fc{substr($curr[0], 3)}{$curr[1]} > (log($fc_significant)/log(2)) || $fc{substr($curr[0], 3)}{$curr[1]} < ((log(1/$fc_significant))/log(2))) {
+	#		print "SIGNIFICANT \n";
+			$sig = 0;
+		} else {
+	#		print "NOT SIGNIFICANT\n";
+			$sig = 1;
+		}
+		@motif_array = ();
+		@strain_array = ();
+		foreach my $pos (sort {$a <=> $b} keys %{$network_save{$seq}}) {
+	#		print "pos: " . $pos . "\n";
+			foreach my $motif (keys %{$network_save{$seq}{$pos}}) {
+	#			print "motif: " . $motif . "\n";
+	#			print Dumper %{$network_save{$seq}{$pos}{$motif}};
+				for(my $s = 0; $s < @strains; $s++) {
+					if($strain_value == 0) {
+						$strain_value = $network_save{$seq}{$pos}{$motif}{$strains[$s]};
+					}
+					if($strain_value != $network_save{$seq}{$pos}{$motif}{$strains[$s]}) {
+						$same = 1;
+					}
+				}
+			#	if($same == 1) {
+			#		print "different!\n";
+			#	} else {
+			#		print "same\n";
+			#	}
+				push(@motif_array, $motif);
+				push(@strain_array, $same);
+				$same = 0;
+				$strain_value = 0;
+			}
+		}
+	#	print Dumper @motif_array;
+	#	print "\n\nstrains:\n";
+	#	print Dumper @strain_array;
+		for(my $i = 0; $i < @motif_array - 1; $i++) {
+			for(my $j = $i + 1; $j < @motif_array; $j++) {
+			#	print $motif_array[$i] . "\t" . $motif_array[$j] . "\n";
+			#	print ord($motif_array[$i]) . "\t" . ord($motif_array[$j]) . "\n";
+			#	print $strain_array[$i] . "\t" . $strain_array[$j] . "\n";
+				if(ord($motif_array[$i]) < ord($motif_array[$j])) {
+					if($sig == 0) {
+						if($strain_array[$i] == 0 && $strain_array[$j] == 0) {
+							$sig_and_same{$motif_array[$i] . "_" . $motif_array[$j]}++;
+						} else {
+							$sig_and_diff{$motif_array[$i] . "_" . $motif_array[$j]}++;
+						}
+					} else {
+						if($strain_array[$i] == 0 && $strain_array[$j] == 0) {
+							$unsig_and_same{$motif_array[$i] . "_" . $motif_array[$j]}++;
+						} else {
+							$unsig_and_diff{$motif_array[$i] . "_" . $motif_array[$j]}++;
+						}
+					}
+				} else {
+					if($sig == 0) {
+						if($strain_array[$j] == 0 && $strain_array[$i] == 0) {
+							$sig_and_same{$motif_array[$j] . "_" . $motif_array[$i]}++;
+						} else {
+							$sig_and_diff{$motif_array[$j] . "_" . $motif_array[$i]}++;
+						}
+					} else {
+						if($strain_array[$i] == 0 && $strain_array[$j] == 0) {
+							$unsig_and_same{$motif_array[$j] . "_" . $motif_array[$i]}++;
+						} else {
+							$unsig_and_diff{$motif_array[$j] . "_" . $motif_array[$i]}++;
+						}
+					}
+				}
+			}
+		}
+	}
+	my $count = 0;
+	print "significant and same:\n";
+	foreach my $key (sort {$sig_and_same{$b} <=> $sig_and_same{$a}} keys %sig_and_same) {
+		print $key . "\t" . $sig_and_same{$key} . "\n";
+		$count++;
+		if($count == 10) {
+			last;
+		}
+	}
+	$count = 0;
+	print "\n\nsignificant and different:\n";
+	foreach my $key (sort {$sig_and_diff{$b} <=> $sig_and_diff{$a}} keys %sig_and_diff) {
+		print $key . "\t" . $sig_and_diff{$key} . "\n";
+		$count++;
+		if($count == 10) {
+			last;
+		}
+	}
+	$count = 0;
+	print "\n\nununsignificant and same:\n";
+	foreach my $key (sort {$unsig_and_same{$b} <=> $unsig_and_same{$a}} keys %unsig_and_same) {
+		print $key . "\t" . $unsig_and_same{$key} . "\n";
+		$count++;
+		if($count == 10) {
+			last;
+		}
+	}
+	$count = 0;
+	print "\n\nunsignificant and different:\n";
+	foreach my $key (sort {$unsig_and_diff{$b} <=> $unsig_and_diff{$a}} keys %unsig_and_diff) {
+		print $key . "\t" . $unsig_and_diff{$key} . "\n";
+		$count++;
+		if($count == 10) {
+			last;
+		}
+	}
+	$count = 0;
+
+
 }
 
 sub print_results {
@@ -189,7 +337,7 @@ sub print_results {
                                                 }
                                         }
                                 }
-				if($block{$motif}{$motif_pos}{$strains[$i]} eq "") {
+				if($block{$motif}{$motif_pos}{$strains[$i]} eq "" || !exists $block{$motif}{$motif_pos}{$strains[$i]}) {
 					$block{$motif}{$motif_pos}{$strains[$i]} = &calculate_motif_score(substr($seq{$last_line . "_" . $strains[$i]}, $motif_pos, $block{$motif}{$motif_pos}{'length'}));
 				}
                                 $diff{$strains[$i]} += $block{$motif}{$motif_pos}{$strains[$i]};
