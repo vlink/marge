@@ -3,9 +3,11 @@
 
 use strict;
 use Getopt::Long;
+BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
+use config;
+BEGIN {push @INC, '/home/vlink/mouse_strains/marge/analysis'};
 #require '/Users/verenalink/workspace/strains/general/config.pm';
-require '../general/config.pm';
-require 'analysis.pm';
+use analysis;
 use Data::Dumper;
 #require '../db_part/database_interaction.pm';
 
@@ -67,7 +69,7 @@ GetOptions(     "genome=s" => \$genome,
 $allele = 1;
 my $ref_save = 0;
 
-if($mut_pos == 1 && $fc_significant == 0) {
+if($fc_significant == 0) {
 	$fc_significant = 2;
 }
 #Save motif files
@@ -176,6 +178,8 @@ if($ab ne "") {
 		}
 	}
 	&generate_R_files("output_all_motifs_removed.R", 0);
+	print STDERR "add motif mutation plots for removed data set\n";
+	&generate_mut_pos_analysis_file("output_mut_pos_motifs_removed.R");
 } else {
 	print STDERR "No antibody specified, analysis ends here\n";
 }
@@ -190,6 +194,7 @@ if($keep == 0) {
 #Gnereate motif position mutation plots
 sub generate_mut_pos_analysis_file{
 	my $output = $_[0];
+	my $divide = 0;
 	open R, ">$output";
 	my $run = 0;
 	#Step one: generate logo sequence for motif
@@ -205,11 +210,20 @@ sub generate_mut_pos_analysis_file{
 		my $C = "C <- c(";
 		my $G = "G <- c(";
 		my $T = "T <- c(";
+		#Check if PWM is smaller 1
 		foreach my $pos (sort {$a <=> $b} keys %{$PWM{$motif}}) {
-			$A .= $PWM{$motif}{$pos}{'A'} . ",";
-			$C .= $PWM{$motif}{$pos}{'C'} . ",";
-			$G .= $PWM{$motif}{$pos}{'G'} . ",";
-			$T .= $PWM{$motif}{$pos}{'T'} . ",";
+			if($PWM{$motif}{$pos}{'A'} > 1 || $PWM{$motif}{$pos}{'C'} > 1 || $PWM{$motif}{$pos}{'G'} > 1 || $PWM{$motif}{$pos}{'T'} > 1) {
+				$divide = ($PWM{$motif}{$pos}{'A'} + $PWM{$motif}{$pos}{'C'} + $PWM{$motif}{$pos}{'G'} + $PWM{$motif}{$pos}{'T'});
+				$A .= "" . ($PWM{$motif}{$pos}{'A'}/$divide) . ",";
+				$C .= "" . ($PWM{$motif}{$pos}{'C'}/$divide) . ",";
+				$G .= "" . ($PWM{$motif}{$pos}{'G'}/$divide) . ",";
+				$T .= "" . ($PWM{$motif}{$pos}{'T'}/$divide) . ",";
+			} else {
+				$A .= $PWM{$motif}{$pos}{'A'} . ",";
+				$C .= $PWM{$motif}{$pos}{'C'} . ",";
+				$G .= $PWM{$motif}{$pos}{'G'} . ",";
+				$T .= $PWM{$motif}{$pos}{'T'} . ",";
+			}
 		}
 		chop $A;
 		chop $C;
@@ -257,6 +271,7 @@ sub generate_mut_pos_analysis_file{
 	}
 	print R "dev.off()\n";
 	close R;
+	`Rscript $output`;
 }
 
 #Generate R files
