@@ -12,7 +12,7 @@ use Data::Dumper;
 #require '../db_part/database_interaction.pm';
 
 
-$_ = "" for my($genome, $file, $tf, $filename, $last_line, $name, $output, $ab, $seqfile);
+$_ = "" for my($genome, $file, $tf, $filename, $last_line, $name, $output, $ab, $seqfile, $plots, $overlap);
 $_ = () for my(@strains, %peaks, @split, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis);
 $_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos);
 my $data = config::read_config()->{'data_folder'};
@@ -30,12 +30,14 @@ sub printCMD {
 	print STDERR "\t-region: Size of the region used to look for other motifs (Default: 200)\n";
 	print STDERR "\t-delta: Uses motif score differences instead of binary existance\n";
 	print STDERR "\t-output: Name of the output files\n";
+	print STDERR "\t-plots: Output name of the plots\n";
 	print STDERR "\t-keep: keep temporary files\n";
 	print STDERR "\n\nFiltering options:\n";
 	print STDERR "\t-tg <minmal tag count>: Filters out all peaks with less than x tag counts\n";
 	print STDERR "\t-mut_only: just keeps peaks where one strains is mutated\n";
 	print STDERR "\t-mut_pos: Also analyzes the position of the motif that is mutated\n";
 	print STDERR "\t-fc_pos: Foldchange threshold to count peaks as strain specific vs not (Default: 2fold)\n";
+	print STDERR "\t-overlap: Count motif as not mutated if the overlap n basepairs (complete|half|#bp)\n";
 	print STDERR "Script needs R package seqinr\n";
         exit;
 }
@@ -58,11 +60,13 @@ GetOptions(     "genome=s" => \$genome,
 		"-region=s" => \$region,
 		"-delta" => \$delta, 
 		"-output=s" => \$output,
+		"-plots=s" => \$plots,
 		"-AB=s" => \$ab,
 		"-keep" => \$keep, 
 		"-tg=s" => \$tg,
 		"-mut_only" => \$mut_only, 
 		"-mut_pos" => \$mut_pos, 
+		"-overlap=s" => \$overlap,
 		"-fc_pos=s" => \$fc_significant)
         or die("Error in command line options!\n");
 #First step: Get the sequences for the peaks
@@ -142,7 +146,7 @@ analysis::scan_motif_with_homer($tmp_out, $tmp_out_main_motif, $tf);
 
 analysis::write_header(\@fileHandlesMotif, \@strains, 0);
 
-my ($remove_ref, $mut_pos_analysis_ref) = analysis::analyze_motifs($tmp_out_main_motif, \%seq, \%save_local_shift, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, $ab, \%remove, $fc_significant, $mut_pos, \%fc);
+my ($remove_ref, $mut_pos_analysis_ref) = analysis::analyze_motifs($tmp_out_main_motif, \%seq, \%save_local_shift, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, $ab, \%remove, $fc_significant, $mut_pos, $overlap, \%fc);
 %remove = %$remove_ref;
 %mut_pos_analysis = %$mut_pos_analysis_ref;
 
@@ -150,9 +154,12 @@ for(my $i = 0; $i < @fileHandlesMotif; $i++) {
         close $fileHandlesMotif[$i];
 }
 
+if($plots eq "") {
+	$plots = "output_all_motifs";
+}
 print STDERR "Generating R files!\n";
-&generate_R_files("output_all_motifs.R", 1);
-&generate_mut_pos_analysis_file("output_mut_pos_motifs.R");
+&generate_R_files($plots . ".R", 1);
+&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs.R");
 print STDERR "change output file names for R files\n";
 print STDERR "clean up the code, stop giving so much to other methods in the modules, make it more global\n";
 print STDERR "CLEAN UP CODE\n";
@@ -177,9 +184,9 @@ if($ab ne "") {
 			}
 		}
 	}
-	&generate_R_files("output_all_motifs_removed.R", 0);
+	&generate_R_files($plots . "_removed.R", 0);
 	print STDERR "add motif mutation plots for removed data set\n";
-	&generate_mut_pos_analysis_file("output_mut_pos_motifs_removed.R");
+	&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs_removed.R");
 } else {
 	print STDERR "No antibody specified, analysis ends here\n";
 }
@@ -205,6 +212,13 @@ sub generate_mut_pos_analysis_file{
 	print R "bad = (sapply( body(mySeqLogo), \"==\", \"grid.newpage()\") | sapply( body(mySeqLogo), \"==\", \"par(ask=FALSE)\"))\n";
 	print R "body(mySeqLogo)[bad] = NULL\n";
 	print R "pdf(\"" . substr($output, 0, length($output) - 2) . ".pdf\", width=10, height=5)\n";
+	my %col;
+	$col{'A'} = "green";
+	$col{'C'} = "blue";
+	$col{'G'} = "orange";
+	$col{'T'} = "red";
+	my $first = 0;
+	$_ = "" for my($mut_freq_sig, $mut_freq_unsig, $y_sig, $y_unsig);
 	foreach my $motif (keys %mut_pos_analysis) {
 		my $A = "A <- c(";
 		my $C = "C <- c(";
@@ -233,40 +247,96 @@ sub generate_mut_pos_analysis_file{
 		$C .= ")";
 		$G .= ")";
 		$T .= ")";
+		$A =~ s/,+\)/\)/g;
+		$C =~ s/,+\)/\)/g;
+		$G =~ s/,+\)/\)/g;
+		$T =~ s/,+\)/\)/g;
 		print R $A . "\n";
 		print R $C . "\n";
 		print R $G . "\n";
 		print R $T . "\n";
 		print R "pwm = data.frame(A, C, G, T)\n";
 		print R "pwm = t(pwm)\n";
-		my $mut_freq_sig = "mut_freq_sig <- c(";
-		my $mut_freq_unsig = "mut_freq_unsig <- c(";
-		foreach my $pos (sort {$a <=> $b} keys %{$mut_pos_analysis{$motif}}) {
-			$mut_freq_sig .= $mut_pos_analysis{$motif}{$pos}{'S'} . ",";
-			$mut_freq_unsig .= $mut_pos_analysis{$motif}{$pos}{'N'} . ",";
-		}
-		chop $mut_freq_sig;
-		chop $mut_freq_unsig;
-		$mut_freq_sig .= ")";
-		$mut_freq_unsig .= ")";
-		print R $mut_freq_sig . "\n";
-		print R $mut_freq_unsig . "\n";
-		if($run > 0) {
-			print R "grid.newpage()\n";
-		}
 		print R "par(mar=c(2.5,2.5,1,1), oma=c(2.5,2.5,1,1))\n";
-		print R "plot(mut_freq_sig, xlab=NA, ylim=c(-0.5, max(mut_freq_sig, mut_freq_unsig) + 1), axes=FALSE, main=\"" . $motif . "\", col=\"red\", pch=16)\n";
-		print R "points(mut_freq_unsig, col=\"blue\", pch=16)\n";
-		print R "axis(2)\n";
-		print R "legend(\"topleft\", c(\"sig\", \"unsig\"), col=c(\"red\", \"blue\"), pch=16)\n";
+		$first = 0;
+		my $max = 0;
+		my $count = 0;
+		my $step = (1/(keys %{$PWM{$motif}}));
+		foreach my $base (keys %col) {
+			$max = 0;
+			$mut_freq_sig = "mut_freq_sig_" . $base . " <- c(";
+			$mut_freq_unsig = "mut_freq_unsig_" . $base . " <- c(";
+			$y_sig = "y_sig <- c(";
+			$y_unsig = "y_unsig <- c(";
+			foreach my $pos (sort {$a <=> $b} keys %{$PWM{$motif}}) {
+				if(!exists $mut_pos_analysis{$motif}{$base}{$pos}{'S'}) {
+					$mut_freq_sig .= "0,";
+				} else {
+					$mut_freq_sig .= $mut_pos_analysis{$motif}{$base}{$pos}{'S'} . ",";
+					if($mut_pos_analysis{$motif}{$base}{$pos}{'S'} > $max) {
+						$max = $mut_pos_analysis{$motif}{$base}{$pos}{'S'};
+					}
+				}
+				if(!exists $mut_pos_analysis{$motif}{$base}{$pos}{'N'}) {
+					$mut_freq_unsig .= "0,";
+				} else {
+					$mut_freq_unsig .= $mut_pos_analysis{$motif}{$base}{$pos}{'N'} . ",";
+					if($mut_pos_analysis{$motif}{$base}{$pos}{'N'} > $max) {
+						$max = $mut_pos_analysis{$motif}{$base}{$pos}{'N'};
+					}
+				}
+				if($pos > 1) {
+					$y_sig .= $pos . " + ($step  * ($pos - 1)) + (0.05 * $count),";
+					$y_unsig .= $pos . " + ($step * ($pos - 1)) + 0.2 + (0.05 * $count),";
+				} else {
+					$y_sig .= $pos . " + (0.05 * $count),";
+					$y_unsig .= $pos . " + 0.2 + (0.05 * $count),";
+
+				}
+			}
+			$count++;
+			if(length($mut_freq_sig) > 20) {
+				chop $mut_freq_sig;
+			} else {
+				$mut_freq_sig .= "0";
+			}
+			if(length($mut_freq_unsig) > 22) {
+				chop $mut_freq_unsig;
+			} else {
+				$mut_freq_unsig .= "0";
+			}
+			chop $y_sig;
+			chop $y_unsig;
+			$mut_freq_sig .= ")";
+			$mut_freq_unsig .= ")";
+			$y_sig .= ")";
+			$y_unsig .= ")";
+			print R $mut_freq_sig . "\n";
+			print R $mut_freq_unsig . "\n";
+			print R $y_sig . "\n";
+			print R $y_unsig . "\n";
+			if($first == 0) { 
+				print R "plot(y_sig, mut_freq_sig_" . $base . ", xlab=NA, ylim=c(-0.5, " . $max . " + 1), axes=FALSE, main=\"" . $motif . "\", col=\"" . $col{$base} . "\", pch=20, xlim=c(0, ". (keys %{$PWM{$motif}}) . "))\n";
+				$first++;
+			} else {
+				print R "points(y_sig, mut_freq_sig_" . $base . ", col=\"" . $col{$base} . "\", pch=20)\n";
+			}
+			print R "points(y_unsig, mut_freq_unsig_" . $base . ", col=\"" . $col{$base} . "\", pch=8)\n";
+			print R "axis(2)\n";
+		}
+		print R "legend(\"topleft\", c(\"sig\", \"unsig\", \"A\", \"C\", \"G\", \"T\"), col=c(\"black\", \"black\", \"" . $col{'A'} . "\", \"" . $col{'C'} . "\", \"" . $col{'G'} . "\", \"" . $col{'T'} . "\"), pch=c(20, 8, 16, 16, 16, 16))\n";
 		print R "opar <- par(las=1)\n";
 		print R "par(opar)\n";	
 		print R "mtext(\"Frequencies\", 2, 3)\n";
-		print R "vp1 <- viewport(x=0.03, y=0, width=1, height=0.4, just=c(\"left\", \"bottom\"))\n";
+		print R "vp1 <- viewport(x=0.03, y=0, width=1, height=0.3, just=c(\"left\", \"bottom\"))\n";
 		print R "pushViewport(vp1)\n";
 		print R "par(new=TRUE, mar=c(2.5,1,1,1.5), oma=c(2.5,1,1,1.5))\n";
-		print R "mySeqLogo(pwm, xaxis=FALSE, yaxis=FALSE)\n"; 
+		print R "mySeqLogo(pwm, xaxis=FALSE, yaxis=FALSE, ic.scale=FALSE)\n"; 
 		print R "popViewport()\n";
+	#	if($run > 0) {
+			print R "grid.newpage()\n";
+	#	}
+
 		$run++;
 	}
 	print R "dev.off()\n";
