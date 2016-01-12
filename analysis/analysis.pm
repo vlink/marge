@@ -10,7 +10,7 @@ use Data::Dumper;
 #require '../db_part/database_interaction.pm';
 
 $_ = "" for my($genome, $file, $tf, $filename, $last_line);
-$_ = () for my(@strains, %promoter, %exp, @split, @name, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %matrix_pos_muts, %network_save, %cytoscape_sig, %cytoscape_unsig);
+$_ = () for my(@strains, %promoter, %exp, @split, @name, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %matrix_pos_muts, %network_save, %cytoscape_sig, %cytoscape_unsig);
 $_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $tmp_out, $tmp_out_main_motif, $line_number);
 my $data = config::read_config()->{'data_folder'};
 
@@ -52,28 +52,6 @@ sub write_header{
 }
 
 
-sub read_motif_file{
-	print STDERR "Read in the motif file!\n";
-	for(my $files = 0; $files < keys %index_motifs; $files++) {
-		$fileHandlesMotif[$files]->print("motif\tpos\t");
-		for(my $i = 0; $i < @strains; $i++) {
-			$fileHandlesMotif[$files]->print("tg " . $strains[$i] . "\t");
-		}
-		for(my $i = 0; $i < @strains - 1; $i++) {
-			for(my $j = $i + 1; $j < @strains; $j++) {
-				$fileHandlesMotif[$files]->print("fc " . $strains[$i] . " vs " . $strains[$j] . "\t");
-			}
-		}
-		for(my $i = 0; $i < @strains; $i++) {
-			$fileHandlesMotif[$files]->print("motif_score " . $strains[$i] . "\t");
-		} 
-		for(my $i = 0; $i < @strains; $i++) {
-			$fileHandlesMotif[$files]->print("exist " . $strains[$i] . "\t");
-		}
-		$fileHandlesMotif[$files]->print("#motifs\n");
-	}
-}
-
 sub analyze_motifs{
 	my @split;
 	my @header;
@@ -106,12 +84,11 @@ sub analyze_motifs{
                 if($last_line ne "" && $header[0] . "_" . $header[1] . "_" . $header[2] ne $last_line) {
                         my @a = split("_", $last_line);
                         $ab_mut = &print_results(substr($a[0], 3), $a[1], \%block, $fileHandlesMotif_ref, $last_line, \%tag_counts, \@strains, \%index_motifs, \%fc, $ab, $fc_significant, $mut_pos, $overlap);
-			print $last_line . "\n";
 		#	print Dumper %block;
 		#	print "\n\n";
 		#	print Dumper %fc;
-			&create_cytoscape_file(\%block, \%fc, $last_line, \@strains);
-		#	&save_all_motifs(\%block, $last_line);
+		#	&create_cytoscape_file(\%block, \%fc, $last_line, \@strains);
+			&save_all_motifs(\%block, $last_line);
 			if($ab_mut == 1) {
 				$remove{$last_line} = 1;
 			}
@@ -139,29 +116,41 @@ sub analyze_motifs{
         }
         my @a = split("_", $last_line);
 	$ab_mut = &print_results(substr($a[0], 3), $a[1], \%block, $fileHandlesMotif_ref, $last_line, \%tag_counts, \@strains, \%index_motifs, \%fc, $ab, $fc_significant, $mut_pos, $overlap);
-	&create_cytoscape_file(\%block, \%fc, $last_line, \@strains);
-	print "cytoscape important\n";
-	foreach my $key (keys %cytoscape_sig) {
-		foreach my $key2 (keys %{$cytoscape_sig{$key}}) {
-			print $key . " pp " . $key2 . "\n";
-		}
-	}
-	foreach my $key (keys %cytoscape_sig) {
-		foreach my $key2 (keys %{$cytoscape_sig{$key}}) {
-			print $key . " (pp) " . $key2 . " = " . $cytoscape_sig{$key}{$key2} . "\n";
-		}
-	}
-
-
-	print "\n\n\n";
-	print "cytoscape unsignificant\n";
-	foreach my $key (keys %cytoscape_unsig) {
-		foreach my $key2 (keys %{$cytoscape_unsig{$key}}) {
-			print $key . "\t" . $cytoscape_unsig{$key}{$key2} . "\t" . $key2 . "\n";	
-		}
-	}
-	exit;
 #	&save_all_motifs(\%block, $last_line);
+#	print "network saved\n";
+#	&create_cytoscape_file(\%fc, \@strains);
+#	exit;
+#	print "cytoscape important\n";
+#	print Dumper %cytoscape_unsig;
+#	print "\n\n";
+#	open NET, ">network_significant.sif";
+#	my $sum_keys_sig = 0;
+#	foreach my $key (keys %cytoscape_sig) {
+#		foreach my $key2 (keys %{$cytoscape_sig{$key}}) {
+#			$sum_keys_sig += $cytoscape_sig{$key}{$key2};
+#		}
+#	}
+#	foreach my $key (keys %cytoscape_sig) {
+#		foreach my $key2 (keys %{$cytoscape_sig{$key}}) {
+#		#	print NET $key . " " . (int(($cytoscape_sig{$key}{$key2}/$sum_keys_sig) * 100) + 1). " " . $key2 . "\n";
+#			print NET $key . " " . $cytoscape_sig{$key}{$key2} . " " . $key2 . "\n";
+#		}
+#	}
+#	close NET;
+#	open NET, ">network_unsignificant.sif";
+#	my $sum_keys_unsig = 0;
+#	foreach my $key (keys %cytoscape_unsig) {
+#		foreach my $key2 (keys %{$cytoscape_unsig{$key}}) {
+#			$sum_keys_unsig += $cytoscape_unsig{$key}{$key2};
+#		}
+#	}
+#	foreach my $key (keys %cytoscape_unsig) {
+#		foreach my $key2 (keys %{$cytoscape_unsig{$key}}) {
+#		#	print NET $key . " " . (int(($cytoscape_unsig{$key}{$key2}/$sum_keys_unsig) * 100) + 1). " " . $key2 . "\n";	
+#			print NET $key . " " . $cytoscape_unsig{$key}{$key2} . " " . $key2 . "\n";	
+#		}
+#	}
+#	close NET;
 #	&network_analysis(\%fc, $fc_significant, \@strains, \%index_motifs);
 	if($ab_mut == 1) {
 		$remove{$last_line} = 1;
@@ -170,57 +159,55 @@ sub analyze_motifs{
 }
 
 sub create_cytoscape_file{
-	my $block_ref = $_[0];
-	my $fc_ref = $_[1];
-	my $last_line = $_[2];
-	my %block = %$block_ref;
-	my $strain_ref = $_[3];
+	my $fc_ref = $_[0];
+	my $strain_ref = $_[1];
 	my @strains = @{$strain_ref};
 	my %fc = %$fc_ref;
 	my $sig = 0;
-#	print STDERR "Cytoscape network we need to add delta!\n";
-#	print STDERR "Cytoscape network we need to add thresholds!\n";
-	my @split = split("_", $last_line);
-#	print $fc{substr($split[0], 3)}{$split[1]} . "\n";
-	if($fc{substr($split[0], 3)}{$split[1]} < -1 || $fc{substr($split[0], 3)}{$split[1]} > 1) {
-		$sig = 1;
-#		print "significant\n";
-	}
-	
-#	print Dumper %block;
 	my @array = ();
 	my @pos = ();
-	foreach my $key (keys %block) {
-		foreach my $motif_pos (keys %{$block{$key}}) {
-			push @array, $key;
-			push @pos, $motif_pos;
-		}
-	}
-#	print "\nArray:\n\n";
-#	print Dumper @array;
 	my $first = "";
 	my $second = "";
-	for(my $i = 0; $i < @array - 1; $i++) {
-		for(my $j = $i + 1; $j < @array; $j++) {
-		#	print $array[$i] . " vs " . $array[$j] . "\n";
-		#	print Dumper %{$block{$array[$i]}{$pos[$i]}};
-		#	print "\n";
-		#	print Dumper %{$block{$array[$j]}{$pos[$j]}};
-		#	print "\n";
-			if(!exists $block{$array[$i]}{$pos[$i]}{$strains[0]} || !exists $block{$array[$i]}{$pos[$i]}{$strains[1]} || $block{$array[$i]}{$pos[$i]}{$strains[0]} == 0 || $block{$array[$i]}{$pos[$i]}{$strains[1]} == 0) {
-				$first = "mut_" . $array[$i];		
-			} else {
-				$first = $array[$i];
+	my $add_first = "";
+	my $add_second = "";
+	foreach my $peak (sort {$a cmp $b} keys %network_save) {
+		@pos = ();
+		@array = ();
+		foreach my $pos (sort {$a <=> $b} keys %{$network_save{$peak}}) {
+			foreach my $motif (sort {$a cmp $b} keys %{$network_save{$peak}{$pos}}) {
+				push @array, $motif;
+				push @pos, $pos;
 			}
-			if(!exists $block{$array[$j]}{$pos[$j]}{$strains[0]} || !exists $block{$array[$j]}{$pos[$j]}{$strains[1]} || $block{$array[$j]}{$pos[$j]}{$strains[0]} == 0 || $block{$array[$j]}{$pos[$j]}{$strains[1]} == 0) {
-				$second = "mut_" . $array[$j];
-			} else {
-				$second = $array[$j];
-			}
-			if($sig == 1) {
-				$cytoscape_sig{$first}{$second}++;
-			} else {
-				$cytoscape_unsig{$first}{$second}++;
+		}
+		@split = split("_", $peak);
+		$sig = 0;
+		if($fc{substr($split[0], 3)}{$split[1]} < -1 || $fc{substr($split[0], 3)}{$split[1]} > 1) {
+			$sig = 1;
+		}
+		for(my $i = 0; $i < @array - 1; $i++) {
+			for(my $j = $i + 1; $j < @array; $j++) {
+				if(!exists $network_save{$peak}{$pos[$i]}{$array[$i]}{$strains[0]} || !exists $network_save{$peak}{$pos[$i]}{$array[$i]}{$strains[1]} || $network_save{$peak}{$pos[$i]}{$array[$i]}{$strains[0]} == 0 || $network_save{$peak}{$pos[$i]}{$array[$i]}{$strains[1]} == 1) { 
+					$first = "mut_" . $array[$i];		
+				} else {
+					$first = $array[$i];
+				}
+				if(!exists $network_save{$peak}{$pos[$j]}{$array[$j]}{$strains[0]} || !exists $network_save{$peak}{$pos[$j]}{$array[$j]}{$strains[1]} || $network_save{$peak}{$pos[$j]}{$array[$j]}{$strains[0]} == 0 || $network_save{$peak}{$pos[$j]}{$array[$j]}{$strains[1]} == 0) {
+					$second = "mut_" . $array[$j];
+				} else {
+					$second = $array[$j];
+				}
+				if($array[$i] le $array[$j]) {
+					$add_first = $first;
+					$add_second = $second;
+				} else {
+					$add_first = $second;
+					$add_second = $first;
+				}
+				if($sig == 1) {
+					$cytoscape_sig{$add_first}{$add_second}++;
+				} else {
+					$cytoscape_unsig{$add_first}{$add_second}++;
+				}
 			}
 		}
 	}
@@ -237,56 +224,7 @@ sub save_all_motifs{
 	}
 }
 
-sub network_analysis{
-	my %fc = %{$_[0]};
-	print "network save\n\n";
-	print STDERR "Just count co-occurence of two motifs and effect of binding for all combinations - think about stats later\n";
-	my $fc_significant = $_[1];
-	my @strains = @{$_[2]};
-	my %index_motifs = %{$_[3]};
-	my @curr;
-	my $sig = 0;
-	my $strain_value = 0;
-	my $same = 0;
-	my @motif_array;
-	my @strain_array;
-	my %save;
-	$_ = () for my(%sig_and_diff, %sig_and_same, %unsig_and_diff, %unsig_and_same);
-	open OUT, ">test_network.txt";
-	foreach my $seq (keys %network_save) {
-		print OUT "seq";
-		foreach my $motif (sort {$a cmp $b} keys %index_motifs) {
-			for(my $i = 0; $i < @strains; $i++) {
-				$save{$seq}{$motif}{$strains[$i]} = 0;
-				print OUT "\t" . $motif . "_" . $strains[$i];
-			}
-		}
-		foreach my $pos (keys %{$network_save{$seq}}) {
-			foreach my $motif (sort {$a cmp $b} keys %index_motifs) {
-				if(exists $network_save{$seq}{$pos}{$motif}) {
-					for(my $i = 0; $i < @strains; $i++) {
-						if(exists $network_save{$seq}{$pos}{$motif}{$strains[$i]} && $network_save{$seq}{$pos}{$motif}{$strains[$i]} > 0) {
-							$save{$seq}{$motif}{$strains[$i]}++;
-						}
-					}
-				}
-			}
-		}
-	}
-	foreach my $pos (keys %save) {
-		print OUT $pos;
-		foreach my $motif (sort {$a cmp $b} keys %{$save{$pos}}) {
-			for(my $i = 0; $i < @strains; $i++) {
-				print OUT "\t" . $save{$pos}{$motif}{$strains[$i]};
-			}
-		}
-		print OUT "\n";
-	}
-	close OUT;
-}
-
 sub print_results {
-        %analysis_result = ();
         my $curr_chr = $_[0];
         my $curr_pos = $_[1];
 	my $block_ref = $_[2];
@@ -311,6 +249,7 @@ sub print_results {
         my %ignore = ();
         foreach my $motif (keys %block) {
                 %existance = ();
+                %diff = ();
                 foreach my $motif_pos (keys %{$block{$motif}}) {
 			if($overlap eq "half") {
 				$num_of_bp = int($block{$motif}{$motif_pos}{'length'}/2)
@@ -321,7 +260,6 @@ sub print_results {
 			}
 		#	print "overlap: " . $overlap . "\n";
 		#	print "num of bp: " . $num_of_bp . "\n";
-                	%diff = ();
                         if(exists $ignore{$motif_pos}) {
                                 delete $block{$motif}{$motif_pos};
                                 next;
@@ -335,38 +273,25 @@ sub print_results {
                                 if(!exists $block{$motif}{$motif_pos}{$strains[$i]}) {
                                         #Check in vicinity (+/- motif_lenght-1) - if there is a motif within motif/2 -> save the current motif under this position, to not count them as separate motifs
                                         $existance{$strains[$i]} = 1;
-				#	print "motif " . $motif . " does not exist in " . $strains[$i] . " (pos: " . $motif_pos . ")\n";
-				#	print Dumper %{$block{$motif}{$motif_pos}};
-				#	print "\n";
 					for(my $run_motif = $motif_pos - $num_of_bp; $run_motif < $motif_pos + $num_of_bp; $run_motif++) {
-                                       # for(my $run_motif = $motif_pos - ($block{$motif}{$motif_pos}{'length'} - 1); $run_motif < $motif_pos + ($block{$motif}{$motif_pos}{'length'} - 1); $run_motif++) {
                                                 if(exists $block{$motif}{$run_motif} && exists $block{$motif}{$run_motif}{$strains[$i]} && $run_motif != $motif_pos) {
 				#			print "overlap found!\n";
                                                         $block{$motif}{$motif_pos}{$strains[$i]} = $block{$motif}{$run_motif}{$strains[$i]};
+							$diff{$strains[$i]} += $block{$motif}{$motif_pos}{$strains[$i]};
                                                         delete $existance{$strains[$i]};
                                                         delete $block{$motif}{$run_motif}{$strains[$i]};
                                                         $ignore{$run_motif} = 1;
                                                         if(exists $block{$motif}{$run_motif}{'length'}) {
                                                                 delete $block{$motif}{$run_motif}{'length'};
-				#				print "motif found!\n";
-				#				print Dumper %{$block{$motif}{$motif_pos}};
-				#				print "\n\n";
                                                         }
                                                 }
                                         }
                                 }
 				if($block{$motif}{$motif_pos}{$strains[$i]} eq "" || !exists $block{$motif}{$motif_pos}{$strains[$i]}) {
-				#	print "seq before cal: " . $seq{$last_line . "_" . $strains[$i]} . "\n";
-				#	print "motif_pos: " . $motif_pos . "\n";
-				#	print "length: " . $block{$motif}{$motif_pos}{'length'} . "\n";
-				#	print "substr exists:\t" . substr($seq{$last_line . "_" . $strains[$i-1]}, $motif_pos, $block{$motif}{$motif_pos}{'length'}) . "\n";
-				#	print "substr missing:\t" . substr($seq{$last_line . "_" . $strains[$i]}, $motif_pos, $block{$motif}{$motif_pos}{'length'}) . "\n";
-				#	print $motif . "\t" . $motif_pos . "\n";
 					$block{$motif}{$motif_pos}{$strains[$i]} = &calculate_motif_score($motif, substr($seq{$last_line . "_" . $strains[$i]}, $motif_pos, $block{$motif}{$motif_pos}{'length'}));
 					$diff{$strains[$i]} += $block{$motif}{$motif_pos}{$strains[$i]};
-				#	print "after calculating:\n";
-				#	print Dumper %{$block{$motif}{$motif_pos}};
-				#	print "\n\n\n";
+				} else {
+					$diff{$strains[$i]} += $block{$motif}{$motif_pos}{$strains[$i]};
 				}
 			}
                 }
@@ -463,14 +388,10 @@ sub calculate_motif_score{
 	my $score_reverse = 0;
 	my $motif = $_[0];
 	my $local_seq = $_[1];
-#	print "seq to calculate: " . $local_seq . "\n";
-#	print Dumper %PWM;
-#	print "\n\n";
 	my @base = split('', $local_seq);
 	for(my $b = 0; $b < @base; $b++) {
 		$score_forward += log($PWM{$motif}{$b}{$base[$b]}/0.25); 
 	}
-
 	$local_seq = &rev_comp($local_seq);	
 	@base = split('', $local_seq);
 	for(my $b = 0; $b < @base; $b++) {
@@ -478,7 +399,6 @@ sub calculate_motif_score{
 	}
 	if($score_reverse < 0) { $score_reverse = 0;}
 	if($score_forward < 0) { $score_forward = 0;}
-#	print "score to return: " . $score_reverse . "\t" . $score_forward . "\n";
 	if($score_reverse > $score_forward) {
 		return sprintf("%.6f", $score_reverse);	
 	} else {
@@ -555,6 +475,10 @@ sub read_motifs{
 			$index++;
 		} else {
 			@split = split('\t', $line);
+			if($split[0] == 0) { $split[0] += 0.001; }
+			if($split[1] == 0) { $split[1] += 0.001; }
+			if($split[2] == 0) { $split[2] += 0.001; }
+			if($split[3] == 0) { $split[3] += 0.001; }
 			$PWM{$name}{$pos}{'A'} = $split[0];
 			$PWM{$name}{$pos}{'C'} = $split[1];
 			$PWM{$name}{$pos}{'G'} = $split[2];

@@ -104,7 +104,6 @@ foreach my $line (<FH>) {
 		exit;
 	}
 	if(length($split[1]) > 10) { next; }
-	$filter_tg = 0;
 	#Filter out peaks with too few tag counts
 	for(my $i = 19; $i < @split; $i++) {
 		if($split[$i] > $tg) {
@@ -160,6 +159,10 @@ if($plots eq "") {
 print STDERR "Generating R files!\n";
 &generate_R_files($plots . ".R", 1);
 &generate_mut_pos_analysis_file($plots . "_mut_pos_motifs.R");
+if($delta == 1) {
+	&generate_delta_files($plots . "_delta.R");
+}
+
 print STDERR "change output file names for R files\n";
 print STDERR "clean up the code, stop giving so much to other methods in the modules, make it more global\n";
 print STDERR "CLEAN UP CODE\n";
@@ -333,10 +336,7 @@ sub generate_mut_pos_analysis_file{
 		print R "par(new=TRUE, mar=c(2.5,1,1,1.5), oma=c(2.5,1,1,1.5))\n";
 		print R "mySeqLogo(pwm, xaxis=FALSE, yaxis=FALSE, ic.scale=FALSE)\n"; 
 		print R "popViewport()\n";
-	#	if($run > 0) {
-			print R "grid.newpage()\n";
-	#	}
-
+		print R "grid.newpage()\n";
 		$run++;
 	}
 	print R "dev.off()\n";
@@ -406,15 +406,11 @@ sub generate_R_files {
 					$start_pos = (2 + (@strains * 2) + $fac);
 					if($split[$start_pos + $i] eq "1") {
 						$mut_one{$strains[$i] . "_" . $strains[$j]}{$split[1]} = 1;
-				#		print "mut one\n";
 					}
 					if($split[$start_pos + $j] eq "1") {
 						$mut_two{$strains[$i] . "_" . $strains[$j]}{$split[1]} = 1;
-				#		print "mut two\n";
 					}
 					$start_pos = (2 + @strains + $fac);
-				#	print "i: " . $split[$start_pos + $i] . "\tj: " . $split[$start_pos + $j] . "\n";
-				#	print "delta score: " . ($split[$start_pos + $i] - $split[$start_pos + $j]) . "\n";
 					$delta_score{$strains[$i] . "_" . $strains[$j]}{$split[1]} = $split[$start_pos + $i] - $split[$start_pos + $j];
 					if($delta_score{$strains[$i] . "_" . $strains[$j]}{$split[1]} > $max_delta) {
 						$max_delta = $delta_score{$strains[$i] . "_" . $strains[$j]}{$split[1]};
@@ -436,8 +432,8 @@ sub generate_R_files {
 				my $x_count = 1;
 				my $tmp_delta;
 				if($delta == 1) {
-					$max = $max + &log_fc($max_delta);
-					$min = $min + &log_fc($min_delta);
+					$max = $max + $max_delta;
+					$min = $min + $min_delta;
 				}
 				$cal_pvalue = 0;
 				my $add_additional =  ((keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) * 0.25);
@@ -446,14 +442,14 @@ sub generate_R_files {
 				if($add_additional < 31) { $width_boxplot = 45; }
 				my $number_peaks = (keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}});
 				print R "plot(c(0," . ((keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) + $add_additional) . "), c(" . $min . ", " . $max . "+1), col=\"white\", xlab=\"rank-ordered peaks\", ylab=\"FC " . $strains[$i] . " vs " . $strains[$j] . "\", main=\"" . $strains[$i] . " vs " . $strains[$j] . "\\n$motif\")\n"; 
+				print R "abline(c(0,0), c(0,0))\n";
 				#Sort by fold change value between strains
 				foreach my $rank (sort {$ranked_order{$strains[$i] . "_" . $strains[$j]}{$a} <=> $ranked_order{$strains[$i] . "_" . $strains[$j]}{$b}} keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) {
 					if(exists $mut_one{$strains[$i] . "_" . $strains[$j]}{$rank}) {
 						$dist_one .= sprintf("%.2f", $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank}) . ",";
 						if($delta == 1) {
 							print R "points(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", pch=8, col=\"red\")\n";
-						 	print R "segments(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", x1 = " . $x_count . ", y1= " . ($ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} + &log_fc($delta_score{$strains[$i] . "_" . $strains[$j]}{$rank})) . ", col=\"red\")\n";
-							$delta_one .= sprintf("%.2f", &log_fc($delta_score{$strains[$i] . "_" . $strains[$j]}{$rank})) . ",";
+						 	print R "segments(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", x1 = " . $x_count . ", y1= " . ($ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} + $delta_score{$strains[$i] . "_" . $strains[$j]}{$rank}) . ", col=\"red\")\n";
 						} else {
 							print R "segments(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . " - 0.5" . ", x1 = " . $x_count . ", y1= " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . "+0.5, col=\"red\")\n";
 						}
@@ -462,18 +458,13 @@ sub generate_R_files {
 						$dist_two .= sprintf("%.2f", $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank}) . ",";
 						if($delta == 1) {
 							print R "points(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", pch=8, col=\"blue\")\n";
-							print R "segments(" . $x_count . " + 0.1, " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", x1 = " . $x_count . " + 0.1" . ", y1= " . ($ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} + &log_fc($delta_score{$strains[$i] . "_" . $strains[$j]}{$rank})) . ", col=\"blue\")\n";
-							$delta_two .= sprintf("%.2f", &log_fc($ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank})) . ",";
-
+							print R "segments(" . $x_count . " + 0.1, " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", x1 = " . $x_count . " + 0.1" . ", y1= " . ($ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} + $delta_score{$strains[$i] . "_" . $strains[$j]}{$rank}) . ", col=\"blue\")\n";
 						} else {
 							print R "segments(" . $x_count . " + 0.1, " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", x1 = " . $x_count . " + 0.1" . ", y1= " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . "+1, col=\"blue\")\n";
 						}
 					}
 					if(!exists $mut_one{$strains[$i] . "_" . $strains[$j]}{$rank} && !exists $mut_two{$strains[$i] . "_" . $strains[$j]}{$rank}) {
 						$dist_no_mut .= sprintf("%.2f", $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank}) . ",";
-						if($delta == 1) {
-							$delta_no_mut .= sprintf("%.2f", &log_fc($ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank})) . ",";
-						}
 					}
 					$x_count++;	
 				}
@@ -499,55 +490,57 @@ sub generate_R_files {
 				print R $dist_two . "\n";
 				print R $dist_no_mut . "\n";
 				print R "legend(\"topleft\", c(paste(\"" . $strains[$i] . ": \", length(one), \" muts\", sep=\"\"), paste(\"" . $strains[$j] . ": \", length(two), \" muts\", sep=\"\")), col=c(\"red\", \"blue\"), pch=16)\n";
-				if($delta == 1) {
-					$cal_pvalue = 0;
-					if(length($delta_one) > 10) {
-						chop $delta_one;
-					}
-					if(length($delta_two) > 10) {
-						chop $delta_two;
-					}
-					if(length($delta_no_mut) > 15) {
-						chop $delta_no_mut;
-					}
-					$delta_one .= ")";
-					$delta_two .= ")";
-					$delta_no_mut .= ")";
-					$count_obs_one = () = $delta_one =~ /\,/gi;
-					$count_obs_two = () = $delta_two =~ /\,/gi;
-					$count_obs_both = () = $delta_no_mut =~ /\,/gi;
-					if($count_obs_one >= 4 && $count_obs_two >= 4 && $count_obs_both >= 4) {
-						$cal_pvalue = 1;
-					}
-					print R $delta_one . "\n";
-					print R $delta_two . "\n";
-					print R $delta_no_mut . "\n";
-					if($cal_pvalue == 1) {
-					#	print R "boxplot(c(delta_no_mut), c(delta_one), c(delta_two), boxwex=" . (int($add_additional/3) - 10) . ", add=TRUE, at=c(" . ($number_peaks + int($add_additional/3)) . "," . ($number_peaks + (int($add_additional/3) * 2)) . "," . ($number_peaks + (int($add_additional/3) * 3)) . "), col=c(\"grey\", \"red\", \"blue\"), outline=FALSE, axes=FALSE)\n";
-						print R "boxplot(c(delta_no_mut), c(delta_one), c(delta_two), boxwex=" . (int($width_boxplot/3) - 10) . ", add=TRUE, at=c(" . ($number_peaks + int($add_additional/3)) . "," . ($number_peaks + (int($add_additional/3) * 2)) . "," . ($number_peaks + (int($add_additional/3) * 3)) . "), col=c(\"grey\", \"red\", \"blue\"), outline=FALSE, axes=FALSE)\n";
-						print R "p_one <- t.test(delta_no_mut, delta_one)\$p.value\n";
-						print R "p_two <- t.test(delta_no_mut, delta_two)\$p.value\n";
-						print R "p_both <- t.test(delta_one, delta_two)\$p.value\n";
-					}
-				} else {
-					if($cal_pvalue == 1) {
-					#	print R "boxplot(c(no_mut), c(one), c(two), boxwex=" . (int($add_additional/3) - 10) . ", add=TRUE, at=c(" . ($number_peaks + int($add_additional/3)) . "," . ($number_peaks + (int($add_additional/3) * 2)) . "," . ($number_peaks + (int($add_additional/3) * 3)) . "), col=c(\"grey\", \"red\", \"blue\"), outline=FALSE, axes=FALSE)\n";
-						print R "boxplot(c(no_mut), c(one), c(two), boxwex=" . (int($width_boxplot/3) - 10) . ", add=TRUE, at=c(" . ($number_peaks + int($add_additional/3)) . "," . ($number_peaks + (int($add_additional/3) * 2)) . "," . ($number_peaks + (int($add_additional/3) * 3)) . "), col=c(\"grey\", \"red\", \"blue\"), outline=FALSE, axes=FALSE)\n";
-						print R "p_one <- t.test(no_mut, one)\$p.value\n";
-						print R "p_two <- t.test(no_mut, two)\$p.value\n";
-						print R "p_both <- t.test(one, two)\$p.value\n";
-					}
-				}
 				if($cal_pvalue == 1) {
+					print R "boxplot(c(no_mut), c(one), c(two), boxwex=" . (int($width_boxplot/3) - 10) . ", add=TRUE, at=c(" . ($number_peaks + int($add_additional/3)) . "," . ($number_peaks + (int($add_additional/3) * 2)) . "," . ($number_peaks + (int($add_additional/3) * 3)) . "), col=c(\"grey\", \"red\", \"blue\"), outline=FALSE, axes=FALSE)\n";
+					print R "p_one <- t.test(no_mut, one)\$p.value\n";
+					print R "p_two <- t.test(no_mut, two)\$p.value\n";
+					print R "p_both <- t.test(one, two)\$p.value\n";
 					print R "legend(\"bottomright\", c(\"p-values: \", paste(\"" . $strains[$i] . " vs bg: \", round(p_one, digits=6), sep=\"\"), paste(\"" . $strains[$j] . " vs bg: \", round(p_two, digits=6), sep=\"\"), paste(\"" . $strains[$i] . " vs " . $strains[$j] . ": \", round(p_both, digits=6), sep=\"\")), text.col=c(\"black\", \"red\", \"blue\", \"purple\"), cex=0.8, bty=\'n\')\n"; 
 				}
-			#	close R;
 			}
 		} 
 	}
 	print R "dev.off()\n";
 	close R;
 	`Rscript $output_R_file`;	
+}
+
+sub generate_delta_files{
+	my $output_R = $_[0];
+	open R, ">$output_R";
+	$_ = "" for my($x, $y, $f);
+	print R "pdf(\"" . substr($output_R, 0, length($output_R) - 2) . ".pdf\", width=10, height=5)\n";
+	foreach my $motif (sort {$index_motifs{$a} cmp $index_motifs{$b}} keys %index_motifs) {
+		#Make sure there a mutations in this motif
+		$x = "x <- c(";
+		$y = "y <- c(";
+		$filename = $output . "_" . $motif . ".txt";
+		open FH, "<$filename" or die "Can't find $filename: $!\n";
+		$f = 0;
+		foreach my $line (<FH>) {
+			if($f == 0) { $f++; next;}
+			chomp $line;
+			@split = split('\t', $line);
+			$x .= $split[4] . ",";
+			$y .= ($split[5] - $split[6]) . ",";
+		}
+		if(length($x) > 8) {
+			chop $x;
+		}
+		$x .= ")";
+		if(length($y) > 8) {
+			chop $y;
+		}
+		$y .= ")";
+		print R $x . "\n";
+		print R $y . "\n";
+		print R "plot(x, y, main=\"" . $motif . "\ motif diff vs fc\", xlim=c(min(x, y, 0), max(x, y, 1)), ylim=c(min(x, y, 0), max(x, y, 1)), xlab=\"Foldchange " . $strains[0] . " vs " . $strains[1] . "\", ylab=\"motif difference " . $strains[0] . " vs " . $strains[1] . "\", pch=20)\n";
+		print R "abline(c(0,0), c(1,1))\n";
+			
+	}
+	print R "dev.off()\n";
+	close R;
+	`Rscript $output`;
 }
 
 sub fakrek{
