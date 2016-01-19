@@ -83,8 +83,8 @@ sub analyze_motifs{
                #Read in blocks - stop after gathering all information about one position
                 if($last_line ne "" && $header[0] . "_" . $header[1] . "_" . $header[2] ne $last_line) {
                         my @a = split("_", $last_line);
+			print Dumper %block;
                         $ab_mut = &print_results(substr($a[0], 3), $a[1], \%block, $fileHandlesMotif_ref, $last_line, \%tag_counts, \@strains, \%index_motifs, \%fc, $ab, $fc_significant, $mut_pos, $overlap);
-		#	print Dumper %block;
 		#	print "\n\n";
 		#	print Dumper %fc;
 		#	&create_cytoscape_file(\%block, \%fc, $last_line, \@strains);
