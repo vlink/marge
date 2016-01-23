@@ -3,6 +3,7 @@
 
 use strict;
 use Getopt::Long;
+use Storable;
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
 use config;
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/analysis'};
@@ -12,9 +13,9 @@ use Data::Dumper;
 #require '../db_part/database_interaction.pm';
 
 
-$_ = "" for my($genome, $file, $tf, $filename, $last_line, $name, $output, $ab, $seqfile, $plots, $overlap);
-$_ = () for my(@strains, %peaks, @split, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis);
-$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos);
+$_ = "" for my($genome, $file, $tf, $filename, $last_line, $name, $output, $ab, $plots, $overlap, $save, $load, $tmp_out, $tmp_out_no_motif, $tmp_out_far_motif);
+$_ = () for my(@strains, %peaks, @split, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %motif_scan_scores);
+$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq);
 my $data = config::read_config()->{'data_folder'};
 #$data = "/Users/verenalink/workspace/strains/data/";
 
@@ -23,21 +24,31 @@ sub printCMD {
         print STDERR "\t-genome: Genome\n";
         print STDERR "\t-strains <strains>: Comma-separated list of strains - Order must overlay with order in annotated peak file\n";
         print STDERR "\t-file <file>: annotated peak file (including tag counts)\n";
-	print STDERR "\t-seqfile <file>: File with sequences for peaks\n";
 	print STDERR "\t-AB: Antibody that was used for this ChIP (to exclude mutations in this motif from analysis)\n";
+	print STDERR "\t-center: centers peaks on TF specified in -AB\n"; 
 	print STDERR "\t-TF <transcription factor motif matrix>: Matrix of the TF that was chipped for\n";
         print STDERR "\t-homo: Data is homozygouse\n";
 	print STDERR "\t-region: Size of the region used to look for other motifs (Default: 200)\n";
 	print STDERR "\t-delta: Uses motif score differences instead of binary existance\n";
 	print STDERR "\t-output: Name of the output files\n";
+	print STDERR "\n\nAnalysis options for peaks\n";
+	print STDERR "\t-motif: analyzes sequences with TF motif\n";
+	print STDERR "\t-no_motif: analyzses sequences without TF motif\n";
+	print STDERR "\t-far_motif: analyzses sequences with TF motif that is more thatn 50bp away from peak center\n";
+	print STDERR "\n\nAdditional options:\n";
 	print STDERR "\t-plots: Output name of the plots\n";
 	print STDERR "\t-keep: keep temporary files\n";
+	print STDERR "\t-save <output name>: saves sequence files\n";
+	print STDERR "\t-load <input name>: loads sequence files saved from a previous run\n";
 	print STDERR "\n\nFiltering options:\n";
 	print STDERR "\t-tg <minmal tag count>: Filters out all peaks with less than x tag counts\n";
 	print STDERR "\t-mut_only: just keeps peaks where one strains is mutated\n";
-	print STDERR "\t-mut_pos: Also analyzes the position of the motif that is mutated\n";
 	print STDERR "\t-fc_pos: Foldchange threshold to count peaks as strain specific vs not (Default: 2fold)\n";
 	print STDERR "\t-overlap: Count motif as not mutated if the overlap n basepairs (complete|half|#bp)\n";
+	print STDERR "\n\nPlot options:\n";
+	print STDERR "\t-mut_pos: Also analyzes the position of the motif that is mutated\n";
+	print STDERR "\t-dist_plot: Plots distance relationships between TF and motif candidates\n";
+	print STDERR "\t\t-effect: Just plots distance relationship for peaks that are affected\n";
 	print STDERR "Script needs R package seqinr\n";
         exit;
 }
@@ -45,15 +56,17 @@ sub printCMD {
 if(@ARGV < 1) {
         &printCMD();
 }
+print STDERR "change output file names for R files\n";
+print STDERR "clean up the code, stop giving so much to other methods in the modules, make it more global\n";
+print STDERR "CLEAN UP CODE\n";
+print STDERR "ADD COMMENTS!!!!\n";
 
 my $param = config::read_config();
 
 $region = 200;
 
-$output = "output_motif_" . rand(5);
 GetOptions(     "genome=s" => \$genome,
                 "file=s" => \$file,
-		"seqfile=s" => \$seqfile,
                 "strains=s{,}" => \@strains,
                 "homo" => \$homo, 
 		"-TF=s" => \$tf, 
@@ -67,21 +80,56 @@ GetOptions(     "genome=s" => \$genome,
 		"-mut_only" => \$mut_only, 
 		"-mut_pos" => \$mut_pos, 
 		"-overlap=s" => \$overlap,
-		"-fc_pos=s" => \$fc_significant)
+		"-fc_pos=s" => \$fc_significant, 
+		"-save=s" => \$save,
+		"-load=s" => \$load, 
+		"-dist_plot" => \$dist_plot, 
+		"-effect" => \$effect,
+		"-center" => \$center, 
+		"-motif" => \$analyze_motif,
+		"-no_motif" => \$analyze_no_motif,
+		"-far_motif" => \$analyze_far_motif)
         or die("Error in command line options!\n");
 #First step: Get the sequences for the peaks
+
+my $reference_strain = config::reference_genome($genome);
+
+if($center == 1) {
+	#Add 100bp so we can center on peak and then shorten the sequence, so we don't ahve to pull the seq twice
+	$region = $region + 100;
+	$analyze_motif = 1;
+} else {
+	$analyze_motif = 1;
+}
+
+if($ab eq "" && $dist_plot == 1) {
+	print STDERR "Distance plots not possible without anchor TF\n";
+	print STDERR "Do not generate distance plots!\n";
+	$dist_plot = 0;
+	$effect = 0;
+}
+
 $allele = 1;
 my $ref_save = 0;
+
+if($effect == 1) { $dist_plot = 1; }
 
 if($fc_significant == 0) {
 	$fc_significant = 2;
 }
 #Save motif files
-my ($index_motif_ref, $PWM_ref, $fileHandlesMotif_ref, $del_ref) = analysis::read_motifs($tf, $output, \%delete);
+my ($index_motif_ref, $PWM_ref, $score_ref) = analysis::read_motifs($tf);
 %index_motifs = %$index_motif_ref;
+%motif_scan_scores = %$score_ref;
+
+if($ab ne "") {
+	if(!exists $index_motifs{$ab}) {
+		print STDERR "TF specified in -AB does not exist in motif file\n";
+		print STDERR "Please double check your motif file!\n";
+		exit;
+	}
+}
 %PWM = %$PWM_ref;
-@fileHandlesMotif = @$fileHandlesMotif_ref;
-%delete = %$del_ref;
 
 #Make sure the reference is in the strains array
 for(my $i = 0; $i < @strains; $i++) {
@@ -130,75 +178,285 @@ foreach my $line (<FH>) {
 close FH;
 
 print STDERR "" . $filter_out . " peaks filtered because of low tag counts\n\n";
-my $tmp_out = "tmp" . rand(15);
-$delete{$tmp_out} = 1;
 
-print STDERR "Extracting sequences from strain genomes\n";
-print STDERR $tmp_out . "\n";
-my ($seq_ref, $save_local_shift_ref) = analysis::get_seq_for_peaks($tmp_out, \%peaks, \@strains, $data, $allele, $line_number, $mut_only);
-%seq = %$seq_ref;
-%save_local_shift = %$save_local_shift_ref;
+if($load ne "") {
+	print STDERR "Loading sequences\n";
+	my @center_number = `ls $load.seq*`;
+	if(@center_number > 1) {
+		print STDERR "Sequences were already centered!\n";
+		$center = 0;
+		my($hash_ref, $l_seq) = &load_files($load . ".seq_with_motif");
+		%seq = %$hash_ref;
+		$longest_seq = $l_seq;
+		my($hash_ref, $l_seq) = &load_files($load . ".seq_no_motif");
+		%seq_no_motif =%$hash_ref;
+		$longest_seq = $l_seq;
+		my($hash_ref, $l_seq) = &load_files($load . ".seq_far_motif");
+		%seq_far_motif = %$hash_ref;
+		$longest_seq = $l_seq;
+	} else {
+		my($hash_ref, $l_seq) = &load_files($load . ".seq");
+		%seq = %$hash_ref;
+		$longest_seq = $l_seq;
+	}
+	$analyze_motif = 1;
+	$tmp_out = $load . ".seq_with_motif";
+	$tmp_out_no_motif = $load . ".seq_no_motif";
+	$tmp_out_far_motif = $load . ".seq_far_motif";
+	print STDERR "Loading local shifting vectors\n";
+	%save_local_shift = %{retrieve($load . ".shift_vector")};
+} else {
+	$tmp_out = "tmp" . rand(15);
+	$delete{$tmp_out} = 1;
+	print STDERR "Extracting sequences from strain genomes\n";
+	my ($seq_ref, $save_local_shift_ref, $l_seq) = analysis::get_seq_for_peaks($tmp_out, \%peaks, \@strains, $data, $allele, $line_number, $mut_only, $region);
+	$longest_seq = $l_seq;
+	%seq = %$seq_ref;
+	%save_local_shift = %$save_local_shift_ref;
+}
+
+
+
+if($center == 1) {
+	$region = $region - 100;
+	$longest_seq = $longest_seq - 100;
+	&center_peaks();
+	if($save ne "") {
+		$tmp_out = $save . ".seq_with_motif";
+		$tmp_out_no_motif = $save . ".seq_no_motif";
+		$tmp_out_far_motif = $save . ".seq_far_motif";
+	} else {
+		$tmp_out_no_motif = $tmp_out . "_no_motif";
+		$tmp_out_far_motif = $tmp_out . "_far_motif";
+		$delete{$tmp_out_no_motif} = 1;
+		$delete{$tmp_out_far_motif} = 1;
+	}
+	&write_seqs($tmp_out, \%seq, \@strains);
+	&write_seqs($tmp_out_no_motif, \%seq_no_motif, \@strains);
+	&write_seqs($tmp_out_far_motif, \%seq_far_motif, \@strains);
+}
+
+if($save ne "") {
+	print STDERR "Saving sequence and shifting files!\n";
+	if($center == 0) {
+		&write_seqs($save . ".seq", \%seq, \@strains);
+	}
+	store \%save_local_shift, "$save.shift_vector"; 
+}
 
 my $tmp_out_main_motif = "tmp" . rand(15);
 $delete{$tmp_out_main_motif} = 1;
-analysis::scan_motif_with_homer($tmp_out, $tmp_out_main_motif, $tf);
-
-analysis::write_header(\@fileHandlesMotif, \@strains, 0);
-
-my ($remove_ref, $mut_pos_analysis_ref) = analysis::analyze_motifs($tmp_out_main_motif, \%seq, \%save_local_shift, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, $ab, \%remove, $fc_significant, $mut_pos, $overlap, \%fc);
-%remove = %$remove_ref;
-%mut_pos_analysis = %$mut_pos_analysis_ref;
-
-for(my $i = 0; $i < @fileHandlesMotif; $i++) {
-        close $fileHandlesMotif[$i];
-}
 
 if($plots eq "") {
-	$plots = "output_all_motifs";
-}
-print STDERR "Generating R files!\n";
-&generate_R_files($plots . ".R", 1);
-&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs.R");
-if($delta == 1) {
-	&generate_delta_files($plots . "_delta.R");
+	$plots = "output_mut";
 }
 
-print STDERR "change output file names for R files\n";
-print STDERR "clean up the code, stop giving so much to other methods in the modules, make it more global\n";
-print STDERR "CLEAN UP CODE\n";
-print STDERR "ADD COMMENTS!!!!\n";
-
-
-if($ab ne "") {
-	@fileHandlesMotif = ();
-
-	#Remove all positions from the files with mutations in chipped motif
-	foreach my $key (keys %index_motifs) {
-		open FH, "<", $output . "_" . $key . ".txt";
-		my $filename  = $output . "_" . $key . "_removed.txt";
-		$delete{$filename} = 1;
-		open my $fh, ">", $filename or die "Can't open $filename: $!\n";
-		$fileHandlesMotif[$index_motifs{$key}] = $fh;
-		foreach my $line (<FH>) {
-			chomp $line;
-			@split = split("\t", $line);
-			if(!exists $remove{$split[1]}) {
-				$fileHandlesMotif[$index_motifs{$key}]->print($line . "\n");
-			}
-		}
-	}
-	&generate_R_files($plots . "_removed.R", 0);
-	print STDERR "add motif mutation plots for removed data set\n";
-	&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs_removed.R");
-} else {
-	print STDERR "No antibody specified, analysis ends here\n";
+$output = "output_motif";
+if($analyze_motif == 1) {
+	print STDERR "Run analysis for all sequences with " . $ab . " motif\n";
+	&screen_and_plot($output . "_with_motif", $plots . "_with_motif", $tmp_out);
 }
+
+if($analyze_no_motif == 1) {
+	print STDERR "Run analysis for all sequences without " . $ab . " motif\n";
+	&screen_and_plot($output . "_without_motif", $plots. "_without_motif", $tmp_out_no_motif, 1);
+}
+
+if($analyze_far_motif == 1) {
+	print STDERR "Run analysis for all sequences with " . $ab . " motif that is not in the peak center\n";
+	&screen_and_plot($output . "_with_far_motif", $plots . "_with_far_motif", $tmp_out_far_motif);
+}
+
+#Now lets split up the analysis
 
 if($keep == 0) {
 	print STDERR "Delete output files\n";
 	foreach my $d (keys %delete) {
 		`rm $d`;
 	}
+}
+
+sub screen_and_plot{
+	my $output = $_[0];
+	my $plots = $_[1];
+	my $tmp_out = $_[2];
+	my $no_motif = 0;
+	if(@_ > 3) {
+		$no_motif = 1;
+	}
+	my ($fileHandlesMotif_ref, $delete_ref) = analysis::open_filehandles(\%index_motifs, \%delete, $output);
+	@fileHandlesMotif = @$fileHandlesMotif_ref;
+	%delete = %$delete_ref;
+	analysis::scan_motif_with_homer($tmp_out, $tmp_out_main_motif, $tf);
+	analysis::write_header(\@fileHandlesMotif, \@strains, 0);
+	my ($block_ref) = analysis::analyze_motifs($tmp_out_main_motif, \%save_local_shift, \@strains);
+	my %block = %$block_ref;
+	$block_ref = analysis::merge_block(\%block, $overlap, \@strains);
+	%block = %$block_ref;
+	analysis::output_motifs(\%block, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, $fc_significant, $overlap, \%fc);
+	for(my $i = 0; $i < @fileHandlesMotif; $i++) {
+		close $fileHandlesMotif[$i];
+	}
+	print STDERR "Generating R files!\n";
+#	&generate_R_files($plots . ".R", 1, $output);
+	&generate_R_files($plots . ".R", $output);
+	if($mut_pos == 1) {
+		my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant);
+		%mut_pos_analysis = %$mut_pos_analysis_ref; 
+		&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs.R");
+	}
+	if($dist_plot == 1) {
+		my ($dist_plot_ref) = analysis::distance_plot(\%block, \@strains, \%fc, $fc_significant, $effect, $longest_seq, \%seq);
+		%dist_plot = %{$dist_plot_ref};
+		&generate_dist_plot($plots . "_distance.R", $no_motif);	
+	}
+
+	if($delta == 1) {
+		&generate_delta_files($plots . "_delta.R");
+	}
+
+	
+
+	if($ab ne "") {
+		open FH, "<", $output . "_" . $ab . ".txt";
+		foreach my $line (<FH>) {
+			chomp $line;
+			@split = split('\t', $line);
+			if($split[-3] > 0 || $split[-2] > 0) {
+				$remove{$split[1]} = 1;
+			}
+		}
+		@fileHandlesMotif = ();
+		my ($fileHandlesMotif_ref, $delete_ref) = analysis::open_filehandles(\%index_motifs, \%delete, $output . "_removed");
+		%delete = %$delete_ref;
+		@fileHandlesMotif = @$fileHandlesMotif_ref;
+		#Remove all positions from the files with mutations in chipped motif
+		foreach my $key (keys %index_motifs) {
+			open FH, "<", $output . "_" . $key . ".txt";
+			my $filename  = $output . "_removed_" . $key . ".txt";
+			$delete{$filename} = 1;
+			open my $fh, ">", $filename or die "Can't open $filename: $!\n";
+			$fileHandlesMotif[$index_motifs{$key}] = $fh;
+			foreach my $line (<FH>) {
+				chomp $line;
+				@split = split("\t", $line);
+				if(!exists $remove{$split[1]}) {
+					$fileHandlesMotif[$index_motifs{$key}]->print($line . "\n");
+				}
+			}
+		}
+	#	&generate_R_files($plots . "_removed.R", 0, $output . "_removed");
+		&generate_R_files($plots . "_removed.R", $output . "_removed");
+		print STDERR "add motif mutation plots for removed data set\n";
+		foreach my $pos (keys %block) {
+			if(exists $remove{$pos}) {
+				delete $remove{$pos};
+			}
+		}
+		if($mut_pos == 1) {
+			my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant);
+			%mut_pos_analysis = %$mut_pos_analysis_ref;
+			&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs_removed.R");
+		}
+	} else {
+		print STDERR "No antibody specified, analysis ends here\n";
+	}
+}
+
+
+#Generate distance plots
+sub generate_dist_plot{
+	my $output = $_[0];
+	my $no_motif = $_[1];
+	open R, ">$output";
+	my $x = "x <- c(";
+	for(my $i = 0; $i < $longest_seq; $i++) {
+		$x .= ($i - int($longest_seq/2)) . ",";
+	}
+	chop $x;
+	$x .= ")";
+	print R "pdf(\"" . substr($output, 0, length($output) - 2) . ".pdf\", width=10, height=5)\n";
+	print R $x . "\n";
+	my $y = "";
+	my $first = 0;
+	my $legend_col;
+	my $legend_class;
+	my $max_ab = 0;
+	my $max = 0;
+	#First generate vectors for main TF
+	foreach my $strain (keys %{$dist_plot{$ab}}) {
+		$y = $ab . "_" . $strain . " <- c(";
+		for(my $i = int(($longest_seq/2) * (-1)); $i < ($longest_seq/2); $i++) {
+			if(!exists $dist_plot{$ab}{$strain}{$i}) {
+				$y .= "0,";
+			} else {
+				$y .= $dist_plot{$ab}{$strain}{$i} . ",";
+				if($dist_plot{$ab}{$strain}{$i} > $max_ab) {
+					$max_ab = $dist_plot{$ab}{$strain}{$i};
+				}	
+			}	
+		}
+		if(length($y) > 6) {
+			chop $y;
+		}
+		$y .= ")";
+		print R $y . "\n";
+	} 
+	my $second_factor;
+	my $motif_print;
+	foreach my $motif (keys %dist_plot) {
+		if($motif eq $ab) { next; }
+		$motif_print = $motif;
+		$motif_print =~ s/-//g;
+		$motif_print =~ s/://g;
+		$max = 0;
+		$first = 0;
+		foreach my $strain (keys %{$dist_plot{$motif}}) {
+			$y = $motif_print . "_" . $strain . " <- c(";
+			for(my $i = int(($longest_seq/2) * (-1)); $i < ($longest_seq/2); $i++) {
+				if(!exists $dist_plot{$motif}{$strain}{$i}) {
+					$y .= "0,";
+				} else {
+					$y .= $dist_plot{$motif}{$strain}{$i} . ",";
+					if($dist_plot{$motif}{$strain}{$i} > $max) {
+						$max = $dist_plot{$motif}{$strain}{$i};
+					}	
+				}	
+			}
+			chop $y;
+			$y .= ")";
+			print R $y . "\n";
+			if($first == 0) {
+				if($no_motif == 0) {
+					print R "plot(x, " . $ab . "_" . $strain . ", type=\"l\", col=\"black\", main=\"Distance plot for " . $ab . " and " . $motif_print . "\", ylim=c(0, max(" . $max . "," . $max_ab . ")), ylab=\"Motif frequence\")\n";
+				}
+				$legend_class = "legend_class <- c(\"" . $ab . "_" . $strain. "\",";
+				$legend_col = "legend_col <- c(\"black\",";
+				$second_factor = "plot(x, " . $motif_print . "_" . $strain . ", col=\"red\", xaxt=\"n\",yaxt=\"n\",xlab=\"\",ylab=\"\", type=\"l\")";
+				$legend_class .= "\"" . $motif_print . "_" . $strain . "\",";
+				$legend_col .= "\"red\",";
+				$first++;
+			} else {
+				if($no_motif == 0) {
+					print R "lines(x, " . $ab . "_" . $strain . ", col=\"grey\")\n";
+					print R "par(new=TRUE)\n";
+				}
+				$legend_class .= "\"" . $ab . "_" . $strain . "\",";
+				$legend_col .= "\"grey\",";
+				print R $second_factor . "\n";
+				print R "axis(4)\n";
+				print R "lines(x, " . $motif_print . "_" . $strain . ", col=\"blue\")\n";
+				$legend_class .= "\"" . $motif_print . "_" . $strain . "\")";
+				$legend_col .= "\"blue\")";
+				print R $legend_class . "\n";
+				print R $legend_col . "\n";
+				print R  "legend(\"topright\", legend_class, col=legend_col, pch=20)\n";
+			}
+		}
+	}
+	print R "dev.off()\n";
+	close R;
+	`Rscript $output`;	
 }
 
 #Gnereate motif position mutation plots
@@ -346,11 +604,13 @@ sub generate_mut_pos_analysis_file{
 
 #Generate R files
 sub generate_R_files {
+#	my $output = $_[2];
+	my $output = $_[1];
 	my $filename;
 	my $f = 0;
 	my $num_of_muts;
 	my $output_R_file = $_[0];
-	my $removed = $_[1];
+#	my $removed = $_[1];
 	print STDERR "Add filtering for number of motifs!\n";
 	open R, ">", $output_R_file;
 	print R "pdf(\"" . substr($output_R_file, 0, length($output_R_file) - 2) . ".pdf\", width=10, height=5)\n";
@@ -359,16 +619,11 @@ sub generate_R_files {
 	my $count_obs_two = 0;
 	my $count_obs_both = 0;
 	foreach my $motif (sort {$index_motifs{$a} cmp $index_motifs{$b}} keys %index_motifs) {
-		#Make sure there a mutations in this motif
-		if($removed == 0) {
-			$filename = $output . "_" . $motif . "_removed.txt";
-		} else {
-			$filename = $output . "_" . $motif . ".txt";
-		}
+		$filename = $output . "_" . $motif . ".txt";
 		$num_of_muts = `wc -l $filename`;
 		@split = split('\s+', $num_of_muts);
-		if($split[0] == 1 && $removed == 1) {
-			print "No mutations in motif for " . $motif . "\n";
+		if($split[0] == 1) {
+			print STDERR "No occurrences of " . $motif . " found close to " . $ab . "\n";
 			next;
 		}
 		open FH, "<$filename" or die "Can't find $filename: $!\n";
@@ -541,6 +796,136 @@ sub generate_delta_files{
 	print R "dev.off()\n";
 	close R;
 	`Rscript $output`;
+}
+
+sub center_peaks{
+	print STDERR "Center the peaks!\n";
+	#100 was added to grab the initial sequences
+	if($ab eq "") {
+		print STDERR "Not possible to center peak - no transcription factor is specified\n";
+		print STDERR "Skipping...\n";
+	} else {
+		open TMP_MOTIF, ">tmp_scan_motif_$ab.txt";
+		$delete{"tmp_scan_motif_$ab.txt"} = 1;
+		print TMP_MOTIF ">consensus\t$ab\t$motif_scan_scores{$ab}\n";
+		foreach my $pos (sort {$a <=> $b} keys %{$PWM{$ab}}) {
+			print TMP_MOTIF $PWM{$ab}{$pos}{'A'} . "\t" . $PWM{$ab}{$pos}{'C'} . "\t" . $PWM{$ab}{$pos}{'G'} . "\t" . $PWM{$ab}{$pos}{'T'} . "\n";
+		}
+		close TMP_MOTIF;
+	}
+	my $command = "homer2 find -i " . $tmp_out . " -m tmp_scan_motif_" . $ab . ".txt -offset 0 > output_tmp.txt";
+	`$command`;
+	open FH, "<output_tmp.txt";
+	my ($block_ref) = analysis::analyze_motifs("output_tmp.txt", \%save_local_shift, \@strains);
+	%block = %$block_ref;
+	my ($block_ref) = analysis::merge_block(\%block, $overlap, \@strains);
+	%block = %$block_ref;
+	my $peak_center;
+	my $dist_to_center;
+	my $closest_motif;
+	my $start;
+	my $tmp_header;
+	my $length;
+	foreach my $seq (sort {$a cmp $b} keys %seq) {
+		$dist_to_center = $region * 5;
+		#Calculate the middle of the sequence
+		@header = split("_", $seq);
+		$tmp_header = $header[0] . "_" . $header[1] . "_" . $header[2];
+		if($header[-1] ne $strains[0]) {
+			next;
+		}
+		$peak_center = (length($seq{$seq})/2) + $save_local_shift{$seq}{length($seq{$seq})/2};
+		foreach my $pos (keys %{$block{$tmp_header}{$ab}}) {
+			if(abs($dist_to_center) > abs($peak_center - $pos)) {
+				$dist_to_center = $peak_center - $pos;
+				$closest_motif = $pos;
+			}
+		}
+		if($dist_to_center == $region * 5 || abs($dist_to_center) > 50) {
+			#Remove it from seq and add it to seq_no_motif or seq_far_motif
+			#keep it centered on peak center
+			for(my $i = 0; $i < @strains; $i++) {
+				for(my $j = 0; $j < 50; $j++) {
+					delete $save_local_shift{$tmp_header . "_" . $strains[$i]}{$j};
+				}
+				for(my $j = length($seq{$tmp_header . "_" . $strains[$i]}) - 50; $j < length($seq{$tmp_header . "_" . $strains[$i]}); $j++) {
+					delete $save_local_shift{$tmp_header . "_" . $strains[$i]}{$j};	
+				}
+				for(my $j = 50; $j < length($seq{$tmp_header . "_" . $strains[$i]}) - 50; $j++) {
+					$save_local_shift{$tmp_header . "_" . $strains[$i]}{$j - 50} = $save_local_shift{$tmp_header . "_" . $strains[$i]}{$j};
+					delete $save_local_shift{$tmp_header . "_" . $strains[$i]}{$j};
+				}
+				if($dist_to_center == $region * 5) {
+					$seq_no_motif{$tmp_header . "_" . $strains[$i]} = substr($seq{$tmp_header . "_" . $strains[$i]}, 50, length($seq{$tmp_header . "_" . $strains[$i]}) - 100);
+				} else {
+					$seq_far_motif{$tmp_header . "_" . $strains[$i]} = substr($seq{$tmp_header . "_" . $strains[$i]}, 50, length($seq{$tmp_header . "_" . $strains[$i]}) - 100);	
+				}
+				delete $seq{$tmp_header . "_" . $strains[$i]};
+			}
+			next;
+		}
+		for(my $i = 0; $i < @strains; $i++) {
+			$start = 50 - $dist_to_center + ($block{$tmp_header}{$ab}{$closest_motif}{'length'}/2);
+			if($block{$tmp_header}{$ab}{$closest_motif}{'orientation'} eq "-") {
+				$start = $start - $block{$tmp_header}{$ab}{$closest_motif}{'length'} + 1;
+			}
+			$length = length($seq{$tmp_header . "_" . $strains[$i]}) - 100;
+			for(my $j = 0; $j < $start; $j++) {
+				delete $save_local_shift{$tmp_header . "_" . $strains[$i]}{$j};
+			}		
+			for(my $j = $start + $length; $j < length($seq{$tmp_header . "_" . $strains[$i]}); $j++) {
+				delete $save_local_shift{$tmp_header . "_" . $strains[$i]}{$j};
+			}
+			for(my $j = $start; $j < $start + $length; $j++) {
+				$save_local_shift{$tmp_header . "_" . $strains[$i]}{$j - $start} = $save_local_shift{$tmp_header . "_" . $strains[$i]}{$j};
+				delete $save_local_shift{$tmp_header . "_" . $strains[$i]}{$j};
+			}
+			$seq{$tmp_header . "_" . $strains[$i]} = substr($seq{$tmp_header . "_" . $strains[$i]}, $start, $length); 
+		}
+	}
+
+}
+
+sub load_files{
+	my $file = $_[0];
+	my %hash;
+	my $load_id;
+	open FH, "<$file";
+	foreach my $line (<FH>) {
+		if(substr($line, 0, 1) eq ">") {
+			$load_id = substr($line, 1);
+		} else {
+			$hash{$load_id} = $line;
+			if(length($line) > $longest_seq) {
+				$longest_seq = length($line);
+			}
+		}
+	}	
+	close FH;
+	return (\%hash, $longest_seq);
+}
+
+sub write_seqs{
+	my $file = $_[0];
+	my %hash = %{$_[1]};
+	my @strains = @{$_[2]};
+	open OUT, ">$file";
+	my %seen = ();
+	my @split;
+	my $tmp_header;
+	foreach my $seq (sort {$a <=> $b} keys %hash) {
+		@split = split("_", $seq);
+		$tmp_header = $split[0] . "_" . $split[1] . "_" . $split[2];
+		if(exists $seen{$tmp_header}) {
+			next;
+		}	
+		for(my $i = 0; $i < @strains; $i++) {	
+			print OUT ">" . $tmp_header . "_" . $strains[$i] . "\n";
+			print OUT $hash{$tmp_header . "_" . $strains[$i]} . "\n";
+		}
+		$seen{$tmp_header} = 1;
+	}
+        close OUT;
 }
 
 sub fakrek{

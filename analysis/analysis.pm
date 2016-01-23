@@ -56,22 +56,8 @@ sub analyze_motifs{
 	my @split;
 	my @header;
 	my $motif_file = $_[0];
-	my %seq = %{$_[1]};
-	my %save_local_shift = %{$_[2]};
-	my $fileHandlesMotif_ref = $_[3];
-	my %tag_counts = %{$_[4]};
-	my @strains = @{$_[5]};
-	my %index_motifs = %{$_[6]};
-	my $ab = $_[7];
-	my %remove = %{$_[8]};
-	my $fc_significant = $_[9];
-	my $mut_pos = $_[10];
-	my $overlap = $_[11];
-	my %fc = ();
-	my $ab_mut = 0;
-	if(@_ > 12) {
-		%fc = %{$_[12]};
-	}
+	my %save_local_shift = %{$_[1]};
+	my @strains = @{$_[2]};
         open FH, "<$motif_file";
         my $last_line = "";
 	my %block = ();
@@ -80,82 +66,15 @@ sub analyze_motifs{
                 @split = split('\t', $line);
 		$split[3] = &get_motif_name($split[3]);
                 @header = split('_', $split[0]);
-               #Read in blocks - stop after gathering all information about one position
-                if($last_line ne "" && $header[0] . "_" . $header[1] . "_" . $header[2] ne $last_line) {
-                        my @a = split("_", $last_line);
-			print Dumper %block;
-                        $ab_mut = &print_results(substr($a[0], 3), $a[1], \%block, $fileHandlesMotif_ref, $last_line, \%tag_counts, \@strains, \%index_motifs, \%fc, $ab, $fc_significant, $mut_pos, $overlap);
-		#	print "\n\n";
-		#	print Dumper %fc;
-		#	&create_cytoscape_file(\%block, \%fc, $last_line, \@strains);
-			&save_all_motifs(\%block, $last_line);
-			if($ab_mut == 1) {
-				$remove{$last_line} = 1;
-			}
-			%block=();
-                }
-                $last_line = $header[0] . "_" . $header[1] . "_" . $header[2];
-                my $half = length($seq{$split[0]})/2;
-                $half = int($half);
-                $motif_start = $header[1] + $half;
-                #First get start pos of the motif
-                if($split[4] eq "-" && $split[1] < 0) {
-                #       $motif_start = $motif_start - ((length($split[2])/2)) + $split[1];      
-                        $motif_start = $motif_start - (length($split[2])) + $split[1] + 1;
-                }
-                if($split[4] eq "-" && $split[1] >= 0) {
-                #       $motif_start = $motif_start - ((length($split[2])/2)) + $split[1];
-                        $motif_start = $motif_start - (length($split[2])) + $split[1] + 1;
-                }
-                if($split[4] eq "+") {
-                        $motif_start = $motif_start + $split[1];
-                }
-                $motif_start = $motif_start - $header[1];
-                $block{$split[3]}{$motif_start + $save_local_shift{$split[0]}{$motif_start}}{$header[-1]} = $split[-1];
-                $block{$split[3]}{$motif_start + $save_local_shift{$split[0]}{$motif_start}}{'length'} = length($split[2]);
+		$last_line = $header[0] . "_" . $header[1] . "_" . $header[2];
+		$motif_start = $split[1];
+		my @b = split("_", $split[0]);
+		my $header_tmp = $b[0] . "_" . $b[1] . "_" . $b[2];
+		$block{$header_tmp}{$split[3]}{$motif_start + $save_local_shift{$split[0]}{$motif_start}}{$header[-1]} = $split[-1];
+		$block{$header_tmp}{$split[3]}{$motif_start + $save_local_shift{$split[0]}{$motif_start}}{'length'} = length($split[2]);
+		$block{$header_tmp}{$split[3]}{$motif_start + $save_local_shift{$split[0]}{$motif_start}}{'orientation'} = $split[4];
         }
-        my @a = split("_", $last_line);
-	$ab_mut = &print_results(substr($a[0], 3), $a[1], \%block, $fileHandlesMotif_ref, $last_line, \%tag_counts, \@strains, \%index_motifs, \%fc, $ab, $fc_significant, $mut_pos, $overlap);
-#	&save_all_motifs(\%block, $last_line);
-#	print "network saved\n";
-#	&create_cytoscape_file(\%fc, \@strains);
-#	exit;
-#	print "cytoscape important\n";
-#	print Dumper %cytoscape_unsig;
-#	print "\n\n";
-#	open NET, ">network_significant.sif";
-#	my $sum_keys_sig = 0;
-#	foreach my $key (keys %cytoscape_sig) {
-#		foreach my $key2 (keys %{$cytoscape_sig{$key}}) {
-#			$sum_keys_sig += $cytoscape_sig{$key}{$key2};
-#		}
-#	}
-#	foreach my $key (keys %cytoscape_sig) {
-#		foreach my $key2 (keys %{$cytoscape_sig{$key}}) {
-#		#	print NET $key . " " . (int(($cytoscape_sig{$key}{$key2}/$sum_keys_sig) * 100) + 1). " " . $key2 . "\n";
-#			print NET $key . " " . $cytoscape_sig{$key}{$key2} . " " . $key2 . "\n";
-#		}
-#	}
-#	close NET;
-#	open NET, ">network_unsignificant.sif";
-#	my $sum_keys_unsig = 0;
-#	foreach my $key (keys %cytoscape_unsig) {
-#		foreach my $key2 (keys %{$cytoscape_unsig{$key}}) {
-#			$sum_keys_unsig += $cytoscape_unsig{$key}{$key2};
-#		}
-#	}
-#	foreach my $key (keys %cytoscape_unsig) {
-#		foreach my $key2 (keys %{$cytoscape_unsig{$key}}) {
-#		#	print NET $key . " " . (int(($cytoscape_unsig{$key}{$key2}/$sum_keys_unsig) * 100) + 1). " " . $key2 . "\n";	
-#			print NET $key . " " . $cytoscape_unsig{$key}{$key2} . " " . $key2 . "\n";	
-#		}
-#	}
-#	close NET;
-#	&network_analysis(\%fc, $fc_significant, \@strains, \%index_motifs);
-	if($ab_mut == 1) {
-		$remove{$last_line} = 1;
-	}
-	return (\%remove, \%matrix_pos_muts);
+	return \%block;
 }
 
 sub create_cytoscape_file{
@@ -224,143 +143,205 @@ sub save_all_motifs{
 	}
 }
 
-sub print_results {
-        my $curr_chr = $_[0];
-        my $curr_pos = $_[1];
-	my $block_ref = $_[2];
+sub merge_block {
+	my $block_ref = $_[0];
 	my %block = %$block_ref;
-	my @fileHandlesMotif = @{$_[3]};
-	my $last_line = $_[4];
-	my %tag_counts = %{$_[5]};
-	my @strains = @{$_[6]};
-	my %index_motifs = %{$_[7]};
-	my %fc = %{$_[8]};
-	my $fc_exists = 0;
-	my $ab = $_[9];
-	my $fc_significant = $_[10];
-	my $mut_pos = $_[11];
-	my $overlap = $_[12];
+	my @strains = @{$_[2]};
+	my $overlap = $_[1];
 	my $ab_mut = 0;
 	my $num_of_bp = 0;
+        #Now run through all motifs and see if they are in all the other strains
+        my %ignore = ();
+	foreach my $chr_pos (keys %block) {
+		foreach my $motif (keys %{$block{$chr_pos}}) {
+			%existance = ();
+			%diff = ();
+			foreach my $motif_pos (keys %{$block{$chr_pos}{$motif}}) {
+				if($overlap eq "half") {
+					$num_of_bp = int($block{$chr_pos}{$motif}{$motif_pos}{'length'}/2)
+				} elsif($overlap eq "complete") {
+					$num_of_bp = 0;
+				} else {
+					$num_of_bp = ($overlap*1);
+				}
+				if(exists $ignore{$motif_pos}) {
+					delete $block{$chr_pos}{$motif}{$motif_pos};
+					next;
+				}
+				$save_pos = $motif_pos;
+				$motif_score = 0;
+				for(my $i = 0; $i < @strains; $i++) {
+					if(!exists $diff{$strains[$i]}) {
+						$diff{$strains[$i]} = 0;
+					}
+					if(!exists $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}) {
+						#Check in vicinity (+/- motif_lenght-1) - if there is a motif within motif/2 -> save the current motif under this position, to not count them as separate motifs
+						$existance{$strains[$i]} = 1;
+						for(my $run_motif = $motif_pos - $num_of_bp; $run_motif < $motif_pos + $num_of_bp; $run_motif++) {
+							if(exists $block{$chr_pos}{$motif}{$run_motif} && exists $block{$chr_pos}{$motif}{$run_motif}{$strains[$i]} && $run_motif != $motif_pos) {
+								$block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} = $block{$chr_pos}{$motif}{$run_motif}{$strains[$i]};
+								$diff{$strains[$i]} += $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]};
+								delete $existance{$strains[$i]};
+								delete $block{$chr_pos}{$motif}{$run_motif}{$strains[$i]};
+								$ignore{$run_motif} = 1;
+								if(exists $block{$chr_pos}{$motif}{$run_motif}{'length'}) {
+									delete $block{$chr_pos}{$motif}{$run_motif}{'length'};
+								}
+							}
+						}
+					}
+					if($block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} eq "" || !exists $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}) {
+						$block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} = &calculate_motif_score($motif, substr($seq{$chr_pos . "_" . $strains[$i]}, $motif_pos, $block{$chr_pos}{$motif}{$motif_pos}{'length'}));
+						$diff{$strains[$i]} += $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]};
+					} else {
+						$diff{$strains[$i]} += $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]};
+					}
+				}
+			}
+		}
+	}
+	return \%block;
+}
+
+sub output_motifs{
+	my $block_ref = $_[0];
+	my %block = %$block_ref;
+	my @fileHandlesMotif = @{$_[1]};
+	my %tag_counts = %{$_[2]};
+	my @strains = @{$_[3]};
+	my %index_motifs = %{$_[4]};
+	my $fc_significant = $_[5];
+	my $overlap = $_[6];
+	my %fc = %{$_[7]};
+	my $fc_exists = 0;
 	if((keys %fc) > 1) {
 		$fc_exists = 1;
 	}
+	my $curr_chr;
+	my $curr_pos;
+	my $ab;
+	my $ab_mut;
+	my %diff;
+	my %existance;
         #Now run through all motifs and see if they are in all the other strains
-        my %ignore = ();
-        foreach my $motif (keys %block) {
-                %existance = ();
-                %diff = ();
-                foreach my $motif_pos (keys %{$block{$motif}}) {
-			if($overlap eq "half") {
-				$num_of_bp = int($block{$motif}{$motif_pos}{'length'}/2)
-			} elsif($overlap eq "complete") {
-				$num_of_bp = 0;
-			} else {
-				$num_of_bp = ($overlap*1);
+	foreach my $chr_pos (keys %block) {
+		@split = split("_", $chr_pos);
+		$curr_chr = substr($split[0], 3);
+		$curr_pos = $split[1];
+		foreach my $motif (keys %{$block{$chr_pos}}) {
+			%diff = 0;
+			%existance = ();
+			$fileHandlesMotif[$index_motifs{$motif}]->print($motif . "\t" . $chr_pos . "\t");
+			$fileHandlesMotif[$index_motifs{$motif}]->print($tag_counts{$curr_chr}{$curr_pos});
+			foreach my $motif_pos (keys %{$block{$chr_pos}{$motif}}) {
+				for(my $i = 0; $i < @strains; $i++) {
+					if(!exists $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} || $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} == 0) {
+						$existance{$strains[$i]} = 1;
+					}
+					$diff{$strains[$i]} = $diff{$strains[$i]} + $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]};
+				}
 			}
-		#	print "overlap: " . $overlap . "\n";
-		#	print "num of bp: " . $num_of_bp . "\n";
-                        if(exists $ignore{$motif_pos}) {
-                                delete $block{$motif}{$motif_pos};
-                                next;
-                        }
-                        $save_pos = $motif_pos;
-                        $motif_score = 0;
-                        for(my $i = 0; $i < @strains; $i++) {
-                                if(!exists $diff{$strains[$i]}) {
-                                        $diff{$strains[$i]} = 0;
-                                }
-                                if(!exists $block{$motif}{$motif_pos}{$strains[$i]}) {
-                                        #Check in vicinity (+/- motif_lenght-1) - if there is a motif within motif/2 -> save the current motif under this position, to not count them as separate motifs
-                                        $existance{$strains[$i]} = 1;
-					for(my $run_motif = $motif_pos - $num_of_bp; $run_motif < $motif_pos + $num_of_bp; $run_motif++) {
-                                                if(exists $block{$motif}{$run_motif} && exists $block{$motif}{$run_motif}{$strains[$i]} && $run_motif != $motif_pos) {
-				#			print "overlap found!\n";
-                                                        $block{$motif}{$motif_pos}{$strains[$i]} = $block{$motif}{$run_motif}{$strains[$i]};
-							$diff{$strains[$i]} += $block{$motif}{$motif_pos}{$strains[$i]};
-                                                        delete $existance{$strains[$i]};
-                                                        delete $block{$motif}{$run_motif}{$strains[$i]};
-                                                        $ignore{$run_motif} = 1;
-                                                        if(exists $block{$motif}{$run_motif}{'length'}) {
-                                                                delete $block{$motif}{$run_motif}{'length'};
-                                                        }
-                                                }
-                                        }
-                                }
-				if($block{$motif}{$motif_pos}{$strains[$i]} eq "" || !exists $block{$motif}{$motif_pos}{$strains[$i]}) {
-					$block{$motif}{$motif_pos}{$strains[$i]} = &calculate_motif_score($motif, substr($seq{$last_line . "_" . $strains[$i]}, $motif_pos, $block{$motif}{$motif_pos}{'length'}));
-					$diff{$strains[$i]} += $block{$motif}{$motif_pos}{$strains[$i]};
+			if($fc_exists == 1) {
+				$fileHandlesMotif[$index_motifs{$motif}]->print($fc{$curr_chr}{$curr_pos});
+			}
+			for(my $i = 0; $i < @strains; $i++) {
+				$fileHandlesMotif[$index_motifs{$motif}]->print($diff{$strains[$i]} . "\t");
+			}
+			for(my $i = 0; $i < @strains; $i++) {
+				if(exists $existance{$strains[$i]}) {
+					$fileHandlesMotif[$index_motifs{$motif}]->print("1\t");
+					if($motif eq $ab) {
+						$ab_mut = 1;
+					}
 				} else {
-					$diff{$strains[$i]} += $block{$motif}{$motif_pos}{$strains[$i]};
+					$fileHandlesMotif[$index_motifs{$motif}]->print("0\t");
 				}
 			}
-                }
-                $fileHandlesMotif[$index_motifs{$motif}]->print($motif . "\t" . $last_line . "\t");
-                $fileHandlesMotif[$index_motifs{$motif}]->print($tag_counts{$curr_chr}{$curr_pos});
-		if($fc_exists == 1) {
-                	$fileHandlesMotif[$index_motifs{$motif}]->print($fc{$curr_chr}{$curr_pos});
+			$fileHandlesMotif[$index_motifs{$motif}]->print("" . (keys %{$block{$chr_pos}{$motif}}) . "\n");
+	#		if($mut_pos == 1 && $fc_exists == 1) {
+	#			&analyze_motif_pos(\%block, $last_line, $fc{$curr_chr}{$curr_pos}, \@strains, $fc_significant);
+	#		}
 		}
-                for(my $i = 0; $i < @strains; $i++) {
-                        $fileHandlesMotif[$index_motifs{$motif}]->print($diff{$strains[$i]} . "\t");
-                }
-                for(my $i = 0; $i < @strains; $i++) {
-                        if(exists $existance{$strains[$i]}) {
-                                $fileHandlesMotif[$index_motifs{$motif}]->print("1\t");
-				if($motif eq $ab) {
-					$ab_mut = 1;
+	}
+}
+
+
+sub distance_plot{
+	my %block = %{$_[0]};
+	my @strains = @{$_[1]};
+	my %fc = %{$_[2]};
+	my $fc_significant = $_[3];
+	my $effect = $_[4];
+	my $longest_seq = $_[5];
+	my %seq = %{$_[6]};
+	my %dist_plot;
+	my $offset;
+	foreach my $last_line (keys %block) {
+		@split = split("_", $last_line);
+		if($effect == 1 && ($fc{substr($split[0], 3)}{$split[1]} < log($fc_significant)/log(2) && $fc{substr($split[0], 3)}{$split[1]} > log(1/$fc_significant)/log(2))) {
+			next;
+		} 
+#		print $seq{$last_line . "_" . $strains[0]} . "\n";
+		$offset = int(($longest_seq - length($seq{$last_line . "_" . $strains[0]}))/2);
+#		print $longest_seq . "\t" . length($seq{$last_line . "_" . $strains[0]}) . "\n";
+#		print "difference we need to offset: " . $offset . "\n";
+		foreach my $motif (keys %{$block{$last_line}}) {
+			foreach my $pos (keys %{$block{$last_line}{$motif}}) {
+				for(my $i = 0; $i < @strains; $i++) {
+					if(!exists $block{$last_line}{$motif}{$pos}{$strains[$i]}) {
+						next;
+					}
+					for(my $l = 0; $l < $block{$last_line}{$motif}{$pos}{'length'}; $l++) {
+						$dist_plot{$motif}{$strains[$i]}{($pos + $l + $offset - int($longest_seq/2))}++;
+					}
 				}
-                        } else {
-                                $fileHandlesMotif[$index_motifs{$motif}]->print("0\t");
-                        }
-                }
-                $fileHandlesMotif[$index_motifs{$motif}]->print("" . (keys %{$block{$motif}}) . "\n");
-		if($mut_pos == 1 && $fc_exists == 1) {
-			&analyze_motif_pos(\%block, $last_line, $fc{$curr_chr}{$curr_pos}, \@strains, $fc_significant);
+			}	
 		}
-        }
-        %block = ();
-	return $ab_mut;
+	}
+	return \%dist_plot;
 }
 
 sub analyze_motif_pos{
 	my %block = %{$_[0]};
-	my $last_line = $_[1];
-	my $fc = $_[2];
-	my @strains = @{$_[3]};
-	my $fc_significant = $_[4];
-	my @fc_split = split('\t', $fc);
+	my %fc = %{$_[1]};
+	my @strains = @{$_[2]};
+	my $fc_significant = $_[3];
+	my @fc_split;
 	my @char_one;
 	my @char_two;
 	my $num_of_muts = 0;
-	foreach my $motif (keys %block) {
-		foreach my $motif_pos (keys %{$block{$motif}}) {
-			for(my $i = 0; $i < @strains - 1; $i++) {
-				for(my $j = $i + 1; $j < @strains; $j++) {
-					if($block{$motif}{$motif_pos}{$strains[$i]} != $block{$motif}{$motif_pos}{$strains[$j]}) {
-						@char_one = split("", substr($seq{$last_line . "_" . $strains[$i]}, $motif_pos, $block{$motif}{$motif_pos}{'length'}));
-						@char_two = split("", substr($seq{$last_line . "_" . $strains[$j]}, $motif_pos, $block{$motif}{$motif_pos}{'length'}));
-						#Count number of differences - if more than 2 dismiss this comparison because motifs are not the same
-						$num_of_muts = 0;
-						for(my $c = 0; $c < @char_one; $c++) {
-							if($char_one[$c] ne $char_two[$c]) {
-								$num_of_muts++;
+	foreach my $last_line (keys %block) {
+		@fc_split = split('\t', $fc{$last_line});
+		foreach my $motif (keys %{$block{$last_line}}) {
+			foreach my $motif_pos (keys %{$block{$last_line}{$motif}}) {
+				for(my $i = 0; $i < @strains - 1; $i++) {
+					for(my $j = $i + 1; $j < @strains; $j++) {
+						if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} != $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
+							@char_one = split("", substr($seq{$last_line . "_" . $strains[$i]}, $motif_pos, $block{$last_line}{$motif}{$motif_pos}{'length'}));
+							@char_two = split("", substr($seq{$last_line . "_" . $strains[$j]}, $motif_pos, $block{$last_line}{$motif}{$motif_pos}{'length'}));
+							#Count number of differences - if more than 2 dismiss this comparison because motifs are not the same
+							$num_of_muts = 0;
+							for(my $c = 0; $c < @char_one; $c++) {
+								if($char_one[$c] ne $char_two[$c]) {
+									$num_of_muts++;
+								}
 							}
-						}
-						if($num_of_muts > 2) { next; }
-						for(my $c = 0; $c < @char_one; $c++) {
-							if($char_one[$c] ne $char_two[$c]) {
-								if($fc_split[$i + $j - 1] > log($fc_significant)/log(2) || $fc_split[$i + $j - 1] < log(1/$fc_significant)/log(2)) {
-									#S meaning significant
-									if($block{$motif}{$motif_pos}{$strains[$i]} > $block{$motif}{$motif_pos}{$strains[$j]}) {
-										$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'S'}++;
+							if($num_of_muts > 2) { next; }
+							for(my $c = 0; $c < @char_one; $c++) {
+								if($char_one[$c] ne $char_two[$c]) {
+									if($fc_split[$i + $j - 1] > log($fc_significant)/log(2) || $fc_split[$i + $j - 1] < log(1/$fc_significant)/log(2)) {
+										#S meaning significant
+										if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$motif}{$motif_pos}{$strains[$j]}) {
+											$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'S'}++;
+										} else {
+											$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'S'}++;
+										}
 									} else {
-										$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'S'}++;
-									}
-								} else {
-									if($block{$motif}{$motif_pos}{$strains[$i]} > $block{$motif}{$motif_pos}{$strains[$j]}) {
-										$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'N'}++;
-									} else {
-										$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'N'}++;
+										if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$motif}{$motif_pos}{$strains[$j]}) {
+											$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'N'}++;
+										} else {
+											$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'N'}++;
+										}
 									}
 								}
 							}
@@ -370,6 +351,7 @@ sub analyze_motif_pos{
 			}
 		}
 	}
+	return \%matrix_pos_muts;
 }
 sub log_fc {
 	my $local_delta = $_[0];
@@ -450,16 +432,30 @@ sub get_motif_name{
 	return $name;
 }
 
+sub open_filehandles{
+	my %motifs = %{$_[0]};
+	my %del = %{$_[1]};
+	my $output_mut = $_[2];
+	my @fileHandlesMotif;
+	my $index = 0;
+	foreach my $motif (keys %motifs) {
+		my $filename = $output_mut . "_" . $motif . ".txt";
+		$del{$filename} = 1;
+		open my $fh, ">", $filename or die "Can't open $filename: $!\n";
+		$fileHandlesMotif[$motifs{$motif}] = $fh;
+	}
+	return (\@fileHandlesMotif, \%del);
+}
+
 sub read_motifs{
 	open FH, "<$_[0]";
-	my $output_mut = $_[1];
-	my %del = %{$_[2]};
 	my $pos = 0;
 	my $motif = "";
 	my $index = 0;
 	my $name;
 	my %index_motifs;
-	my @fileHandlesMotif;
+#	my @fileHandlesMotif;
+	my %score;
 	foreach my $line (<FH>) {
 		chomp $line;
 		if(substr($line, 0, 1) eq ">") {
@@ -467,12 +463,16 @@ sub read_motifs{
 			$pos = 0;
 			#Open file per motif
 			$name = &get_motif_name($motif);
-			my $filename = $output_mut . "_" . $name . ".txt";
-			$del{$filename} = 1;
-			open my $fh, ">", $filename or die "Can't open $filename: $!\n";
-			$index_motifs{$name} = $index;
-			$fileHandlesMotif[$index] = $fh;
-			$index++;
+#			my $filename = $output_mut . "_" . $name . ".txt";
+	#		$del{$filename} = 1;
+#			open my $fh, ">", $filename or die "Can't open $filename: $!\n";
+			if(!exists $index_motifs{$name}) {
+				$index_motifs{$name} = $index;
+	#			$fileHandlesMotif[$index] = $fh;
+				$index++;
+				@split = split('\t', $line);
+				$score{$name} = $split[2];
+			}
 		} else {
 			@split = split('\t', $line);
 			if($split[0] == 0) { $split[0] += 0.001; }
@@ -488,14 +488,15 @@ sub read_motifs{
 			$pos++;
 		}
 	}
-	return (\%index_motifs, \%PWM, \@fileHandlesMotif, \%del);
+#	return (\%index_motifs, \%PWM, \@fileHandlesMotif, \%del, \%score);
+	return (\%index_motifs, \%PWM, \%score);
 }
 
 sub scan_motif_with_homer{
 	my $seq_file = $_[0];
 	my $out_file = $_[1];
 	my $tf = $_[2];
-	my $command = "homer2 find -i " . $seq_file . " -m " . $tf . " > " . $out_file;
+	my $command = "homer2 find -i " . $seq_file . " -m " . $tf . " -offset 0 > " . $out_file;
 	print STDERR $command . "\n";
 	`$command`;	
 }
@@ -508,6 +509,7 @@ sub get_seq_for_peaks {
 	my $allele = $_[4];
 	my $line_number = $_[5];
 	my $mut_only = $_[6];
+	my $region = $_[7];
 	my $general_offset = 0;
 	my $seq_number = 0;
 	my $seq = "";
@@ -524,6 +526,7 @@ sub get_seq_for_peaks {
 	my %current_pos;
 	my $equal = 0;
 	my $ref_seq = "";
+	my $longest_seq;
 	my $h;
 	foreach my $p (keys %peaks) {
 		#Start with offset for first line
@@ -592,7 +595,6 @@ sub get_seq_for_peaks {
 					}				
 				}
 				my $header = "chr" . $p . "_" . $start . "_" . $peaks{$p}{$start} . "_" . $strains[$i];
-			#	print OUT ">chr" . $p . "_" . $start . "_" . $peaks{$p}{$start} . "_" . $strains[$i] . "\n";
 				$length = $strain_spec_stop - $strain_spec_start;
 				$newlines = int($strain_spec_stop/50) - int($strain_spec_start/50);
 				$length = $length + $newlines;
@@ -601,6 +603,9 @@ sub get_seq_for_peaks {
 				seek($fileHandles[$i], $byte_offset, 0);
 				read $fileHandles[$i], $seq, $length;
 				$seq =~ s/\n//g;
+				if(length($seq) > $longest_seq) {
+					$longest_seq = length($seq);
+				}
 				$current_pos{$strains[$i]} = uc($seq);
 			#	print OUT uc($seq) . "\n";
 				$seq{$header} = uc($seq);
@@ -676,7 +681,7 @@ sub get_seq_for_peaks {
 		print OUT $seq{$key}  . "\n";
 	}
 	close OUT;
-	return(\%seq, \%save_local_shift);
+	return(\%seq, \%save_local_shift, $longest_seq);
 }
 
 sub create_offset{
