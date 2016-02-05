@@ -63,17 +63,26 @@ sub analyze_motifs{
 	my %block = ();
         foreach my $line (<FH>) {
                 chomp $line;
+#		print $line . "\n";
                 @split = split('\t', $line);
 		$split[3] = &get_motif_name($split[3]);
                 @header = split('_', $split[0]);
 		$last_line = $header[0] . "_" . $header[1] . "_" . $header[2];
 		$motif_start = $split[1];
+#		print "motif start: " . $motif_start . "\n";
+		if($split[4] eq "-") {
+			$motif_start = $motif_start - length($split[2]);
+		}
+#		print "after negative: " . $motif_start . "\n";
 		my @b = split("_", $split[0]);
 		my $header_tmp = $b[0] . "_" . $b[1] . "_" . $b[2];
+#		print "local shift: " . $save_local_shift{$split[0]}{$motif_start}. "\n";
 		$block{$header_tmp}{$split[3]}{$motif_start + $save_local_shift{$split[0]}{$motif_start}}{$header[-1]} = $split[-1];
+#		print "save: " . ($motif_start + $save_local_shift{$split[0]}{$motif_start}) . "\n";
 		$block{$header_tmp}{$split[3]}{$motif_start + $save_local_shift{$split[0]}{$motif_start}}{'length'} = length($split[2]);
-		$block{$header_tmp}{$split[3]}{$motif_start + $save_local_shift{$split[0]}{$motif_start}}{'orientation'} = $split[4];
         }
+#	print Dumper %block;
+#	print "\n\n";
 	return \%block;
 }
 
@@ -148,6 +157,8 @@ sub merge_block {
 	my %block = %$block_ref;
 	my @strains = @{$_[2]};
 	my $overlap = $_[1];
+	my $seq_ref = $_[3];
+	my %seq = %$seq_ref;
 	my $ab_mut = 0;
 	my $num_of_bp = 0;
         #Now run through all motifs and see if they are in all the other strains
@@ -495,6 +506,7 @@ sub read_motifs{
 sub scan_motif_with_homer{
 	my $seq_file = $_[0];
 	my $out_file = $_[1];
+	print STDERR "out file: " . $out_file . "\n";
 	my $tf = $_[2];
 	my $command = "homer2 find -i " . $seq_file . " -m " . $tf . " -offset 0 > " . $out_file;
 	print STDERR $command . "\n";

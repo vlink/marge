@@ -179,10 +179,24 @@ close FH;
 
 print STDERR "" . $filter_out . " peaks filtered because of low tag counts\n\n";
 
+
 if($load ne "") {
+	my $loaded_files = 0;
 	print STDERR "Loading sequences\n";
-	my @center_number = `ls $load.seq*`;
-	if(@center_number > 1) {
+	my $load_name = $load . "_region_" . $region . ".seq";
+	my @center_number = `ls $load_name*`;
+	if(@center_number == 0) {
+		print STDERR "Could not find any files to load\n";
+		print STDERR "Gathering sequences from files in 10 seconds... Press Ctrl + C to abort\n";
+		for(my $i = 0; $i < 10; $i++) {
+			print STDERR ".";
+			sleep(1);
+		}	
+		print STDERR "\n";
+		$save = $load;
+		print STDERR "Saving output in $save\n";
+		&get_files_from_seq();
+	} elsif(@center_number > 1) {
 		print STDERR "Sequences were already centered!\n";
 		$center = 0;
 		my($hash_ref, $l_seq) = &load_files($load . ".seq_with_motif");
@@ -194,25 +208,30 @@ if($load ne "") {
 		my($hash_ref, $l_seq) = &load_files($load . ".seq_far_motif");
 		%seq_far_motif = %$hash_ref;
 		$longest_seq = $l_seq;
+		$loaded_files = 1;
 	} else {
 		my($hash_ref, $l_seq) = &load_files($load . ".seq");
 		%seq = %$hash_ref;
 		$longest_seq = $l_seq;
+		$loaded_files = 1;
 	}
-	$analyze_motif = 1;
-	$tmp_out = $load . ".seq_with_motif";
-	$tmp_out_no_motif = $load . ".seq_no_motif";
-	$tmp_out_far_motif = $load . ".seq_far_motif";
-	print STDERR "Loading local shifting vectors\n";
-	%save_local_shift = %{retrieve($load . ".shift_vector")};
+	if($loaded_files == 1) {
+		$analyze_motif = 1;
+		$tmp_out = $load . ".seq_with_motif";
+		$tmp_out_no_motif = $load . ".seq_no_motif";
+		$tmp_out_far_motif = $load . ".seq_far_motif";
+		print STDERR "Loading local shifting vectors\n";
+		%save_local_shift = %{retrieve($load . ".shift_vector")};
+	}
 } else {
-	$tmp_out = "tmp" . rand(15);
-	$delete{$tmp_out} = 1;
-	print STDERR "Extracting sequences from strain genomes\n";
-	my ($seq_ref, $save_local_shift_ref, $l_seq) = analysis::get_seq_for_peaks($tmp_out, \%peaks, \@strains, $data, $allele, $line_number, $mut_only, $region);
-	$longest_seq = $l_seq;
-	%seq = %$seq_ref;
-	%save_local_shift = %$save_local_shift_ref;
+	&get_files_from_seq();
+#	$tmp_out = "tmp" . rand(15);
+#	$delete{$tmp_out} = 1;
+#	print STDERR "Extracting sequences from strain genomes\n";
+#	my ($seq_ref, $save_local_shift_ref, $l_seq) = analysis::get_seq_for_peaks($tmp_out, \%peaks, \@strains, $data, $allele, $line_number, $mut_only, $region);
+#	$longest_seq = $l_seq;
+#	%seq = %$seq_ref;
+#	%save_local_shift = %$save_local_shift_ref;
 }
 
 
@@ -222,9 +241,12 @@ if($center == 1) {
 	$longest_seq = $longest_seq - 100;
 	&center_peaks();
 	if($save ne "") {
-		$tmp_out = $save . ".seq_with_motif";
-		$tmp_out_no_motif = $save . ".seq_no_motif";
-		$tmp_out_far_motif = $save . ".seq_far_motif";
+		$tmp_out = $save . "_region_" . $region . ".seq_with_motif";
+		$tmp_out_no_motif = $save . "_region_" . $region . ".seq_no_motif";
+		$tmp_out_far_motif = $save . "_region_" . $region . ".seq_far_motif";
+		$delete{$tmp_out} = 1;
+		$delete{$tmp_out_no_motif} = 1;
+		$delete{$tmp_out_far_motif} = 1;
 	} else {
 		$tmp_out_no_motif = $tmp_out . "_no_motif";
 		$tmp_out_far_motif = $tmp_out . "_far_motif";
@@ -239,9 +261,10 @@ if($center == 1) {
 if($save ne "") {
 	print STDERR "Saving sequence and shifting files!\n";
 	if($center == 0) {
-		&write_seqs($save . ".seq", \%seq, \@strains);
+		&write_seqs($save . "_region_ " . $region . ".seq", \%seq, \@strains);
 	}
-	store \%save_local_shift, "$save.shift_vector"; 
+	my $out = $save . "_region_" . $region . ".shift_vector";
+	store \%save_local_shift, "$out"; 
 }
 
 my $tmp_out_main_motif = "tmp" . rand(15);
@@ -254,17 +277,17 @@ if($plots eq "") {
 $output = "output_motif";
 if($analyze_motif == 1) {
 	print STDERR "Run analysis for all sequences with " . $ab . " motif\n";
-	&screen_and_plot($output . "_with_motif", $plots . "_with_motif", $tmp_out);
+	&screen_and_plot($output . "_with_motif", $plots . "_with_motif", $tmp_out, $tmp_out_main_motif . "_with_motif");
 }
 
 if($analyze_no_motif == 1) {
 	print STDERR "Run analysis for all sequences without " . $ab . " motif\n";
-	&screen_and_plot($output . "_without_motif", $plots. "_without_motif", $tmp_out_no_motif, 1);
+	&screen_and_plot($output . "_without_motif", $plots. "_without_motif", $tmp_out_no_motif, $tmp_out_main_motif . "_no_motif", 1);
 }
 
 if($analyze_far_motif == 1) {
 	print STDERR "Run analysis for all sequences with " . $ab . " motif that is not in the peak center\n";
-	&screen_and_plot($output . "_with_far_motif", $plots . "_with_far_motif", $tmp_out_far_motif);
+	&screen_and_plot($output . "_with_far_motif", $plots . "_with_far_motif", $tmp_out_far_motif, $tmp_out_main_motif . "_far_motif");
 }
 
 #Now lets split up the analysis
@@ -276,12 +299,23 @@ if($keep == 0) {
 	}
 }
 
+sub get_files_from_seq{
+        $tmp_out = "tmp" . rand(15);
+        $delete{$tmp_out} = 1;
+        print STDERR "Extracting sequences from strain genomes\n";
+        my ($seq_ref, $save_local_shift_ref, $l_seq) = analysis::get_seq_for_peaks($tmp_out, \%peaks, \@strains, $data, $allele, $line_number, $mut_only, $region);
+        $longest_seq = $l_seq;
+        %seq = %$seq_ref;
+        %save_local_shift = %$save_local_shift_ref;
+}
+
 sub screen_and_plot{
 	my $output = $_[0];
 	my $plots = $_[1];
 	my $tmp_out = $_[2];
+	my $tmp_out_main_motif = $_[3];
 	my $no_motif = 0;
-	if(@_ > 3) {
+	if(@_ > 4) {
 		$no_motif = 1;
 	}
 	my ($fileHandlesMotif_ref, $delete_ref) = analysis::open_filehandles(\%index_motifs, \%delete, $output);
@@ -291,7 +325,7 @@ sub screen_and_plot{
 	analysis::write_header(\@fileHandlesMotif, \@strains, 0);
 	my ($block_ref) = analysis::analyze_motifs($tmp_out_main_motif, \%save_local_shift, \@strains);
 	my %block = %$block_ref;
-	$block_ref = analysis::merge_block(\%block, $overlap, \@strains);
+	$block_ref = analysis::merge_block(\%block, $overlap, \@strains, \%seq);
 	%block = %$block_ref;
 	analysis::output_motifs(\%block, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, $fc_significant, $overlap, \%fc);
 	for(my $i = 0; $i < @fileHandlesMotif; $i++) {
@@ -407,8 +441,9 @@ sub generate_dist_plot{
 	foreach my $motif (keys %dist_plot) {
 		if($motif eq $ab) { next; }
 		$motif_print = $motif;
-		$motif_print =~ s/-//g;
+		$motif_print =~ s/\-//g;
 		$motif_print =~ s/://g;
+		$motif_print =~ s/\+//g;
 		$max = 0;
 		$first = 0;
 		foreach my $strain (keys %{$dist_plot{$motif}}) {
@@ -818,7 +853,7 @@ sub center_peaks{
 	open FH, "<output_tmp.txt";
 	my ($block_ref) = analysis::analyze_motifs("output_tmp.txt", \%save_local_shift, \@strains);
 	%block = %$block_ref;
-	my ($block_ref) = analysis::merge_block(\%block, $overlap, \@strains);
+	my ($block_ref) = analysis::merge_block(\%block, $overlap, \@strains, \%seq);
 	%block = %$block_ref;
 	my $peak_center;
 	my $dist_to_center;
@@ -849,7 +884,7 @@ sub center_peaks{
 					delete $save_local_shift{$tmp_header . "_" . $strains[$i]}{$j};
 				}
 				for(my $j = length($seq{$tmp_header . "_" . $strains[$i]}) - 50; $j < length($seq{$tmp_header . "_" . $strains[$i]}); $j++) {
-					delete $save_local_shift{$tmp_header . "_" . $strains[$i]}{$j};	
+					delete $save_local_shift{$tmp_header . "_" . $strains[$i]}{$j};
 				}
 				for(my $j = 50; $j < length($seq{$tmp_header . "_" . $strains[$i]}) - 50; $j++) {
 					$save_local_shift{$tmp_header . "_" . $strains[$i]}{$j - 50} = $save_local_shift{$tmp_header . "_" . $strains[$i]}{$j};
@@ -865,10 +900,7 @@ sub center_peaks{
 			next;
 		}
 		for(my $i = 0; $i < @strains; $i++) {
-			$start = 50 - $dist_to_center + ($block{$tmp_header}{$ab}{$closest_motif}{'length'}/2);
-			if($block{$tmp_header}{$ab}{$closest_motif}{'orientation'} eq "-") {
-				$start = $start - $block{$tmp_header}{$ab}{$closest_motif}{'length'} + 1;
-			}
+			$start = int(50 - $dist_to_center + ($block{$tmp_header}{$ab}{$closest_motif}{'length'}/2));
 			$length = length($seq{$tmp_header . "_" . $strains[$i]}) - 100;
 			for(my $j = 0; $j < $start; $j++) {
 				delete $save_local_shift{$tmp_header . "_" . $strains[$i]}{$j};
@@ -882,6 +914,7 @@ sub center_peaks{
 			}
 			$seq{$tmp_header . "_" . $strains[$i]} = substr($seq{$tmp_header . "_" . $strains[$i]}, $start, $length); 
 		}
+
 	}
 
 }
@@ -892,6 +925,7 @@ sub load_files{
 	my $load_id;
 	open FH, "<$file";
 	foreach my $line (<FH>) {
+		chomp $line;
 		if(substr($line, 0, 1) eq ">") {
 			$load_id = substr($line, 1);
 		} else {
