@@ -1,22 +1,27 @@
 #!/usr/bin/perl -w
 use strict;
 use Getopt::Long;
-require '../general/config.pm';
-require '../general/system_interaction.pm';
+use Storable;
+BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
+use config;
+BEGIN {push @INC, '/home/vlink/mouse_strains/marge/analysis'};
+use system_interaction;
+
 use threads;
 use Data::Dumper;
 
-$_ = "" for my($genome, $ref_genome, $annotation, $genes, $name, $current_line, $last_line, $snp, $indel, @chr, $current_chr);
-$_ = 0 for my($filter, $same, $core_user, $multithreading, $resume, $help, $check_muts, $check_ref, $check_annotation, $check_genes, $change, $homo, $chr_name_length, $length_mut, $length_ref, $force, $lines_f1, $lines_f2, $lines_all, $line_count);
-my($num, $lines, @merge_line, @end, %hash, $dbh, $sth, $header, %check_offset, @split, $snps, $indels, @s, @ref, $ref, @i, $table_name, $f1, $f2, $command, %check_strains, %strains_to_use, @mut_files, $total_chr, %seen, @header);
-my $data = config::read_config()->{'data_folder'};
-
+$_ = "" for my($snp, $indel, @chr, $current_chr, $data, $filename, $out);
+$_ = 0 for my($filter, $same, $help, $homo, $length_mut, $length_ref, $force, $lines_f1, $lines_f2, $lines_all, $line_count, $num_strains, $header_exists, $outfile_open, $last_h);
+$_ = () for my($lines, @merge_line, $header, @split, $snps, $indels, $f1, $f2, %strains_to_use, @mut_files, @header, %last_shift_pos_ref, %last_shift_pos_strain, @strains_to_use, @s, @i, $check_snp, $check_indel, $s_c, $i_c, @fileHandlesMutation, @fileHandlesMutation2, @fileHandlesShift, @fileHandlesShift2, @ref_pos, @strain_pos, @ref_pos2, @strain_pos, @pos_ref, @pos_strain);
+#Config with default data folder
 
 sub printCMD{
 	print STDERR "Usage:\n";
 	print STDERR "\n\nInput files:\n";
-	print STDERR "\t-files <file>: Files with mutations - comma spearated list (max 2 - one file for snps, one file for indels)\n";
-	print STDERR "\t-homo - Assumes phenotype is homozygouse - if there are two different variations reported just the first one is taken into acocunt\n";
+	print STDERR "\t-files <file>: Files with mutations - comma separated list (max 2 - one file for snps, one file for indels)\n";
+	print STDERR "\t-homo: Assumes phenotype is homozygouse - if there are two different variations reported just the first one is taken into acocunt\n";
+	print STDERR "\t-dir: output directory for genome folders - default: folder specified in config file\n"; 
+	print STDERR "\t-strains <list of strains>: comma separated list of strains to include - when empty every strain in vcf file is considered\n";
 	print STDERR "\n\n";
 	print STDERR "Filter vcf file.\n";
 	print STDERR "\t-filter - Filters out all mutations that did not pass all filters\n"; 	
@@ -34,6 +39,8 @@ if(@ARGV < 1) {
 
 #TODO add resume then clean up code and then done
 GetOptions(	"files=s{,}" => \@mut_files,
+		"dir=s" => \$data,
+		"strains=s{,}" => \@strains_to_use,
 		"filter" => \$filter,
 		"same" => \$same,
 		"homo" => \$homo,
@@ -41,6 +48,16 @@ GetOptions(	"files=s{,}" => \@mut_files,
 		"force" => \$force,
 		"help" => \$help)
 or &printCMD(); 
+
+$num_strains = @strains_to_use;
+for(my $i = 0; $i < @strains_to_use; $i++) {
+	$strains_to_use[$i] =~ s/,//g;
+	$strains_to_use{uc($strains_to_use[$i])} = 1;
+}
+
+if($data eq "") {
+	$data = config::read_config()->{'data_folder'};
+}
 
 if(@mut_files == 0) {
 	print STDERR "No mutation files specified. Just adding genome to database!\n";
@@ -52,6 +69,7 @@ if($help == 1) {
 
 #define header
 if(@mut_files > 0) {
+	$mut_files[0] =~ s/,//g;
 	$header = `grep -m 1 \'#CHROM\' $mut_files[0]`;
 	chomp $header;
 	if($header eq "") {
@@ -91,10 +109,6 @@ if(@mut_files > 0) {
 	}
 	print STDERR "Merge files and mutations!\n";
 	$lines_all = (split('\s+', $lines_f1))[0] + (split('\s+', $lines_f2))[0];
-	my $check_snp;
-	my $check_indel;
-	my $s_c;
-	my $i_c;
 	print STDERR "Reading in file and caching!\n";
 
 	while($snps and $indels) {
@@ -130,64 +144,58 @@ if(@mut_files > 0) {
 		&merge($indels);
 		$indels = read_file_line($f2);
 	}
+	print STDERR "\n\n";
 }
-
-
-#print Dumper $lines;
-my $header_exists = 0;
-my $outfile_open = 0;
-my @fileHandlesMutation;
-my @fileHandlesMutation2;
-my @fileHandlesShift;
-my @fileHandlesShift2;
-my @ref_pos;
-my @strain_pos;
-my @ref_pos2;
-my @strain_pos2;
-my $filename;
 
 if($homo == 1) {
 	$a = 1;
 } else {
 	$a = 2;
 }
-print "\n";
-my @pos_ref;
-my @pos_strain;
+
 for(my $i = 0; $i < @header - 9; $i++) {
 	$pos_ref[$i] = 0;
 	$pos_strain[$i] = 0;
-	$chr[$i] = "";
+	$chr[$i] = 0;
 	$header[$i+9] = uc($header[$i+9]);
 }
-my $out;
-
 
 for(my $i = 0; $i < $a; $i++) {
 	for(my $h = 0; $h < @header - 9; $h++) {
+		if($num_strains > 0 && !exists $strains_to_use{$header[$h+9]}) {
+			next;
+		}
 		print STDERR "Processing " . uc($header[$h+9]) . "\n";
 		foreach my $l (@{$lines->[$i]->[$h]}) {
 			@split = split('\t', $l);
 			$out = $split[1] . "\t" . $split[2] . "\t" . $split[3];
-			if($chr[$h] eq "") {
+			if($chr[$h] == 0) {
 				&check_file_existance($header, $h);
 			}
 			if($chr[$h] ne $split[0]) {
 				$chr[$h] = $split[0];
+				print STDERR "\t\tchromosome " . $chr[$h] . "\n";
 				if($outfile_open == 1) {
-					&close_filehandles($h - 1);
+					&close_filehandles($last_h);
+					&create_offset_ref_to_strain($chr[$last_h], $a, $header[$last_h+9]);
+					&create_offset_strain_to_ref($chr[$last_h], $a, $header[$last_h+9]);
 				}
 				$pos_ref[$h] = $pos_strain[$h] = $split[1];
-				&open_filehandles($h);				
+				&open_filehandles($h);	
 			}
 			$fileHandlesMutation[0]->print($out . "\n");
-			if(length($split[2]) != length($split[3])) {
+			if($split[2] ne "" && $split[3] ne "" && length($split[2]) != length($split[3])) {
 				($pos_ref[$h], $pos_strain[$h]) = &shift_vector($split[2], $split[3], $fileHandlesShift[0], $pos_ref[$h], $pos_strain[$h], $split[1]);
 			}
 		}
+		$last_h = $h;
 	}
 }
-&close_filehandles();
+&close_filehandles($last_h-1);
+#print STDERR "\t\tchromosome " . $chr[@header-9-1] . "\n";
+&create_offset_ref_to_strain($chr[$last_h], $a, $header[$last_h+9]);
+&create_offset_strain_to_ref($chr[$last_h], $a, $header[$last_h+9]);
+&write_last_shift();
 
 print STDERR "Data is stored in $data\n";
 print STDERR "Processing data successfully finished!\n";
@@ -237,6 +245,72 @@ sub shift_vector{
         return ($pos_ref, $pos_strain);
 }
 
+sub create_offset_ref_to_strain {
+        my $chr = $_[0];
+        my $a = $_[1];
+        my $strain = $_[2];
+#	print STDERR "Create shifting vector from reference coordinates to strain coordinates for " . $strain . " on chromosome " . $chr . " for allele " . $a . "\n";
+        $filename = $data . "/" . $strain . "/chr" . $chr . "_allele_" . $a . ".shift";
+	my $out = $data . "/" . $strain . "/chr" . $chr . "_allele_" . $a . ".ref_to_strain.vector";
+	$_ = () for my(@array_mut, @array_shift, @tmp_split);
+        if(-e $filename) {
+                open FH, "<$filename";
+                my $run = 0;
+		my $last_shift = 0;
+                my @a;
+                foreach my $line (<FH>) {
+                        chomp $line;
+                        @tmp_split = split('\t', $line);
+			for(my $i = $run; $i < $tmp_split[0]; $i++) {
+				$array_shift[$i] = $last_shift;
+			}
+			$array_shift[$tmp_split[0]] = ($tmp_split[1] - $tmp_split[0]);
+			$run = $tmp_split[0];
+			$last_shift = ($tmp_split[1] - $tmp_split[0]);
+			$last_shift_pos_ref{$strain}{$chr}{$a} = $tmp_split[0];
+                }
+		#Store shift vector from reference to strain
+		store \@array_shift, "$out";
+        }
+}
+
+sub create_offset_strain_to_ref {
+	my $chr = $_[0];
+        my $a = $_[1];
+        my $strain = $_[2];
+        my $last_shift = 0;
+	my @tmp_split;
+	my @array_shift = ();
+	my $start = 0;
+#	print STDERR "Create shifting vector from strain coordinates to reference coordinates for " . $strain . " on chromosome " . $chr . " for allele " . $a . "\n";
+	$filename = $data . "/" . $strain . "/chr" . $chr . "_allele_" . $a . ".shift";
+	my $out = $data . "/" . $strain . "/chr" . $chr . "_allele_" . $a . ".strain_to_ref.vector";
+	if(-e $filename) {
+		open FH, "<$filename";
+		foreach my $line (<FH>) {
+			@tmp_split = split('\t', $line);
+			while($start < $tmp_split[1] - 1) {
+				$array_shift[$start] = $last_shift;
+				$start++;
+			}
+			$last_shift = $tmp_split[0] - $tmp_split[1];
+			$last_shift_pos_strain{$strain}{$chr}{$a} = $tmp_split[1];
+		}
+		close FH;
+		store \@array_shift, "$out";
+	}
+}
+
+sub write_last_shift{
+	my $out = "";
+	foreach my $strain (keys %last_shift_pos_strain) {
+		$out = $data . "/" . $strain . "/last_shift_strain.txt";
+		store \%{$last_shift_pos_strain{$strain}}, "$out";
+		$out = $data . "/" . $strain . "/last_shift_ref.txt";
+		store \%{$last_shift_pos_ref{$strain}}, "$out";
+	}
+}
+
 sub check_file_existance{
         my $line = $_[0];
 	my $header_number = $_[1] + 9;
@@ -244,7 +318,6 @@ sub check_file_existance{
         #Save that a header exists
         $header_exists = 1;
         #Now go through all strains and see if the folder already exists
-#	for(my $i = 10; $i < @header; $i++) {
 	if(-e $data . "/" . $header[$header_number]) {
 		print STDERR "Folder for " . $header[$header_number] . " already exists!\n";
 		if($force == 1) {
@@ -264,7 +337,6 @@ sub check_file_existance{
 	} else {
 		`mkdir $data/$header[$header_number]`;
 	}
-#        }
 }
 
 sub open_filehandles{
@@ -312,6 +384,7 @@ sub close_filehandles{
         }
 }
 
+
 my $merge_line = "";
 my @len;
 my $end = 0;
@@ -351,6 +424,9 @@ sub merge{
 	}
 	my $var;
 	for(my $i = 9; $i < @current; $i++) {
+		if($num_strains > 0 && !exists $strains_to_use{$header[$i]}) {
+			next;
+		}
 		@all = split('/', (split(":", $current[$i]))[0]);
 		if($all[0] eq ".") {
 			$all[0] = 0;
@@ -415,8 +491,6 @@ sub merge{
 #If SNP and Indel file are given - merge the files
 sub read_file_line {
 	my $fh = shift;
-	my @split;
-
 	if ($fh and my $line = <$fh>) {
 		chomp $line;
 #		return [ split('\t', $line) ];
