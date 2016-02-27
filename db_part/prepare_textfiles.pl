@@ -8,14 +8,17 @@ BEGIN {push @INC, '/home/vlink/mouse_strains/marge/analysis'};
 use system_interaction;
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/db_part'};
 use processing;
+use Set::IntervalTree;
 
 use threads;
 use Data::Dumper;
 
 $_ = "" for my($snp, $indel, @chr, $current_chr, $data, $filename, $out, $genome);
-$_ = 0 for my($filter, $same, $help, $homo, $length_mut, $length_ref, $force, $lines_f1, $lines_f2, $lines_all, $line_count, $num_strains, $header_exists, $outfile_open, $last_h);
-$_ = () for my($lines, @merge_line, $header, @split, $snps, $indels, $f1, $f2, %strains_to_use, @mut_files, @header, %last_shift_pos_ref, %last_shift_pos_strain, @strains_to_use, @s, @i, $check_snp, $check_indel, $s_c, $i_c, @fileHandlesMutation, @fileHandlesMutation2, @fileHandlesShift, @fileHandlesShift2, @ref_pos, @strain_pos, @ref_pos2, @strain_pos2, @pos_ref, @pos_strain);
+$_ = 0 for my($filter, $same, $help, $homo, $length_mut, $length_ref, $force, $lines_f1, $lines_f2, $lines_all, $line_count, $num_strains, $header_exists, $outfile_open, $last_h, $run_through, $none_number_chromosome, $core);
+$_ = () for my($lines, @merge_line, $header, @split, $snps, $indels, $f1, $f2, %strains_to_use, @mut_files, @header, %last_shift_pos_ref, %last_shift_pos_strain, @strains_to_use, @s, @i, $check_snp, $check_indel, $s_c, $i_c, @fileHandlesMutation, @fileHandlesMutation2, @fileHandlesShift, @fileHandlesShift2, @ref_pos, @strain_pos, @ref_pos2, @strain_pos2, @pos_ref, @pos_strain, %lookup_no_number, %lookup_number, %multi_strains);
 #Config with default data folder
+
+$none_number_chromosome = 1000;
 
 sub printCMD{
 	print STDERR "Usage:\n";
@@ -33,6 +36,7 @@ sub printCMD{
 	print STDERR "\n\n";
 	print STDERR "\t-genome <path to reference fastq files>: generates strain specific genome\n\n\n";
 	print STDERR "-h | --help: shows help\n\n\n";
+	print STDERR "-core <number of cores>: default 1\n";
 	exit;
 }
 
@@ -52,12 +56,19 @@ GetOptions(	"files=s{,}" => \@mut_files,
 		"h" => \$help,
 		"force" => \$force,
 		"genome=s" => \$genome,
+		"core=s" => \$core,
 		"help" => \$help)
 or &printCMD(); 
 
+if($core == 0) {
+	$core = 1;
+} else {
+	print STDERR "Using multithreading for IO writing\n";
+}	
 $num_strains = @strains_to_use;
 for(my $i = 0; $i < @strains_to_use; $i++) {
 	$strains_to_use[$i] =~ s/,//g;
+	$multi_strains{uc($strains_to_use[$i])} = 1;
 	$strains_to_use{uc($strains_to_use[$i])} = 1;
 }
 
@@ -83,6 +94,14 @@ if(@mut_files > 0) {
 		exit;
 	}
 	@header = split /[\t\s]+/, uc($header);
+	for(my $i = 9; $i < @header; $i++) {
+		if(@strains_to_use > 0 && !exists $strains_to_use{$header[$i]}) {
+			next;
+		}
+		$multi_strains{$header[$i]} = 1;
+		&check_file_existance($i);
+	}
+
 }
 
 #Merge SNP and indel file if both exists
@@ -142,6 +161,7 @@ if(@mut_files > 0) {
 			}
 		}
 	}
+
 	while($snps) {
 		&merge($snps);
 		$snps = read_file_line($f1);
@@ -166,47 +186,103 @@ for(my $i = 0; $i < @header - 9; $i++) {
 	$header[$i+9] = uc($header[$i+9]);
 }
 
-for(my $i = 0; $i < $a; $i++) {
-	for(my $h = 0; $h < @header - 9; $h++) {
-		if($num_strains > 0 && !exists $strains_to_use{$header[$h+9]}) {
-			next;
+if($core > 1) {
+	my %data_for_threading;
+	for(my $i = 0; $i < $a; $i++) {
+		for(my $h = 0; $h < @header - 9; $h++) {
+			if($num_strains > 0 && !exists $strains_to_use{$header[$h+9]}) {
+				next;
+			}
+			$data_for_threading{$i}{$h} = 1;
 		}
-		print STDERR "Processing " . uc($header[$h+9]) . "\n";
-		foreach my $l (@{$lines->[$i]->[$h]}) {
-			@split = split('\t', $l);
-			$out = $split[1] . "\t" . $split[2] . "\t" . $split[3];
-			if($chr[$h] == 0) {
-				&check_file_existance($header, $h);
-			}
-			if($chr[$h] ne $split[0]) {
-				$chr[$h] = $split[0] - 1;
-				print STDERR "\t\tchromosome " . $split[0] . "\n";
-				if($outfile_open == 1) {
-					&close_filehandles($h);
-					&create_offset_ref_to_strain($chr[$h], ($i + 1), $header[$h+9]);
-					&create_offset_strain_to_ref($chr[$h], ($i + 1), $header[$h+9]);
-				}
-				$pos_ref[$h] = $pos_strain[$h] = $split[1];
-				$chr[$h] = $split[0];
-				&open_filehandles($h);	
-			}
-			$fileHandlesMutation[0]->print($out . "\n");
-			if($split[2] ne "" && $split[3] ne "" && length($split[2]) != length($split[3])) {
-				($pos_ref[$h], $pos_strain[$h]) = &shift_vector($split[2], $split[3], $fileHandlesShift[0], $pos_ref[$h], $pos_strain[$h], $split[1]);
-			}
-		}
-		$last_h = $h;
+		
 	}
-}
-
-if($last_h > 0) {
-	&close_filehandles($last_h-1);
-	&create_offset_ref_to_strain($chr[$last_h], $a, $header[$last_h+9]);
-	&create_offset_strain_to_ref($chr[$last_h], $a, $header[$last_h+9]);
-	&write_last_shift();
+	my @running = ();
+	my @Threads;
+	my $current_thread;
+	my $current_thread_level1;
+	my $current_thread_level2;
+	while (scalar @Threads < $num_strains) {
+		@running = threads->list(threads::running);
+		if(scalar @running < $core) {
+			foreach my $keys (keys %data_for_threading) {
+				foreach my $keys2 (keys %{$data_for_threading{$keys}}) {
+					$current_thread = $keys . "_" . $keys2;
+					$current_thread_level1 = $keys;
+					$current_thread_level2 = $keys2;
+				}
+			}
+			delete $data_for_threading{$current_thread_level1}{$current_thread_level2};
+			my $thread = threads->new( sub { thread_routine($current_thread_level1, $a, $current_thread_level2) });
+			push (@Threads, $thread);
+			my $tid = $thread->tid;
+			@running = threads->list(threads::running);
+		}
+		@running = threads->list(threads::running);
+		foreach my $thr (@Threads) {
+			if($thr->is_running()){ 
+				my $tid = $thr->tid;
+			} elsif($thr->is_joinable()){
+				my $tid = $thr->tid;
+				$thr->join;
+			}
+		}
+		@running = threads->list(threads::running);
+	}	
+	while (scalar @running > 0) {
+		foreach my $thr (@Threads) {
+			$thr->join if ($thr->is_joinable());
+		}
+		@running = threads->list(threads::running);
+	}
+} else {
+	for(my $i = 0; $i < $a; $i++) {
+		for(my $h = 0; $h < @header - 9; $h++) {
+			if($num_strains > 0 && !exists $strains_to_use{$header[$h+9]}) {
+				next;
+			}
+			&thread_routine($i, $a, $h);
+	#		foreach my $l (@{$lines->[$i]->[$h]}) {
+	#			@split = split('\t', $l);
+	#			$out = $split[1] . "\t" . $split[2] . "\t" . $split[3];
+	#			if($split[0] !~ /\d+/) {
+	#				#Time to convert letters into numbers
+	#				if(!exists $lookup_no_number{$split[0]}) {
+	#					$lookup_no_number{$split[0]} = $none_number_chromosome;
+	#					$lookup_number{$none_number_chromosome} = $split[0];
+	#					$none_number_chromosome++;
+	#				}
+	#				$split[0] = $lookup_no_number{$split[0]};
+	#			}
+	#			if($chr[$h] ne $split[0]) {
+	#				if($outfile_open == 1) {
+	#					&close_filehandles($h);
+	#					&create_offset_ref_to_strain($chr[$h], ($i + 1), $header[$h+9]);
+	#					&create_offset_strain_to_ref($chr[$h], ($i + 1), $header[$h+9]);
+	#				}
+	#				$chr[$h] = $split[0];
+	#				$pos_ref[$h] = $pos_strain[$h] = $split[1];
+	#				$chr[$h] = $split[0];
+	#				&open_filehandles($h);	
+	#			}
+	#			$fileHandlesMutation[0]->print($out . "\n");
+	#			if($split[2] ne "" && $split[3] ne "" && length($split[2]) != length($split[3])) {
+	#				($pos_ref[$h], $pos_strain[$h]) = &shift_vector($split[2], $split[3], $fileHandlesShift[0], $pos_ref[$h], $pos_strain[$h], $split[1]);
+	#			}
+	#		}
+	#		$last_h = $h;
+	#		$run_through++;
+	#		&close_filehandles($last_h);
+	#		&create_offset_ref_to_strain($chr[$last_h], $a, $header[$last_h+9]);
+	#		&create_offset_strain_to_ref($chr[$last_h], $a, $header[$last_h+9]);
+	#		&write_last_shift();
+	#		$outfile_open = 0;
+		}
+	}
 }
 print STDERR "Data is stored in $data\n";
 print STDERR "Processing data successfully finished!\n";
+
 
 if($genome ne "") {
 	print STDERR "Generating genomes per strain\n";
@@ -214,10 +290,12 @@ if($genome ne "") {
 	my $chr;
 	my $mut_file;
 	foreach my $g_file (@genome_files) {
-		print $g_file;
 		$chr = substr($g_file, 3, length($g_file) - 7);
+		if(exists $lookup_number{$chr}) {
+			$chr = $lookup_number{$chr};
+		}
 		for(my $h = 0; $h < @header - 9; $h++) {
-			for(my $i = 0; $i < $a; $i++) { 
+			for(my $i = 0; $i < $a; $i++) {
 				$filename = $data . "/" . $header[$h+9] . "/chr" . $chr . "_allele_" . ($i + 1) . ".fa";
 				$mut_file = $data . "/" . $header[$h+9] . "/chr" . $chr . "_allele_" . ($i + 1) . ".mut";	
 				if($num_strains > 0 && !exists $strains_to_use{$header[$h+9]}) {
@@ -232,6 +310,65 @@ if($genome ne "") {
 
 
 #SUBFUNCTIONS
+#Routine to start threading
+sub thread_routine {
+	my $i = $_[0];
+	my $a = $_[1];
+	my $h = $_[2];
+	my $outfile_open = 0;	
+	my %thread_last_shift_ref;
+	my $thread_ref_ref;
+	my %thread_last_shift_strain;
+	my $thread_ref_strain;
+	my %thread_lookup;
+	my @split;
+	my $out;
+	if($num_strains > 0 && !exists $strains_to_use{$header[$h+9]}) {
+		next;
+	}
+	print STDERR "Processing " . uc($header[$h+9]) . "\n";
+	foreach my $l (@{$lines->[$i]->[$h]}) {
+		@split = split('\t', $l);
+		$out = $split[1] . "\t" . $split[2] . "\t" . $split[3];
+		if($split[0] !~ /\d+/) {
+			#Time to convert letters into numbers
+			if(!exists $lookup_no_number{$split[0]}) {
+				$lookup_no_number{$split[0]} = $none_number_chromosome;
+				$lookup_number{$none_number_chromosome} = $split[0];
+				$none_number_chromosome++;
+			}
+			$split[0] = $lookup_no_number{$split[0]};
+		}
+		if($chr[$h] ne $split[0]) {
+			if($outfile_open == 1) {
+				&close_filehandles($h);
+				$thread_ref_ref = &create_offset_ref_to_strain($chr[$h], ($i + 1), $header[$h+9], \%thread_last_shift_ref);
+				%thread_last_shift_ref = %$thread_ref_ref;
+				$thread_ref_strain = &create_offset_strain_to_ref($chr[$h], ($i + 1), $header[$h+9], \%thread_last_shift_strain);
+				%thread_last_shift_strain = %$thread_ref_strain;
+			}
+			$chr[$h] = $split[0];
+			$pos_ref[$h] = $pos_strain[$h] = $split[1];
+			$chr[$h] = $split[0];
+			&open_filehandles($h);
+			$outfile_open = 1;
+		}
+		$fileHandlesMutation[0]->print($out . "\n");
+		if($split[2] ne "" && $split[3] ne "" && length($split[2]) != length($split[3])) {
+			($pos_ref[$h], $pos_strain[$h]) = &shift_vector($split[2], $split[3], $fileHandlesShift[0], $pos_ref[$h], $pos_strain[$h], $split[1]);
+		}
+	}
+	$last_h = $h;
+	$run_through++;
+	&close_filehandles($last_h);
+	$thread_ref_ref = &create_offset_ref_to_strain($chr[$last_h], $a, $header[$last_h+9], \%thread_last_shift_ref);
+	%thread_last_shift_ref = %$thread_ref_ref;
+	$thread_ref_strain = &create_offset_strain_to_ref($chr[$last_h], $a, $header[$last_h+9], \%thread_last_shift_strain);
+	%thread_last_shift_strain = %$thread_ref_strain;
+	&write_last_shift(\%thread_last_shift_strain, \%thread_last_shift_ref, $header[$last_h+9]);
+	$outfile_open = 0;
+}
+
 sub shift_vector{
 	my $ref = $_[0];
 	my $strain = $_[1];
@@ -278,75 +415,104 @@ sub shift_vector{
 
 sub create_offset_ref_to_strain {
         my $chr = $_[0];
-        my $a = $_[1];
-        my $strain = $_[2];
+	my $a = $_[1];
+	my $strain = $_[2];
+	my %last_shift_pos_ref = %{$_[3]};
+	if(exists $lookup_number{$chr}) {
+		$chr = $lookup_number{$chr};
+	}
         $filename = $data . "/" . $strain . "/chr" . $chr . "_allele_" . $a . ".shift";
 	my $out = $data . "/" . $strain . "/chr" . $chr . "_allele_" . $a . ".ref_to_strain.vector";
-	print "out: " . $out . "\n";
-	$_ = () for my(@array_mut, @array_shift, @tmp_split);
+	$_ = () for my(@array_shift, @tmp_split);
         if(-e $filename) {
                 open FH, "<$filename";
+		open OUT, ">$out";
                 my $run = 0;
 		my $last_shift = 0;
                 my @a;
                 foreach my $line (<FH>) {
                         chomp $line;
                         @tmp_split = split('\t', $line);
-			for(my $i = $run; $i < $tmp_split[0]; $i++) {
-				$array_shift[$i] = $last_shift;
-			}
+			if($run == $tmp_split[0] - 1) {
+				next;
+			} 
+			print OUT $last_shift . "\t" . $run . "\t" . ($tmp_split[0] - 1). "\n";
+		#	for(my $i = $run; $i < $tmp_split[0]; $i++) {
+		#		$array_shift[$i] = $last_shift;
+		#	}
 			#tmp_split[0] is reference position - tmp_split[1] is strains position - calculate shifting vector out of it	
-			$array_shift[$tmp_split[0]] = ($tmp_split[1] - $tmp_split[0]);
-			$run = $tmp_split[0];
 			$last_shift = ($tmp_split[1] - $tmp_split[0]);
-			$last_shift_pos_ref{$strain}{$chr}{$a} = $tmp_split[0];
+		#	$array_shift[$tmp_split[0]] = $last_shift;
+			$run = $tmp_split[0];
+			$last_shift_pos_ref{$strain}{$chr}{$a}{'pos'} = $tmp_split[0];
+			$last_shift_pos_ref{$strain}{$chr}{$a}{'shift'} = $last_shift;
                 }
+		close OUT;
 		#Store shift vector from reference to strain
-		store \@array_shift, "$out";
+	#	store \@array_shift, "$out";
         }
+	return \%last_shift_pos_ref;
 }
 
 sub create_offset_strain_to_ref {
 	my $chr = $_[0];
-        my $a = $_[1];
-        my $strain = $_[2];
+	my $a = $_[1];
+	my $strain = $_[2];
+	my %last_shift_pos_strain = %{$_[3]};
+	if(exists $lookup_number{$chr}) {
+		$chr = $lookup_number{$chr};
+	}
         my $last_shift = 0;
-	my @tmp_split;
-	my @array_shift = ();
+	$_ = () for my (@array_shift, @tmp_split);
 	my $start = 0;
 	$filename = $data . "/" . $strain . "/chr" . $chr . "_allele_" . $a . ".shift";
 	my $out = $data . "/" . $strain . "/chr" . $chr . "_allele_" . $a . ".strain_to_ref.vector";
 	if(-e $filename) {
 		open FH, "<$filename";
+		open OUT, ">$out";
 		foreach my $line (<FH>) {
+			chomp $line;
 			@tmp_split = split('\t', $line);
-			while($start < $tmp_split[1] - 1) {
-				$array_shift[$start] = $last_shift;
-				$start++;
-			}
-			#tmp_split[0] is reference position - tmp_split[1] is strains position - calculate shifting vector out of it	
+		#	while($start < $tmp_split[1] - 1) {
+		#		$array_shift[$start] = $last_shift;
+		#		$start++;
+		#	}
+			#tmp_split[0] is reference position - tmp_split[1] is strains position - calculate shifting vector out of it
+			if($start == $tmp_split[-1] - 1) {
+				next;
+			}	
+			print OUT $last_shift . "\t" . $start . "\t" . ($tmp_split[1] - 1) . "\n";
+			$start = $tmp_split[1];
 			$last_shift = $tmp_split[0] - $tmp_split[1];
-			$last_shift_pos_strain{$strain}{$chr}{$a} = $tmp_split[1];
+		#	$array_shift[$start] = $last_shift;
+		#	$start++;
+			$last_shift_pos_strain{$strain}{$chr}{$a}{'pos'} = $tmp_split[1];
+			$last_shift_pos_strain{$strain}{$chr}{$a}{'shift'} = $last_shift;
 		}
 		close FH;
-		store \@array_shift, "$out";
+		close OUT;
+	#	store \@array_shift, "$out";
 	}
+	return \%last_shift_pos_strain;
 }
 
 sub write_last_shift{
 	my $out = "";
+	my %last_shift_pos_strain = %{$_[0]};
+	my %last_shift_pos_ref = %{$_[1]};
 	foreach my $strain (keys %last_shift_pos_strain) {
 		$out = $data . "/" . $strain . "/last_shift_strain.txt";
 		store \%{$last_shift_pos_strain{$strain}}, "$out";
 		$out = $data . "/" . $strain . "/last_shift_ref.txt";
 		store \%{$last_shift_pos_ref{$strain}}, "$out";
+		$out = $data . "/" . $strain . "/lookup_table_chr.txt";
+		store \%lookup_no_number, "$out";
 	}
 }
 
 sub check_file_existance{
-        my $line = $_[0];
-	my $header_number = $_[1] + 9;
-        #This is the header
+	my $header_number = $_[0];
+	        #This is the header
         #Save that a header exists
         $header_exists = 1;
         #Now go through all strains and see if the folder already exists
@@ -373,19 +539,24 @@ sub check_file_existance{
 
 sub open_filehandles{
 	my $header_number = $_[0];
-	$filename = $data . "/" . $header[$header_number+9] . "/chr" . $chr[$header_number] . "_allele_1.mut";
+	my $chr = $chr[$header_number];
+	if(exists $lookup_number{$chr}) {
+		$chr = $lookup_number{$chr};
+	}
+	print STDERR "\t\tchromosome " . $chr . "\n";
+	$filename = $data . "/" . $header[$header_number+9] . "/chr" . $chr . "_allele_1.mut";
 	open my $fh_mut, ">", "$filename" or die "Can't open $filename: $!\n";
 	$fileHandlesMutation[0] = $fh_mut;
-	$filename = $data . "/" . $header[$header_number+9] . "/chr" . $chr[$header_number] . "_allele_1.shift";
+	$filename = $data . "/" . $header[$header_number+9] . "/chr" . $chr . "_allele_1.shift";
 	open my $fh_shift, ">", "$filename" or die "Can't open $filename: $!\n";
 	$fileHandlesShift[0] = $fh_shift;	
 	$ref_pos[$header_number] = 0;
 	$strain_pos[$header_number] = 0;
 	if($homo == 0) {
-		$filename = $data . "/" . $header[$header_number+9] . "/chr" . $chr[$header_number] . "_allele_2.mut";
+		$filename = $data . "/" . $header[$header_number+9] . "/chr" . $chr . "_allele_2.mut";
 		open my $fh_mut2, ">", "$filename" or die "Can't open $filename: $!\n";
 		$fileHandlesMutation2[0] = $fh_mut2;
-		$filename = $data . "/" . $header[$header_number+9] . "/chr" . $chr[$header_number] . "_allele_2.shift";
+		$filename = $data . "/" . $header[$header_number+9] . "/chr" . $chr . "_allele_2.shift";
 		open my $fh_shift2, ">", "$filename" or die "Can't open $filename: $!\n";
 		$fileHandlesShift2[0] = $fh_shift2;
 		$ref_pos2[$header_number] = 0;
@@ -441,6 +612,7 @@ sub merge{
 		@all = split('/', (split(":", $current[$i]))[0]);
 		if($all[0] eq ".") {
 			$all[0] = 0;
+			$all[1] = 0;
 		}
 		if(@all > 1) { 
 			if($all[1] eq ".") {
