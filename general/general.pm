@@ -10,8 +10,8 @@ sub read_strains_data {
 	my $data_dir = $_[1];	
 	my $allele = $_[2];
 	my $shift_direction = $_[3];
-	print $strain . "\n";
-	print $data_dir . "\n";
+	print STDERR $strain . "\n";
+	print STDERR $data_dir . "\n";
 	$_ = () for my (%last, %lookup, %tree_strain, @split, @shift_files, @split_tree);
 	my $file;
 	if($shift_direction eq "ref_to_strain") {
@@ -35,10 +35,9 @@ sub read_strains_data {
 		my $tree = Set::IntervalTree->new;
 		open SHIFT, "<$shift";
 		foreach my $line (<SHIFT>) {
-			print $line . "\n";
 			chomp $line;
 			@split_tree = split('\t', $line);
-			$tree->insert( {'shift'=>$split_tree[0] }, $split_tree[1], $split_tree[2]);
+			$tree->insert( {'shift'=>$split_tree[0] }, $split_tree[1], $split_tree[2]+1);
 		}
 		close SHIFT;
 		$tree_strain{$split[0]} = $tree;

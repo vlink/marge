@@ -421,7 +421,7 @@ sub create_offset_ref_to_strain {
 	if(exists $lookup_number{$chr}) {
 		$chr = $lookup_number{$chr};
 	}
-        $filename = $data . "/" . $strain . "/chr" . $chr . "_allele_" . $a . ".shift";
+        $filename = $data . "/" . $strain . "/chr" . $chr . "_allele_" . $a . ".mut";
 	my $out = $data . "/" . $strain . "/chr" . $chr . "_allele_" . $a . ".ref_to_strain.vector";
 	$_ = () for my(@array_shift, @tmp_split);
         if(-e $filename) {
@@ -433,23 +433,17 @@ sub create_offset_ref_to_strain {
                 foreach my $line (<FH>) {
                         chomp $line;
                         @tmp_split = split('\t', $line);
-			if($run == $tmp_split[0] - 1) {
-				next;
-			} 
-			print OUT $last_shift . "\t" . $run . "\t" . ($tmp_split[0] - 1). "\n";
-		#	for(my $i = $run; $i < $tmp_split[0]; $i++) {
-		#		$array_shift[$i] = $last_shift;
-		#	}
-			#tmp_split[0] is reference position - tmp_split[1] is strains position - calculate shifting vector out of it	
-			$last_shift = ($tmp_split[1] - $tmp_split[0]);
-		#	$array_shift[$tmp_split[0]] = $last_shift;
-			$run = $tmp_split[0];
-			$last_shift_pos_ref{$strain}{$chr}{$a}{'pos'} = $tmp_split[0];
+			if(length($tmp_split[1]) == length($tmp_split[2])) { next; }
+		#	if($run == $tmp_split[0]) {
+		#		next;
+		#	} 
+			print OUT $last_shift . "\t" . $run . "\t" . $tmp_split[0]. "\n";
+			$last_shift = $last_shift + (length($tmp_split[2]) - length($tmp_split[1]));
+			$run = $tmp_split[0] + 1;
+			$last_shift_pos_ref{$strain}{$chr}{$a}{'pos'} = $tmp_split[0] + 1;
 			$last_shift_pos_ref{$strain}{$chr}{$a}{'shift'} = $last_shift;
                 }
 		close OUT;
-		#Store shift vector from reference to strain
-	#	store \@array_shift, "$out";
         }
 	return \%last_shift_pos_ref;
 }
@@ -465,7 +459,7 @@ sub create_offset_strain_to_ref {
         my $last_shift = 0;
 	$_ = () for my (@array_shift, @tmp_split);
 	my $start = 0;
-	$filename = $data . "/" . $strain . "/chr" . $chr . "_allele_" . $a . ".shift";
+	$filename = $data . "/" . $strain . "/chr" . $chr . "_allele_" . $a . ".mut";
 	my $out = $data . "/" . $strain . "/chr" . $chr . "_allele_" . $a . ".strain_to_ref.vector";
 	if(-e $filename) {
 		open FH, "<$filename";
@@ -478,15 +472,16 @@ sub create_offset_strain_to_ref {
 		#		$start++;
 		#	}
 			#tmp_split[0] is reference position - tmp_split[1] is strains position - calculate shifting vector out of it
-			if($start == $tmp_split[-1] - 1) {
+			if($start == $tmp_split[0] - 1) {
 				next;
 			}	
-			print OUT $last_shift . "\t" . $start . "\t" . ($tmp_split[1] - 1) . "\n";
-			$start = $tmp_split[1];
-			$last_shift = $tmp_split[0] - $tmp_split[1];
+			if(length($tmp_split[1]) == length($tmp_split[2])) { next; }
+			print OUT $last_shift . "\t" . $start . "\t" . ($tmp_split[0] + length($tmp_split[2])) . "\n";
+			$start = $tmp_split[0] + length($tmp_split[2]) + 1;
+			$last_shift = $last_shift + (length($tmp_split[1]) - length($tmp_split[2]));
 		#	$array_shift[$start] = $last_shift;
 		#	$start++;
-			$last_shift_pos_strain{$strain}{$chr}{$a}{'pos'} = $tmp_split[1];
+			$last_shift_pos_strain{$strain}{$chr}{$a}{'pos'} = $start;
 			$last_shift_pos_strain{$strain}{$chr}{$a}{'shift'} = $last_shift;
 		}
 		close FH;

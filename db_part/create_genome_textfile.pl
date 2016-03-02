@@ -6,6 +6,7 @@ BEGIN {push @INC, '/home/vlink/mouse_strains/marge/db_part'};
 use processing;
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'};
 use config;
+use Storable;
 
 if(@ARGV < 1) {
 	print STDERR "Usage:\n";
@@ -17,7 +18,7 @@ if(@ARGV < 1) {
 	exit;	
 }
 
-$_ = () for my($genome, @strains, @genome_files);
+$_ = () for my($genome, @strains, @genome_files, @file, %lookup, %lookup_strain);
 $_ = "" for my($chr, $filename, $mut_file, $homo, $input, $output, $folder, $allele);
 
 GetOptions(	"genome=s" => \$genome,
@@ -41,25 +42,18 @@ if($output eq "") {
 for(my $i = 0; $i < @strains; $i++) {
 	$strains[$i] =~ s/,//g;
 	$strains[$i] = uc($strains[$i]);
+	if(!-e $output . "/" . $strains[$i]) {
+		$folder = $output . "/" . $strains[$i];
+		`mkdir -p $folder`;
+	}
 }
 
-@genome_files = `ls $genome`;
+@genome_files = `ls $genome/*fa`;
 foreach my $g_file (@genome_files) {
-	print $g_file;
-	$chr = substr($g_file, 3, length($g_file) - 7);
-	for(my $s = 0; $s < @strains; $s++) {
-		for(my $i = 0; $i < $allele; $i++) {
-			#make sure output folder exists
-			if(!-e $output . "/" . $strains[$s]) {
-				$folder = $output . "/" . $strains[$s];
-				`mkdir -p $folder`;
-			}
-			$filename = $output . "/" . $strains[$s] . "/chr" . $chr . "_allele_" . ($i + 1) . ".fa";
-			$mut_file = $input . "/" . $strains[$s] . "/chr" . $chr . "_allele_" . ($i + 1) . ".mut";
-			print $filename . "\n";
-			print $mut_file. "\n";
-			processing::create_genome($chr, $filename, $genome . "/" . $g_file, $mut_file);
-		}
-
+	chomp $g_file;
+	@file = split("/", $g_file);
+	$chr = substr($file[-1], 3, length($file[-1]) - 6);
+	for(my $i = 1; $i <= $allele; $i++) {
+		processing::create_genome($chr, \@strains, $input, $output, $g_file, $allele);
 	}
 }
