@@ -7,6 +7,7 @@ use Getopt::Long;
 #require '/Users/verenalink/workspace/strains/general/config.pm';
 use config;
 use Data::Dumper;
+use Statistics::Basic qw(:all);
 #require '../db_part/database_interaction.pm';
 
 $_ = "" for my($genome, $file, $tf, $filename, $last_line);
@@ -60,11 +61,12 @@ sub analyze_motifs{
 	my @strains = @{$_[2]};
 	my $tree = $_[3];
 	my $lookup = $_[4];
+	my $last = $_[5];
+	my $allele = $_[6];
+	my $region = $_[7];
         open FH, "<$motif_file";
         my $last_line = "";
 	my %block = ();
-	print STDERR "region as parameter\n";
-	my $region = 0;
 	my $pos_beginning;
 	my $shift_beginning;
 	my $pos_current;
@@ -77,15 +79,11 @@ sub analyze_motifs{
 	my $chr_num;
         foreach my $line (<FH>) {
                 chomp $line;
-#		print "\n\n\n";
                 @split = split('\t', $line);
 		$split[3] = &get_motif_name($split[3]);
                 @header = split('_', $split[0]);
 		$last_line = $header[0] . "_" . $header[1] . "_" . $header[2];
-	#	print $seq->{$last_line . "_" . $header[3]} . "\n";
-	#	print $line . "\n";
 		$motif_start = $split[1];
-	#	print "motif start: " . $motif_start . "\n";
 		$motif_pos = $split[1];
 		#define motif start
 		$motif_start = $motif_start + $header[1];
@@ -93,7 +91,6 @@ sub analyze_motifs{
 			$motif_start = $motif_start - length($split[2]) + 1;
 			$motif_pos = $motif_pos - length($split[2]) + 1;
 		}
-	#	print "after calculations motif_start: " . $motif_start . "\n";
 		$pos_beginning = $header[1] - ($region/2);
 		$chr_num = substr($header[0], 3);
 		if($chr_num !~ /\d+/ && !exists $lookup->{$header[3]}->{$chr_num}) {
@@ -102,25 +99,23 @@ sub analyze_motifs{
 		if(exists $lookup->{$header[3]}->{$chr_num}) {
 			$chr_num = $lookup->{$header[3]}->{$chr_num};
 		}
-	#	print "pos beginning: " . $pos_beginning . "\n";
 		$tree_tmp = $tree->{$header[3]}->{$chr_num}->fetch($pos_beginning, $pos_beginning + 1);
-		print Dumper $tree_tmp;
-		exit;
-		$shift_beginning = $tree_tmp->[0]->{'shift'};
-	#	print "shift: " . $shift_beginning . "\n";
+		if(!exists $tree_tmp->[0]->{'shift'}) {
+			$shift_beginning = $last->{$header[3]}->{$header[0]}->{$allele}->{'shift'};
+		} else {
+			$shift_beginning = $tree_tmp->[0]->{'shift'};
+		}
 		$tree_tmp = $tree->{$header[3]}->{$chr_num}->fetch($motif_start, $motif_start + 1);
-		$shift_current = $tree_tmp->[0]->{'shift'};
-	#	print "motif start: " . $motif_start . "\n";
-	#	print "shift: " . $shift_current . "\n";
-	#	print "shiftings: " . $shift_beginning . "\t" . $shift_current . "\n";
+		if(!exists $tree_tmp->[0]->{'shift'}) {
+			$shift_current = $last->{$header[3]}->{$header[0]}->{$allele}->{'shift'};
+		} else {
+			$shift_current = $tree_tmp->[0]->{'shift'};
+		}
 		$shift_diff = $shift_beginning - $shift_current;
 		$motif_pos = $motif_pos + $shift_diff;
-	#	print "shift diff: " . $shift_diff . "\n";
 		$block{$last_line}{$split[3]}{$motif_pos}{$header[-1]} = $split[-1];
 		$block{$last_line}{$split[3]}{$motif_pos}{'length'} = length($split[2]);
-#		print $last_line . "\t" . $split[3] . "\t" . ($motif_start + $shift_diff) . "\t" . $header[-1] . " = " . $split[-1] . "\n";
         }
-#	print Dumper %block;
 	return \%block;
 }
 
@@ -210,6 +205,7 @@ sub output_motifs{
 	if((keys %fc) > 1) {
 		$fc_exists = 1;
 	}
+	my %recenter_conversion = %{$_[8]};
 	my $curr_chr;
 	my $curr_pos;
 	my $ab;
@@ -221,6 +217,9 @@ sub output_motifs{
 		@split = split("_", $chr_pos);
 		$curr_chr = substr($split[0], 3);
 		$curr_pos = $split[1];
+		if(exists $recenter_conversion{$curr_chr}{$curr_pos}{'start'}) {
+			$curr_pos = $recenter_conversion{$curr_chr}{$curr_pos}{'start'};
+		}
 		foreach my $motif (keys %{$block{$chr_pos}}) {
 			%diff = 0;
 			%existance = ();
@@ -266,18 +265,15 @@ sub distance_plot{
 	my $fc_significant = $_[3];
 	my $effect = $_[4];
 	my $longest_seq = $_[5];
-	my %seq = %{$_[6]};
+	my $seq = $_[6];
 	my %dist_plot;
 	my $offset;
 	foreach my $last_line (keys %block) {
 		@split = split("_", $last_line);
 		if($effect == 1 && ($fc{substr($split[0], 3)}{$split[1]} < log($fc_significant)/log(2) && $fc{substr($split[0], 3)}{$split[1]} > log(1/$fc_significant)/log(2))) {
 			next;
-		} 
-#		print $seq{$last_line . "_" . $strains[0]} . "\n";
-		$offset = int(($longest_seq - length($seq{$last_line . "_" . $strains[0]}))/2);
-#		print $longest_seq . "\t" . length($seq{$last_line . "_" . $strains[0]}) . "\n";
-#		print "difference we need to offset: " . $offset . "\n";
+		}
+		$offset = int(($longest_seq - length($seq->{$last_line . "_" . $strains[0]}))/2);
 		foreach my $motif (keys %{$block{$last_line}}) {
 			foreach my $pos (keys %{$block{$last_line}{$motif}}) {
 				for(my $i = 0; $i < @strains; $i++) {
@@ -507,6 +503,7 @@ sub get_seq_for_peaks {
 	my $region = $_[7];
 	my $tree = $_[8];
 	my $lookup = $_[9];
+	my $last = $_[10];
 	my $general_offset = 0;
 	my $seq_number = 0;
 	my $seq = "";
@@ -523,7 +520,7 @@ sub get_seq_for_peaks {
 	my %current_pos;
 	my $equal = 0;
 	my $ref_seq = "";
-	my $longest_seq;
+	my $longest_seq = 0;
 	my $h;
 	my $ref_start;
 	my $ref_stop;
@@ -535,6 +532,7 @@ sub get_seq_for_peaks {
 	my $byte_offset;
 	my $newlines;
 	my $chr_num;
+	my $shift_vector;
 	$line_number = $line_number * @strains;
 	for(my $i = 0; $i < @strains; $i++) {
 		foreach my $chr (keys %peaks) {
@@ -559,9 +557,19 @@ sub get_seq_for_peaks {
 				$working_stop = $peaks{$chr}{$start_pos} + int($region/2);
 				#Calculate strain specific offset from shifting vector
 				$ref_start = $current_tree->fetch($working_start, $working_start + 1);
-				$working_start = $working_start + $ref_start->[0]->{'shift'};
+				if(!exists $ref_start->[0]->{'shift'}) {
+					$shift_vector = $last->{$strains[$i]}->{$chr}->{$allele}->{'shift'};
+				} else {
+					$shift_vector = $ref_start->[0]->{'shift'};
+				}
+				$working_start = $working_start + $shift_vector;
 				$ref_start = $current_tree->fetch($working_stop, $working_stop + 1);
-				$working_stop = $working_stop + $ref_start->[0]->{'shift'};
+				if(!exists $ref_start->[0]->{'shift'}) {
+					$shift_vector = $last->{$strains[$i]}->{$chr}->{$allele}->{'shift'};
+				} else {
+					$shift_vector = $ref_start->[0]->{'shift'};
+				}
+				$working_stop = $working_stop + $shift_vector;
 				$header = "chr" . $chr . "_" . $start_pos . "_" . $peaks{$chr}{$start_pos} . "_" . $strains[$i];
 				#Calculate length and newlines (fastq file saves seq in 50bp lines)
 				$length = $working_stop - $working_start;
@@ -590,6 +598,38 @@ sub get_seq_for_peaks {
 		print OUT $seq{$key}  . "\n";
 	}
 	close OUT;
-	return(\%seq);
+	return(\%seq, $longest_seq);
 }
 
+sub all_vs_all_comparison{
+	my $block = $_[0];
+	my $recenter_conversion = $_[1];
+	my $tag_counts = $_[2];
+	my @strains = @{$_[3]};
+	$_ = () for my(@split, %correlation, @sum, @tag_sum, $vector_motifs, $vector_tagcounts, @split, %correlation, $chr);
+	my $con_pos;
+	foreach my $pos (keys %{$block}) {
+		@split = split("_", $pos);
+		$chr = substr($split[0], 3);
+ 		$con_pos = $split[1];
+		if(exists $recenter_conversion->{$chr}->{$con_pos}) {
+			$con_pos = $recenter_conversion->{$chr}->{$con_pos}->{'start'};
+		}
+		foreach my $motif (keys %{$block->{$pos}}) {
+			@sum = ();
+			foreach my $motif_pos (keys %{$block->{$pos}->{$motif}}) {
+				for(my $i = 0; $i < @strains; $i++) {
+					$sum[$i] += $block->{$pos}->{$motif}->{$motif_pos}->{$strains[$i]};
+				}
+			}
+			$vector_motifs = vector(@sum);
+			@tag_sum = split('\s+', $tag_counts->{$chr}->{$con_pos});
+			$vector_tagcounts = vector(@tag_sum);
+			my $cor = correlation( $vector_motifs, $vector_tagcounts );
+			if($cor ne "n/a") {
+				$correlation{$motif}{$cor}++;
+			}
+		}
+	}
+	return \%correlation;
+}
