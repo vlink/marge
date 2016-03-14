@@ -16,7 +16,7 @@ use Set::IntervalTree;
 
 
 $_ = "" for my($genome, $file, $tf, $filename, $last_line, $name, $output, $ab, $plots, $overlap, $save, $load, $tmp_out, $tmp_out_no_motif, $tmp_out_far_motif, $data, $seq_no_motif, $seq_far_motif, $seq_recentered, $tmp_center);
-$_ = () for my(@strains, %peaks, @split, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %motif_scan_scores, %all_trees, %lookup_strain, %last_strain, %tree, $seq, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation);
+$_ = () for my(@strains, %peaks, @split, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %all_trees, %lookup_strain, %last_strain, %tree, $seq, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation);
 $_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif);
 #$data = "/Users/verenalink/workspace/strains/data/";
 
@@ -200,6 +200,7 @@ if($center == 1) {
 } else {
 	$analyze_no_motif = 0;
 	$analyze_far_motif = 0;
+	%seq_recentered = %{$seq};
 }
 
 my $tmp_out_main_motif = "tmp" . rand(15);
@@ -290,8 +291,13 @@ sub screen_and_plot{
 		}
 	}
 	if($dist_plot == 1) {
+		#Check background distribution
 		my ($dist_plot_ref) = analysis::distance_plot(\%block, \@strains, \%fc, $fc_significant, $effect, $longest_seq, $seq);
 		%dist_plot = %{$dist_plot_ref};
+		my $bg_folder = config::read_config()->{'motif_background_path'};
+		my ($delete_ref, $dist_plot_background_ref) = analysis::background_dist_plot($bg_folder, \%index_motifs, \%delete, \%motif_scan_scores, $genome, $ab, $region, $longest_seq);
+		%delete = %{$delete_ref};
+		%dist_plot_background = %{$dist_plot_background_ref};
 		&generate_dist_plot($plots . "_distance.R", $no_motif, $longest_seq);	
 	}
 
@@ -355,9 +361,16 @@ sub generate_dist_plot{
 	my $output = $_[0];
 	my $no_motif = $_[1];
 	my $longest_seq = $_[2];
+	print STDERR "open R file: " . $output . "\n";
 	open R, ">$output";
 	my $x = "x <- c(";
-	for(my $i = 0; $i < $longest_seq; $i++) {
+	if($longest_seq % 2 == 1) {
+		$longest_seq++;
+	}
+
+	print STDERR "longest seq: " . $longest_seq . "\n";
+	print STDERR "region: " . $region . "\n";
+	for(my $i = 0; $i < $longest_seq + $region; $i++) {
 		$x .= ($i - int($longest_seq/2)) . ",";
 	}
 	if(length($x) > 8) {
@@ -367,7 +380,7 @@ sub generate_dist_plot{
 	print R "pdf(\"" . substr($output, 0, length($output) - 2) . ".pdf\", width=10, height=5)\n";
 	print R $x . "\n";
 	#Generate colors
-	print R "color <- colorRampPalette(c(\"blue\", \"red\"))(" . (keys %{$dist_plot{$ab}}) . ")\n";
+	print R "color <- colorRampPalette(c(\"blue\", \"red\"))(" . (@strains) . ")\n";
 	my $y = "";
 	my $first = 0;
 	my $legend_col;
@@ -375,9 +388,11 @@ sub generate_dist_plot{
 	my $max_ab = 0;
 	my $max = 0;
 	my $strain_number = 1;
+	my $max_main = "max_main <- max(";
 	#First generate vectors for main TF
 	foreach my $strain (keys %{$dist_plot{$ab}}) {
 		$y = $ab . "_" . $strain . " <- c(";
+		$max_main .= $ab . "_" . $strain . ",";
 		for(my $i = 0; $i < $longest_seq; $i++) {
 	#	for(my $i = int(($longest_seq/2) * (-1)); $i < ($longest_seq/2); $i++) {
 			if(!exists $dist_plot{$ab}{$strain}{$i}) {
@@ -395,10 +410,26 @@ sub generate_dist_plot{
 		$y .= ")";
 		print R $y . "\n";
 	} 
+	print R $max_main . "1)\n";
+	#Add background
+	$y = $ab . "_background <- c(";
+	for(my $i = (int($longest_seq + $region)/2)* -1; $i < int($longest_seq + $region)/2; $i++) {
+		if(!exists $dist_plot_background{$ab}{$i}) {
+			$y .= "0,";
+		} else {
+			$y .= $dist_plot_background{$ab}{$i} . ",";
+		}
+	}
+	chop $y;
+	$y .= ")";
+	print R $y . "\n";
+
 	my $second_factor;
 	my $motif_print;
 	my %second_factor;
+	my $max_second = "max_second <- max(";
 	foreach my $motif (keys %dist_plot) {
+		$max_second = "max_second <- max(";
 		if($motif eq $ab) { next; }
 		$motif_print = $motif;
 		$motif_print =~ s/\-//g;
@@ -407,8 +438,20 @@ sub generate_dist_plot{
 		$max = 0;
 		$first = 0;
 		$strain_number = 1;
+		$y = $motif_print . "_background <- c(";
+		for(my $i = int(($longest_seq + $region)/2) * -1; $i < int(($longest_seq + $region)/2); $i++) {
+			if(!exists $dist_plot_background{$motif}{$i}) {
+				$y .= "0,";
+			} else {
+				$y .= $dist_plot_background{$motif}{$i} . ",";
+			}
+		}
+		chop $y;
+		print R $y . ")\n";
+		
 		foreach my $strain (keys %{$dist_plot{$motif}}) {
 			$y = $motif_print . "_" . $strain . " <- c(";
+			$max_second .= $motif_print . "_" . $strain . ",";
 		#	for(my $i = int(($longest_seq/2) * (-1)); $i < ($longest_seq/2); $i++) {
 			for(my $i = 0; $i < $longest_seq; $i++) {
 				if(!exists $dist_plot{$motif}{$strain}{$i}) {
@@ -425,26 +468,26 @@ sub generate_dist_plot{
 			print R $y . "\n";
 			if($first == 0) {
 				if($no_motif == 0) {
-					print R "plot(x, " . $ab . "_" . $strain . ", type=\"l\", col=\"black\", main=\"Distance plot for " . $ab . " and " . $motif_print . "\", ylim=c(0, max(" . $max . "," . $max_ab . ")), ylab=\"Motif frequence\")\n";
+					print R "plot(x, " . $ab . "_" . $strain . ", type=\"l\", col=\"forestgreen\", main=\"Distance plot for " . $ab . " and " . $motif_print . "\", ylim=c(0, " . $max_ab . "), ylab=\"Motif frequence\")\n";
 				}
 				$legend_class = "legend_class <- c(\"" . $ab . "_" . $strain. "\",";
-				$legend_col = "legend_col <- c(\"black\",";
-				if($no_motif == 0) {
+				$legend_col = "legend_col <- c(\"forestgreen\",";
+			#	if($no_motif == 0) {
 					$second_factor{$strain} = "plot(x, " . $motif_print . "_" . $strain . ", col=\"red\", xaxt=\"n\",yaxt=\"n\",xlab=\"\",ylab=\"\", type=\"l\")\n";
-				} else {
-					$second_factor{$strain} = "plot(x, " . $motif_print . "_" . $strain . ", col=color[" . $strain_number . "], yaxt=\"n\",xlab=\"\",ylab=\"Motif frequency\", type=\"l\", main=\"Distance plot for motif " . $motif_print . " for peaks without " . $ab . "\")\n";
-				}
+			#	} else {
+			#		$second_factor{$strain} = "plot(x, " . $motif_print . "_" . $strain . ", col=color[" . $strain_number . "], yaxt=\"n\",xlab=\"\",ylab=\"Motif frequency\", type=\"l\", main=\"Distance plot for motif " . $motif_print . " for peaks without " . $ab . "\")\n";
+			#	}
 				$legend_class .= "\"" . $motif_print . "_" . $strain . "\",";
 				$legend_col .= "color[" . $strain_number . "],";
 				$first++;
 				$strain_number++;
 			} else {
 				if($no_motif == 0) {
-					print R "lines(x, " . $ab . "_" . $strain . ", col=\"grey\")\n";
+					print R "lines(x, " . $ab . "_" . $strain . ", col=\"green\")\n";
 			#		print R "par(new=TRUE)\n";
 				}
 				$legend_class .= "\"" . $ab . "_" . $strain . "\",";
-				$legend_col .= "\"grey\",";
+				$legend_col .= "\"green\",";
 				print R $second_factor . "\n";
 			#	print R "axis(4)\n";
 				$second_factor{$strain} =  "lines(x, " . $motif_print . "_" . $strain . ", col=color[" . $strain_number . "])\n";
@@ -453,16 +496,26 @@ sub generate_dist_plot{
 				$strain_number++;
 			}
 		}
+		chop $max_second;
+		if($no_motif == 0) {
+			print R "lines(x, " . "((" . $ab . "_background/max(" . $ab . "_background)) * max_main), col=\"black\", lty=3)\n";
+		} else {
+			print R "plot(x, " . "((" . $ab . "_background/max(" . $ab . "_background)) * max_main), col=\"black\", lty=3, type=\"l\", main=\"Distance plot for motif " . $motif_print . "for peaks without " . $ab . "\", ylim=c(0, " . $max_ab . "), ylab=\"Motif frequence\")\n";
+
+
+		}
+		print R $max_second . ")\n";
 		print R "par(new=TRUE)\n";
 		foreach my $strain (keys %{$dist_plot{$motif}}) {
 			print R $second_factor{$strain};
 		}
+		print R "lines(x, " . "((" . $motif_print . "_background/max(" . $motif_print . "_background))*max_second), col=\"darkgrey\", lty=3)\n";
 		print R "axis(4)\n";
-		chop $legend_class;
-		chop $legend_col;	
-		print R $legend_class . ")\n";
-		print R $legend_col . ")\n";
-		print R  "legend(\"topright\", legend_class, col=legend_col, pch=20)\n";
+	#	chop $legend_class;
+	#	chop $legend_col;	
+		print R $legend_class . "\"" . $ab . " background\", \"" . $motif_print . " background\")\n";
+		print R $legend_col . "\"black\", \"darkgrey\")\n";
+		print R  "legend(\"topright\", legend_class, col=legend_col, pch=20, bty=\'n\')\n";
 	}
 	print R "dev.off()\n";
 	close R;

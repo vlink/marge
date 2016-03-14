@@ -281,7 +281,8 @@ sub distance_plot{
 						next;
 					}
 					for(my $l = 0; $l < $block{$last_line}{$motif}{$pos}{'length'}; $l++) {
-						$dist_plot{$motif}{$strains[$i]}{($pos + $l + $offset - int($longest_seq/2))}++;
+					#	$dist_plot{$motif}{$strains[$i]}{($pos + $l + $offset - int($longest_seq/2))}++;
+						$dist_plot{$motif}{$strains[$i]}{($pos + $l + $offset)}++;
 					}
 				}
 			}	
@@ -289,6 +290,148 @@ sub distance_plot{
 	}
 	return \%dist_plot;
 }
+
+sub background_dist_plot{
+	my $background_folder = $_[0];	
+	my %index_motifs = %{$_[1]};
+	my $delete = $_[2];
+	my $motif_scan_score = $_[3];
+	my $genome = $_[4];
+	my $ab = $_[5];
+	my $region = $_[6];
+	my $longest_seq = $_[7];
+	my $motif_genomewide;
+	my %scan_candidates;
+	my %background_dist;	
+
+	print STDERR "Checking for genome wide scan of motifs\n";
+	foreach my $motif (keys %index_motifs) {
+		$motif_genomewide = $background_folder . "/" . $genome . "_" . $motif . ".txt";
+		if(!-e $motif_genomewide) {
+			$scan_candidates{$motif} = 1;
+		}
+	}
+
+
+	#Scan for motifs that were not already proprocessed
+	if(keys %scan_candidates > 0) {
+		my $tmp_motif = "tmp" . rand(15) . ".txt";
+		$delete->{$tmp_motif} = 1;
+		open TMP, ">$tmp_motif";
+		foreach my $motif (keys %scan_candidates) {
+			print $motif . "\n";
+			print TMP ">consensus_" . $motif . "\t$motif\t" . $motif_scan_score->{$motif} . "\n";
+			foreach my $pos (sort {$a <=> $b} keys %{$PWM{$motif}}) {
+				print $pos . "\n";
+				print TMP $PWM{$motif}{$pos}{'A'} . "\t" . $PWM{$motif}{$pos}{'C'} . "\t" . $PWM{$motif}{$pos}{'G'} . "\t" . $PWM{$motif}{$pos}{'T'} . "\n";
+			}
+		}
+		close TMP;
+
+		print STDERR "Scan motifs genome wide\n";
+		my $tmp_motif2 = "tmp" . rand(15);
+		$delete->{$tmp_motif2} = 1;
+		my $command = "scanMotifGenomeWide.pl " . $tmp_motif . " " . $genome . " > " . $tmp_motif2;
+		`$command`;
+		open FH, "<$tmp_motif2";
+
+		#Save motifs in file
+		my %motifs;
+		my $i = 0;
+		my @fileHandlesBackground;
+		foreach my $motif (keys %scan_candidates) {
+			my $filename = $background_folder . "/" . $genome . "_" . $motif . ".txt";
+			open my $fh, ">", $filename or die "Can't open $filename: $!\n";
+			$motifs{$motif} = $i;
+			$fileHandlesBackground[$motifs{$motif}] = $fh;
+			$i++;
+		}
+		my @name;
+		foreach my $line (<FH>) {
+			print $line;
+			chomp $line;
+			@split = split('\t', $line);
+			@name = split('-', $split[0]);
+			$fileHandlesBackground[$motifs{$name[0]}]->print($split[1] . "\t" . $split[2] . "\t" . $split[3] . "\n");
+		}
+		foreach my $motif (keys %scan_candidates) {
+			close $fileHandlesBackground[$motifs{$motif}];
+		}
+	}
+
+	#Now read in all file - we start with the main transcription factor
+	$motif_genomewide = $background_folder . "/" . $genome . "_" . $ab . ".txt";
+	open FH, "<$motif_genomewide";
+	my %background;
+	my %background_saved;
+	my @background;
+	my $current_chr = "";
+	my $first = 0;
+	my $count = 0;
+	foreach my $line (<FH>) {
+		chomp $line;
+		@split = split('\t', $line);
+		if($first == 0) {
+			$current_chr = $split[0];
+			$first++;
+		}
+		if($split[0] ne $current_chr) {
+			$background_saved{$current_chr} = \@background;
+			@background = ();
+			$count = 0;
+		}
+		$current_chr = $split[0];
+		$background[$count] = $split[1];
+		$background{$split[0]}{$split[1]} = $split[2];
+		$count++;
+	}
+	close FH;
+	$background_saved{$current_chr} = \@background;
+	my $last_index = 0;
+	$count = 0;
+	#Time to start calculation background distribution
+	my $current_dist = 0;
+	my $next_dist = 0;
+	my $smallest_dist = 0;
+	my %dist_plot_background;
+	my $main_tf_start;
+	my $main_tf_end;
+	my $length = 0;
+	foreach my $motif (keys %index_motifs) {
+		my $file = $background_folder . "/" . $genome . "_" . $motif . ".txt";
+		open FH, "<$file";
+		$count = 0;
+		foreach my $line (<FH>) {
+			chomp $line;
+			@split = split('\t', $line);
+			$current_dist = $split[1] - $background_saved{$split[0]}[$count];
+			$next_dist = $split[1] - $background_saved{$split[0]}[$count + 1];
+			
+			while(abs($split[1] - $background_saved{$split[0]}[$count]) > abs($split[1] - $background_saved{$split[0]}[$count + 1])) {
+				$count++;
+			}
+			$current_dist = $split[1] - $background_saved{$split[0]}[$count];
+			$next_dist = $split[1] - $background_saved{$split[0]}[$count + 1];
+			if(abs($current_dist) < abs($next_dist)) {
+				$smallest_dist = $current_dist;
+				$main_tf_start = $background[$count];
+				$main_tf_end = $background{$split[0]}{$main_tf_start};
+			} else {
+				$smallest_dist = $next_dist;
+				$main_tf_start = $background[$count + 1];
+				$main_tf_end = $background{$split[0]}{$main_tf_start};
+			}
+			if(abs($smallest_dist) < int($longest_seq/2) + $region) {
+				$length = ($main_tf_end - $main_tf_start);
+				for(my $i = int($length/2) * -1; $i < int($length/2); $i++) {
+					$dist_plot_background{$motif}{$smallest_dist + $i}++;
+				}
+			}
+		}
+	}
+	return ($delete, \%dist_plot_background);
+}
+
 
 sub analyze_motif_pos{
 	my %block = %{$_[0]};
