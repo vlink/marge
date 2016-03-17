@@ -4,6 +4,7 @@ use strict;
 use Getopt::Long;
 use Storable;
 use Statistics::Basic qw(:all);
+use List::Util 'shuffle';
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
 use config;
 use general;
@@ -16,8 +17,8 @@ use Set::IntervalTree;
 
 
 $_ = "" for my($genome, $file, $tf, $filename, $last_line, $name, $output, $ab, $plots, $overlap, $save, $load, $tmp_out, $tmp_out_no_motif, $tmp_out_far_motif, $data, $seq_no_motif, $seq_far_motif, $seq_recentered, $tmp_center);
-$_ = () for my(@strains, %peaks, @split, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %all_trees, %lookup_strain, %last_strain, %tree, $seq, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation);
-$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif);
+$_ = () for my(@strains, %peaks, @split, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %all_trees, %lookup_strain, %last_strain, %tree, $seq, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, @shuffle_array, $pvalue);
+$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $shuffle_k, $pvalue_option);
 #$data = "/Users/verenalink/workspace/strains/data/";
 
 sub printCMD {
@@ -36,6 +37,7 @@ sub printCMD {
 	print STDERR "\t-motif: analyzes sequences with TF motif\n";
 	print STDERR "\t-no_motif: analyzses sequences without TF motif\n";
 	print STDERR "\t-far_motif: analyzses sequences with TF motif that is more thatn 25bp away from peak center\n";
+	print STDERR "\t-shuffle: <number of repeats for generating bg distribution (default: 10)\n";
 	print STDERR "\n\nAdditional options:\n";
 	print STDERR "\t-plots: Output name of the plots\n";
 	print STDERR "\t-keep: keep temporary files\n";
@@ -47,6 +49,7 @@ sub printCMD {
 	print STDERR "\t-mut_only: just keeps peaks where one strains is mutated\n";
 	print STDERR "\t-fc_pos: Foldchange threshold to count peaks as strain specific vs not (Default: 2fold)\n";
 	print STDERR "\t-overlap: Count motif as not mutated if the overlap n basepairs (complete|half|#bp)\n";
+	print STDERR "\t-pvalue: Calculates significance all vs all based on pvalue distribution of pearson correlation (N >= 6)\n";
 	print STDERR "\n\nPlot options:\n";
 	print STDERR "\t-mut_pos: Also analyzes the position of the motif that is mutated\n";
 	print STDERR "\t-dist_plot: Plots distance relationships between TF and motif candidates\n";
@@ -74,12 +77,14 @@ GetOptions(     "genome=s" => \$genome,
 		"-TF=s" => \$tf, 
 		"-region=s" => \$region,
 		"-delta" => \$delta, 
+		"-pvalue" => \$pvalue_option,
 		"-output=s" => \$output,
 		"-plots=s" => \$plots,
 		"-AB=s" => \$ab,
 		"-keep" => \$keep, 
 		"-data_dir=s" => \$data,
 		"-tg=s" => \$tg,
+		"-shuffle=s" => \$shuffle_k,
 		"-mut_only" => \$mut_only, 
 		"-mut_pos" => \$mut_pos, 
 		"-overlap=s" => \$overlap,
@@ -99,6 +104,8 @@ my $reference_strain = config::reference_genome($genome);
 if($data eq "") {
 	$data = config::read_config()->{'data_folder'};
 }
+
+if($shuffle_k == 0) { $shuffle_k = 10; }
 
 if($center == 1) {
 	#Add 100bp so we can center on peak and then shorten the sequence, so we don't ahve to pull the seq twice
@@ -275,8 +282,34 @@ sub screen_and_plot{
 	$block_ref = analysis::merge_block(\%block, $overlap, \@strains, $seq);
 	%block = %$block_ref;
 	if(@strains > 2) {
-		$correlation = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains);
-		&generate_all_vs_all_R_files($plots . ".R", $output, $correlation);
+		($correlation, $pvalue) = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains);
+		if($pvalue_option == 0) {
+			for(my $k = 0; $k < $shuffle_k; $k++) {
+				#Shuffle tag countsi
+				my @shuffle;
+				my $run_index = 0;
+				foreach my $chr (keys %tag_counts) {
+					foreach my $pos (keys %{$tag_counts{$chr}}) {
+						$shuffle[$run_index] = $tag_counts{$chr}{$pos};
+						$run_index++;
+					}
+				}
+			#	print Dumper @shuffle;
+				my %shuffle_tag_counts;
+				my $random;
+				foreach my $chr (keys %tag_counts) {
+					foreach my $pos (keys %{$tag_counts{$chr}}) {
+						$random = int(rand(@shuffle));
+						$shuffle_tag_counts{$chr}{$pos} = $shuffle[$random];
+						splice(@shuffle, $random, 1);
+					}
+				}
+				my($shuffle_correlation, $pvalue_shuffle) = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%shuffle_tag_counts, \@strains);
+				$shuffle_array[$k] = $shuffle_correlation;
+				print STDERR "round : " . $k . "\n";
+			}
+		}
+		&generate_all_vs_all_R_files($plots . ".R", $output, $correlation, \@shuffle_array, $pvalue);
 	} else { 
 		analysis::output_motifs(\%block, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, $fc_significant, $overlap, \%fc, \%recenter_conversion);
 		for(my $i = 0; $i < @fileHandlesMotif; $i++) {
@@ -981,34 +1014,100 @@ sub write_seqs{
 
 sub generate_all_vs_all_R_files{
 	my $plots = $_[0];
-	print $plots . "\n";
+	print "plots: " . $plots . "\n";
 	my $output = $_[1] . "_all_vs_all.pdf";
 	my $correlation = $_[2];
+	my $correlation_shuffle = $_[3];
+	my $pvalue = $_[4];
 	$_ = "" for my ($x, $y);
 	open OUT, ">", $plots;
 	print OUT "pdf(\"" . $output . "\", width=5, height=5)\n";
 	print OUT "breaks <- seq(-1, 1, by=0.1)\n";
-	print R "par(oma=c(0,0,0,0))\n";
+	print OUT "par(oma=c(0,0,0,0))\n";
 	foreach my $motif (keys %{$correlation}) {
+		my $ks = "ks <- c(";
 		my $x = "x <- c(";
 		my $y = "y <- c(";
 		foreach my $pos (sort {$a <=> $b} keys %{$correlation->{$motif}}) {
 			$x .= $pos . ",";
 			$y .= $correlation->{$motif}->{$pos} . ",";
+			for(my $i = 0; $i < $correlation->{$motif}->{$pos}; $i++) {
+				$ks .= $pos . ",";
+			}
 		}
 		if(length($x) > 10) {
 			chop $x;
+			chop $ks;
 		}
 		if(length($y) > 10) {
 			chop $y;
 		}
 		print OUT $x . ")\n";
+		print OUT $ks . ")\n";
 		print OUT $y . ")\n";
-		print OUT "plot(x, y, main=\"" . $motif . "\", type=\"l\", xlab=\"Pearson Correlation\", ylab=\"Frequency\")\n";
+		if($pvalue_option == 0) {
+			for(my $k = 0; $k < $shuffle_k; $k++) {
+				my $x_shuffle = "x_shuffle_" . $k . " <- c(";
+				my $y_shuffle = "y_shuffle_" . $k . " <- c(";
+				my $ks_shuffle = "ks_shuffle_" . $k . " <- c(";
+				foreach my $pos (sort {$a <=> $b} keys %{$correlation_shuffle->[$k]->{$motif}}) {
+					$x_shuffle .= $pos . ",";
+					$y_shuffle .= $correlation_shuffle->[$k]->{$motif}->{$pos} . ",";
+					for(my $i = 0; $i < $correlation_shuffle->[$k]->{$motif}->{$pos}; $i++) {
+						$ks_shuffle .= $pos . ",";
+					}
+				}
+				if(length($x_shuffle) > 10) {
+					chop $x_shuffle;
+					chop $ks_shuffle;
+				}	
+				if(length($y_shuffle) > 10) {
+					chop $y_shuffle;
+				}
+				print OUT $x_shuffle . ")\n";
+				print OUT $ks_shuffle . ")\n";
+				print OUT $y_shuffle . ")\n";
+				print OUT "ks_test_" . $k . " <- ks.test(ks, ks_shuffle_" . $k . ")\n";
+			}	
+			print OUT "p_value_avg <- mean(ks_test_0\$p.value";
+			for(my $k = 1; $k < $shuffle_k; $k++) {
+				print OUT ", ks_test_" . $k . "\$p.value";
+			}
+			print OUT ")\n";
+			print OUT "print(paste(\"Motif: \", \"" . $motif . "\", \"   p value: \", p_value_avg, sep=\"\"))\n";
+			print OUT "plot(x, y, main=paste(\"" . $motif . "\\nP-value: \", p_value_avg, sep=\"\"), type=\"l\", xlab=\"Pearson Correlation\", ylab=\"Frequency\", ylim=c(0, max(y, y_shuffle_0)))\n";
+		} else {
+			my $pvalues_list = "pvalues <- c(";
+			my $pvalues_uni = "pvalues_uni <- c(";
+			foreach my $values (sort {$a <=> $b} keys %{$pvalue->{$motif}}) {
+				for(my $i = 0; $i < $pvalue->{$motif}->{$values}; $i++) {
+					$pvalues_list .= $values . ",";
+					$pvalues_uni .= rand(1) . ",";
+				}
+			}
+			if(length($pvalues_list) > 15) {
+				chop $pvalues_list;
+				chop $pvalues_uni;
+			}
+			print OUT $pvalues_list . ")\n";
+			print OUT $pvalues_uni . ")\n";
+			print OUT "pvalues_uni_sort <- sort(pvalues_uni)\n";
+			print OUT "ks_test <- ks.test(pvalues, pvalues_uni_sort)\n";
+			print OUT "p_value_avg <- ks_test\$p.value\n";
+			print OUT "print(paste(\"Motif: \", \"" . $motif . "\", \"\\tp value: \", p_value_avg, sep=\"\"))\n";
+			print OUT "plot(x, y, main=paste(\"" . $motif . "\\nP-value: \", p_value_avg, sep=\"\"), type=\"l\", xlab=\"Pearson Correlation\", ylab=\"Frequency\")\n";
+		}
+	#	print OUT "ks_test <- ks.test(ks, ks_shuffle)\n";
+		if($pvalue_option == 0) {
+			for(my $k = 0; $k < $shuffle_k; $k++) {
+				print OUT "lines(x_shuffle_" . $k . ", y_shuffle_" . $k . ", col=\"lightgrey\", lty=3)\n";
+			}
+		}
+		print OUT "lines(x, y, lwd=2, col=\"black\")\n";
 	}
 	print OUT "dev.off()\n";
 	close OUT;
-	`Rscript $plots`;
+	`Rscript $plots 2> /dev/null`;
 
 }
 sub fakrek{

@@ -8,6 +8,7 @@ use Getopt::Long;
 use config;
 use Data::Dumper;
 use Statistics::Basic qw(:all);
+use Statistics::Distributions;
 #require '../db_part/database_interaction.pm';
 
 $_ = "" for my($genome, $file, $tf, $filename, $last_line);
@@ -99,20 +100,22 @@ sub analyze_motifs{
 		if(exists $lookup->{$header[3]}->{$chr_num}) {
 			$chr_num = $lookup->{$header[3]}->{$chr_num};
 		}
-		$tree_tmp = $tree->{$header[3]}->{$chr_num}->fetch($pos_beginning, $pos_beginning + 1);
-		if(!exists $tree_tmp->[0]->{'shift'}) {
-			$shift_beginning = $last->{$header[3]}->{$header[0]}->{$allele}->{'shift'};
-		} else {
-			$shift_beginning = $tree_tmp->[0]->{'shift'};
+		if(defined $tree->{$header[3]}->{$chr_num}) {
+			$tree_tmp = $tree->{$header[3]}->{$chr_num}->fetch($pos_beginning, $pos_beginning + 1);
+			if(!exists $tree_tmp->[0]->{'shift'}) {
+				$shift_beginning = $last->{$header[3]}->{$header[0]}->{$allele}->{'shift'};
+			} else {
+				$shift_beginning = $tree_tmp->[0]->{'shift'};
+			}
+			$tree_tmp = $tree->{$header[3]}->{$chr_num}->fetch($motif_start, $motif_start + 1);
+			if(!exists $tree_tmp->[0]->{'shift'}) {
+				$shift_current = $last->{$header[3]}->{$header[0]}->{$allele}->{'shift'};
+			} else {
+				$shift_current = $tree_tmp->[0]->{'shift'};
+			}
+			$shift_diff = $shift_beginning - $shift_current;
+			$motif_pos = $motif_pos + $shift_diff;
 		}
-		$tree_tmp = $tree->{$header[3]}->{$chr_num}->fetch($motif_start, $motif_start + 1);
-		if(!exists $tree_tmp->[0]->{'shift'}) {
-			$shift_current = $last->{$header[3]}->{$header[0]}->{$allele}->{'shift'};
-		} else {
-			$shift_current = $tree_tmp->[0]->{'shift'};
-		}
-		$shift_diff = $shift_beginning - $shift_current;
-		$motif_pos = $motif_pos + $shift_diff;
 		$block{$last_line}{$split[3]}{$motif_pos}{$header[-1]} = $split[-1];
 		$block{$last_line}{$split[3]}{$motif_pos}{'length'} = length($split[2]);
         }
@@ -676,10 +679,12 @@ sub get_seq_for_peaks {
 	my $newlines;
 	my $chr_num;
 	my $shift_vector;
+	my $no_shift = 0;
 	$line_number = $line_number * @strains;
 	for(my $i = 0; $i < @strains; $i++) {
 		foreach my $chr (keys %peaks) {
 			$chr_num = $chr;
+			$no_shift = 0;
 			#Start with offset for first line
 			$general_offset = 5 + length($chr);
 			if(exists $lookup->{$strains[$i]}->{$chr_num}) {
@@ -690,6 +695,9 @@ sub get_seq_for_peaks {
 				next;
 			}
 			$current_tree = $tree->{$strains[$i]}->{$chr_num};
+			if(!defined $current_tree) {
+				$no_shift = 1;
+			}
 			$filename = $data . "/" . uc($strains[$i]) . "/chr" . $chr . "_allele_" . $allele . ".fa";
                         open my $fh, "<", $filename or die "Can't open $filename: $!\n";
                         $fileHandles[0] = $fh;
@@ -699,20 +707,22 @@ sub get_seq_for_peaks {
 				$working_start = $start_pos - int($region/2);
 				$working_stop = $peaks{$chr}{$start_pos} + int($region/2);
 				#Calculate strain specific offset from shifting vector
-				$ref_start = $current_tree->fetch($working_start, $working_start + 1);
-				if(!exists $ref_start->[0]->{'shift'}) {
-					$shift_vector = $last->{$strains[$i]}->{$chr}->{$allele}->{'shift'};
-				} else {
-					$shift_vector = $ref_start->[0]->{'shift'};
+				if($no_shift == 0) {
+					$ref_start = $current_tree->fetch($working_start, $working_start + 1);
+					if(!exists $ref_start->[0]->{'shift'}) {
+						$shift_vector = $last->{$strains[$i]}->{$chr}->{$allele}->{'shift'};
+					} else {
+						$shift_vector = $ref_start->[0]->{'shift'};
+					}
+					$working_start = $working_start + $shift_vector;
+					$ref_start = $current_tree->fetch($working_stop, $working_stop + 1);
+					if(!exists $ref_start->[0]->{'shift'}) {
+						$shift_vector = $last->{$strains[$i]}->{$chr}->{$allele}->{'shift'};
+					} else {
+						$shift_vector = $ref_start->[0]->{'shift'};
+					}
+					$working_stop = $working_stop + $shift_vector;
 				}
-				$working_start = $working_start + $shift_vector;
-				$ref_start = $current_tree->fetch($working_stop, $working_stop + 1);
-				if(!exists $ref_start->[0]->{'shift'}) {
-					$shift_vector = $last->{$strains[$i]}->{$chr}->{$allele}->{'shift'};
-				} else {
-					$shift_vector = $ref_start->[0]->{'shift'};
-				}
-				$working_stop = $working_stop + $shift_vector;
 				$header = "chr" . $chr . "_" . $start_pos . "_" . $peaks{$chr}{$start_pos} . "_" . $strains[$i];
 				#Calculate length and newlines (fastq file saves seq in 50bp lines)
 				$length = $working_stop - $working_start;
@@ -749,8 +759,8 @@ sub all_vs_all_comparison{
 	my $recenter_conversion = $_[1];
 	my $tag_counts = $_[2];
 	my @strains = @{$_[3]};
-	$_ = () for my(@split, %correlation, @sum, @tag_sum, $vector_motifs, $vector_tagcounts, @split, %correlation, $chr);
-	my $con_pos;
+	$_ = () for my(@split, %correlation, @sum, @tag_sum, $vector_motifs, $vector_tagcounts, @split, %correlation, $chr, %pvalue, $p, $stddev_m, $stddev_t, $cor, $t);
+	my($con_pos, $r, $r2, $p);
 	foreach my $pos (keys %{$block}) {
 		@split = split("_", $pos);
 		$chr = substr($split[0], 3);
@@ -768,11 +778,27 @@ sub all_vs_all_comparison{
 			$vector_motifs = vector(@sum);
 			@tag_sum = split('\s+', $tag_counts->{$chr}->{$con_pos});
 			$vector_tagcounts = vector(@tag_sum);
-			my $cor = correlation( $vector_motifs, $vector_tagcounts );
-			if($cor ne "n/a") {
+			$stddev_m = stddev( $vector_motifs) * 1;
+			$stddev_t = stddev( $vector_tagcounts) * 1;
+			if($stddev_m < 0.00001) { $stddev_m = 0; }
+			if($stddev_t < 0.00001) { $stddev_t = 0; }
+			$cor = correlation( $vector_motifs, $vector_tagcounts );
+			if($cor ne "n/a" && $stddev_m > 0 && $stddev_t > 0) {
 				$correlation{$motif}{$cor}++;
+				#Try p-value: 
+				if(@strains >= 6) {
+					$r = $cor;
+					$r2 = $cor * $cor;
+					if((1-$r2) < 0 || sqrt((1-$r2)/(@strains - 2)) == 0) {
+						$t = 1;
+					} else {
+						$t = $r/sqrt((1-$r2)/(@strains - 2));
+					}
+					$p = Statistics::Distributions::tprob(@strains - 1,$t);
+					$pvalue{$motif}{$p}++;
+				}
 			}
 		}
 	}
-	return \%correlation;
+	return (\%correlation, \%pvalue);
 }
