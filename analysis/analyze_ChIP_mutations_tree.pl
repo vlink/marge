@@ -15,10 +15,12 @@ use Data::Dumper;
 #require '../db_part/database_interaction.pm';
 use Set::IntervalTree;
 
+print STDERR "Add pairwise comparison\n";
+print STDERR "p-value calculation of pearson correlation taken out for the moment\n";
 
 $_ = "" for my($genome, $file, $tf, $filename, $last_line, $name, $output, $ab, $plots, $overlap, $save, $load, $tmp_out, $tmp_out_no_motif, $tmp_out_far_motif, $data, $seq_no_motif, $seq_far_motif, $seq_recentered, $tmp_center);
 $_ = () for my(@strains, %peaks, @split, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %all_trees, %lookup_strain, %last_strain, %tree, $seq, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, @shuffle_array, $pvalue);
-$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $shuffle_k, $pvalue_option);
+$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $shuffle_k, $pvalue_option, $shuffle_between, $shuffle_within);
 #$data = "/Users/verenalink/workspace/strains/data/";
 
 sub printCMD {
@@ -49,7 +51,9 @@ sub printCMD {
 	print STDERR "\t-mut_only: just keeps peaks where one strains is mutated\n";
 	print STDERR "\t-fc_pos: Foldchange threshold to count peaks as strain specific vs not (Default: 2fold)\n";
 	print STDERR "\t-overlap: Count motif as not mutated if the overlap n basepairs (complete|half|#bp)\n";
-	print STDERR "\t-pvalue: Calculates significance all vs all based on pvalue distribution of pearson correlation (N >= 6)\n";
+	print STDERR "\t-shuffle_within: Shuffles tag counts per motif to calculate significance all vs all\n";
+	print STDERR "\t-shuffle_between: Shuffles tag count vectors and motif vectors to calcualte significane (default)\n";
+#	print STDERR "\t-pvalue: Calculates significance all vs all based on pvalue distribution of pearson correlation (N >= 6)\n";
 	print STDERR "\n\nPlot options:\n";
 	print STDERR "\t-mut_pos: Also analyzes the position of the motif that is mutated\n";
 	print STDERR "\t-dist_plot: Plots distance relationships between TF and motif candidates\n";
@@ -77,7 +81,7 @@ GetOptions(     "genome=s" => \$genome,
 		"-TF=s" => \$tf, 
 		"-region=s" => \$region,
 		"-delta" => \$delta, 
-		"-pvalue" => \$pvalue_option,
+#		"-pvalue" => \$pvalue_option,
 		"-output=s" => \$output,
 		"-plots=s" => \$plots,
 		"-AB=s" => \$ab,
@@ -85,6 +89,8 @@ GetOptions(     "genome=s" => \$genome,
 		"-data_dir=s" => \$data,
 		"-tg=s" => \$tg,
 		"-shuffle=s" => \$shuffle_k,
+		"-shuffle_within" => \$shuffle_within,
+		"-shuffle_between" => \$shuffle_between,
 		"-mut_only" => \$mut_only, 
 		"-mut_pos" => \$mut_pos, 
 		"-overlap=s" => \$overlap,
@@ -106,6 +112,9 @@ if($data eq "") {
 }
 
 if($shuffle_k == 0) { $shuffle_k = 10; }
+if($shuffle_between == 0 && $shuffle_within == 0) {
+	$shuffle_between = 1;
+}
 
 if($center == 1) {
 	#Add 100bp so we can center on peak and then shorten the sequence, so we don't ahve to pull the seq twice
@@ -285,28 +294,48 @@ sub screen_and_plot{
 		($correlation, $pvalue) = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains);
 		if($pvalue_option == 0) {
 			for(my $k = 0; $k < $shuffle_k; $k++) {
-				#Shuffle tag countsi
+				#Randomize relationship between motif scores and tag counts
 				my @shuffle;
-				my $run_index = 0;
-				foreach my $chr (keys %tag_counts) {
-					foreach my $pos (keys %{$tag_counts{$chr}}) {
-						$shuffle[$run_index] = $tag_counts{$chr}{$pos};
-						$run_index++;
-					}
-				}
-			#	print Dumper @shuffle;
+				my $shuffle;
 				my %shuffle_tag_counts;
 				my $random;
-				foreach my $chr (keys %tag_counts) {
-					foreach my $pos (keys %{$tag_counts{$chr}}) {
-						$random = int(rand(@shuffle));
-						$shuffle_tag_counts{$chr}{$pos} = $shuffle[$random];
-						splice(@shuffle, $random, 1);
+				my @vector;
+				if($shuffle_between == 1) {
+					my $run_index = 0;
+					foreach my $chr (keys %tag_counts) {
+						foreach my $pos (keys %{$tag_counts{$chr}}) {
+							$shuffle[$run_index] = $tag_counts{$chr}{$pos};
+							$run_index++;
+						}
+					}
+				#	print Dumper @shuffle;
+					foreach my $chr (keys %tag_counts) {
+						foreach my $pos (keys %{$tag_counts{$chr}}) {
+							$random = int(rand(@shuffle));
+							$shuffle_tag_counts{$chr}{$pos} = $shuffle[$random];
+							splice(@shuffle, $random, 1);
+						}
+					}
+				#Randomize relationship within tag count vector
+				} else {
+					foreach my $chr (keys %tag_counts) {
+						foreach my $pos (keys %{$tag_counts{$chr}}) {
+							@vector = split('\t', $tag_counts{$chr}{$pos});
+							$shuffle = "";
+							while(@vector > 0) {
+								$random = int(rand(@vector));
+								$shuffle .= $vector[$random] . "\t";
+								splice(@vector, $random, 1);
+							}
+							chop $shuffle;
+							$shuffle_tag_counts{$chr}{$pos} = $shuffle; 
+						}
 					}
 				}
 				my($shuffle_correlation, $pvalue_shuffle) = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%shuffle_tag_counts, \@strains);
 				$shuffle_array[$k] = $shuffle_correlation;
 				print STDERR "round : " . $k . "\n";
+				
 			}
 		}
 		&generate_all_vs_all_R_files($plots . ".R", $output, $correlation, \@shuffle_array, $pvalue);
