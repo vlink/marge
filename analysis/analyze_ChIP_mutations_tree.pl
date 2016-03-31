@@ -20,7 +20,7 @@ print STDERR "p-value calculation of pearson correlation taken out for the momen
 
 $_ = "" for my($genome, $file, $tf, $filename, $last_line, $name, $output, $ab, $plots, $overlap, $save, $load, $tmp_out, $tmp_out_no_motif, $tmp_out_far_motif, $data, $seq_no_motif, $seq_far_motif, $seq_recentered, $tmp_center);
 $_ = () for my(@strains, %peaks, @split, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %all_trees, %lookup_strain, %last_strain, %tree, $seq, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, @shuffle_array, $pvalue);
-$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $shuffle_k, $pvalue_option, $shuffle_between, $shuffle_within, $motif_diff, $motif_diff_percentage);
+$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $shuffle_k, $pvalue_option, $shuffle_between, $shuffle_within, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick);
 #$data = "/Users/verenalink/workspace/strains/data/";
 
 sub printCMD {
@@ -47,6 +47,8 @@ sub printCMD {
 	print STDERR "\t-save <output name>: saves sequence files\n";
 	print STDERR "\t-load <input name>: loads sequence files saved from a previous run\n";
 	print STDERR "\t-data_dir <folder to data directory>: default defined in config\n";
+	print STDERR "\t-delta_tag: Does not use foldchange but delta of the tag counts between the strains\n";
+	print STDERR"\t -delta_threshold: Difference between tag counts that is counted as significant (default: 100)\n";
 	print STDERR "\n\nFiltering options:\n";
 	print STDERR "\t-tg <minmal tag count>: Filters out all peaks with less than x tag counts\n";
 	print STDERR "\t-mut_only: just keeps peaks where one strains is mutated\n";
@@ -66,6 +68,14 @@ sub printCMD {
 if(@ARGV < 1) {
         &printCMD();
 }
+my $commandline_tmp = $0 . " ". (join " ", @ARGV);
+my $commandline = "\n\n\n\n\n\n\n\nCOMMAND:\n";
+while(length($commandline_tmp) > 80) {
+	$commandline .= substr($commandline_tmp, 0, 80) . "\n";
+	$commandline_tmp = substr($commandline_tmp, 80);
+}
+$commandline .= $commandline_tmp;
+
 print STDERR "change output file names for R files\n";
 print STDERR "clean up the code, stop giving so much to other methods in the modules, make it more global\n";
 print STDERR "CLEAN UP CODE\n";
@@ -84,6 +94,8 @@ GetOptions(     "genome=s" => \$genome,
 		"-delta" => \$delta, 
 #		"-pvalue" => \$pvalue_option,
 		"-output=s" => \$output,
+		"-delta_tag" => \$delta_tag,
+		"-delta_threshold=s" => \$delta_threshold,
 		"-plots=s" => \$plots,
 		"-AB=s" => \$ab,
 		"-keep" => \$keep, 
@@ -116,6 +128,10 @@ if($data eq "") {
 if($shuffle_k == 0) { $shuffle_k = 10; }
 if($shuffle_between == 0 && $shuffle_within == 0) {
 	$shuffle_between = 1;
+}
+
+if($delta_tag == 1 && $delta_threshold == 0) {
+	$delta_threshold = 100;
 }
 
 if($center == 1) {
@@ -200,10 +216,18 @@ foreach my $line (<FH>) {
 	for(my $i = 19; $i < @split; $i++) {
 		$tag_counts{substr($split[1], 3)}{$split[2]} .= $split[$i] . "\t";
 	}
-	for(my $i = 19; $i < @split - 1; $i++) {
-		for(my $j = $i + 1; $j < @split; $j++) {
-			$fc{substr($split[1], 3)}{$split[2]} .= log(($split[$i]+1)/($split[$j]+1))/log(2) . "\t";
-		} 
+	if($delta_tag == 0) {
+		for(my $i = 19; $i < @split - 1; $i++) {
+			for(my $j = $i + 1; $j < @split; $j++) {
+				$fc{substr($split[1], 3)}{$split[2]} .= log(($split[$i]+1)/($split[$j]+1))/log(2) . "\t";
+			} 
+		}
+	} else {
+		for(my $i = 19; $i < @split - 1; $i++) {
+			for(my $j = $i + 1; $j < @split; $j++) {
+				$fc{substr($split[1], 3)}{$split[2]} .= ($split[$i] - $split[$j]) . "\t";
+			}
+		}
 	}
 }
 close FH;
@@ -357,14 +381,14 @@ sub screen_and_plot{
 		print STDERR "Generating R files!\n";
 		&generate_R_files($plots . ".R", $output);
 		if($mut_pos == 1) {
-			my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant, \%seq, \%tree, \%last_strain, \%lookup_strain, $motif_diff, $motif_diff_percentage);
+			my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant, \%seq, \%tree, \%last_strain, \%lookup_strain, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold);
 			%mut_pos_analysis = %$mut_pos_analysis_ref;
 			&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs.R");
 		}
 	}
 	if($dist_plot == 1) {
 		#Check background distribution
-		my ($dist_plot_ref) = analysis::distance_plot(\%block, \@strains, \%fc, $fc_significant, $effect, $longest_seq, $seq);
+		my ($dist_plot_ref) = analysis::distance_plot(\%block, \@strains, \%fc, $fc_significant, $effect, $longest_seq, $seq, $delta_tag, $delta_threshold);
 		%dist_plot = %{$dist_plot_ref};
 		my $bg_folder = config::read_config()->{'motif_background_path'};
 		my ($delete_ref, $dist_plot_background_ref) = analysis::background_dist_plot($bg_folder, \%index_motifs, \%delete, \%motif_scan_scores, $genome, $ab, $region, $longest_seq);
@@ -417,7 +441,7 @@ sub screen_and_plot{
 				}
 			}
 			if($mut_pos == 1) {
-				my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant, \%seq, \%tree, \%last_strain, \%lookup_strain, $motif_diff, $motif_diff_percentage);
+				my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant, \%seq, \%tree, \%last_strain, \%lookup_strain, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold);
 				%mut_pos_analysis = %$mut_pos_analysis_ref;
 				&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs_removed.R");
 			}
@@ -440,8 +464,6 @@ sub generate_dist_plot{
 		$longest_seq++;
 	}
 
-	print STDERR "longest seq: " . $longest_seq . "\n";
-	print STDERR "region: " . $region . "\n";
 	for(my $i = 0; $i < $longest_seq + $region; $i++) {
 		$x .= ($i - int($longest_seq/2)) . ",";
 	}
@@ -450,6 +472,7 @@ sub generate_dist_plot{
 	}
 	$x .= ")";
 	print R "pdf(\"" . substr($output, 0, length($output) - 2) . ".pdf\", width=10, height=5)\n";
+	print R "plot(0, 0, xlim=c(0,0), ylim=c(0,0), main=\"" . $commandline . "\", bty=\'n\', xaxt=\"n\", yaxt=\"n\", col=\"white\", xlab=\"\", ylab=\"\")\n";
 	print R $x . "\n";
 	#Generate colors
 	print R "color <- colorRampPalette(c(\"blue\", \"red\"))(" . (@strains) . ")\n";
@@ -608,6 +631,7 @@ sub generate_mut_pos_analysis_file{
 	print R "bad = (sapply( body(mySeqLogo), \"==\", \"grid.newpage()\") | sapply( body(mySeqLogo), \"==\", \"par(ask=FALSE)\"))\n";
 	print R "body(mySeqLogo)[bad] = NULL\n";
 	print R "pdf(\"" . substr($output, 0, length($output) - 2) . ".pdf\", width=10, height=5)\n";
+	print R "plot(0, 0, xlim=c(0,0), ylim=c(0,0), main=\"" . $commandline . "\", bty=\'n\', xaxt=\"n\", yaxt=\"n\", col=\"white\", xlab=\"\", ylab=\"\")\n";
 	my %col;
 	$col{'A'} = "green";
 	$col{'C'} = "blue";
@@ -749,6 +773,7 @@ sub generate_R_files {
 	print STDERR "Add filtering for number of motifs!\n";
 	open R, ">", $output_R_file;
 	print R "pdf(\"" . substr($output_R_file, 0, length($output_R_file) - 2) . ".pdf\", width=10, height=5)\n";
+	print R "plot(0, 0, xlim=c(0,0), ylim=c(0,0), main=\"" . $commandline . "\", bty=\'n\', xaxt=\"n\", yaxt=\"n\", col=\"white\", xlab=\"\", ylab=\"\")\n";
 	my $cal_pvalue = 0;
 	my $count_obs_one = 0;
 	my $count_obs_two = 0;
@@ -834,6 +859,12 @@ sub generate_R_files {
 				my $number_peaks = (keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}});
 				print R "plot(c(0," . ((keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) + $add_additional) . "), c(" . $min . ", " . $max . "+1), col=\"white\", xlab=\"rank-ordered peaks\", ylab=\"FC " . $strains[$i] . " vs " . $strains[$j] . "\", main=\"" . $strains[$i] . " vs " . $strains[$j] . "\\n$motif\")\n"; 
 				print R "abline(c(0,0), c(0,0))\n";
+				#Make ticks bigger because scale is bigger
+				if($delta_tag == 1) {
+					$delta_tick = ((abs($min) + abs($max))/50);
+				} else {
+					$delta_tick = 0.5;
+				}
 				#Sort by fold change value between strains
 				foreach my $rank (sort {$ranked_order{$strains[$i] . "_" . $strains[$j]}{$a} <=> $ranked_order{$strains[$i] . "_" . $strains[$j]}{$b}} keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) {
 					if(exists $mut_one{$strains[$i] . "_" . $strains[$j]}{$rank}) {
@@ -842,7 +873,8 @@ sub generate_R_files {
 							print R "points(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", pch=8, col=\"red\")\n";
 						 	print R "segments(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", x1 = " . $x_count . ", y1= " . ($ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} + $delta_score{$strains[$i] . "_" . $strains[$j]}{$rank}) . ", col=\"red\")\n";
 						} else {
-							print R "segments(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . " - 0.5" . ", x1 = " . $x_count . ", y1= " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . "+0.5, col=\"red\")\n";
+							print R "segments(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . " - " . $delta_tick . ", x1 = " . $x_count . ", y1= " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . "+" . $delta_tick . ", col=\"red\")\n";
+						
 						}
 					}
 					if(exists $mut_two{$strains[$i] . "_" . $strains[$j]}{$rank}) {
@@ -851,7 +883,7 @@ sub generate_R_files {
 							print R "points(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", pch=8, col=\"blue\")\n";
 							print R "segments(" . $x_count . " + 0.1, " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", x1 = " . $x_count . " + 0.1" . ", y1= " . ($ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} + $delta_score{$strains[$i] . "_" . $strains[$j]}{$rank}) . ", col=\"blue\")\n";
 						} else {
-							print R "segments(" . $x_count . " + 0.1, " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", x1 = " . $x_count . " + 0.1" . ", y1= " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . "+1, col=\"blue\")\n";
+							print R "segments(" . $x_count . " + 0.1, " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", x1 = " . $x_count . " + 0.1" . ", y1= " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . "+ (2*" . $delta_tick . "), col=\"blue\")\n";
 						}
 					}
 					if(!exists $mut_one{$strains[$i] . "_" . $strains[$j]}{$rank} && !exists $mut_two{$strains[$i] . "_" . $strains[$j]}{$rank}) {
@@ -901,6 +933,7 @@ sub generate_delta_files{
 	open R, ">$output_R";
 	$_ = "" for my($x, $y, $f);
 	print R "pdf(\"" . substr($output_R, 0, length($output_R) - 2) . ".pdf\", width=10, height=5)\n";
+	print R "plot(0, 0, xlim=c(0,0), ylim=c(0,0), main=\"" . $commandline . "\", bty=\'n\', xaxt=\"n\", yaxt=\"n\", col=\"white\", xlab=\"\", ylab=\"\")\n";
 	foreach my $motif (sort {$index_motifs{$a} cmp $index_motifs{$b}} keys %index_motifs) {
 		#Make sure there a mutations in this motif
 		$x = "x <- c(";
@@ -1062,6 +1095,7 @@ sub generate_all_vs_all_R_files{
 	$_ = "" for my ($x, $y);
 	open OUT, ">", $plots;
 	print OUT "pdf(\"" . $output . "\", width=5, height=5)\n";
+	print OUT "plot(0, 0, xlim=c(0,0), ylim=c(0,0), main=\"" . $commandline . "\", bty=\'n\', xaxt=\"n\", yaxt=\"n\", col=\"white\", xlab=\"\", ylab=\"\")\n";
 	print OUT "breaks <- seq(-1, 1, by=0.1)\n";
 	print OUT "par(oma=c(0,0,0,0))\n";
 	foreach my $motif (keys %{$correlation}) {

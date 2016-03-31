@@ -315,11 +315,16 @@ sub distance_plot{
 	my $effect = $_[4];
 	my $longest_seq = $_[5];
 	my $seq = $_[6];
+	my $delta_tag = $_[7];
+	my $delta_threshold = $_[8];
 	my %dist_plot;
 	my $offset;
 	foreach my $last_line (keys %block) {
 		@split = split("_", $last_line);
-		if($effect == 1 && ($fc{substr($split[0], 3)}{$split[1]} < log($fc_significant)/log(2) && $fc{substr($split[0], 3)}{$split[1]} > log(1/$fc_significant)/log(2))) {
+		if($delta_tag == 0 && $effect == 1 && ($fc{substr($split[0], 3)}{$split[1]} < log($fc_significant)/log(2) && $fc{substr($split[0], 3)}{$split[1]} > log(1/$fc_significant)/log(2))) {
+			next;
+		}
+		if($delta_tag == 1 && $effect == 1 && abs($fc{substr($split[0], 3)}{$split[1]}) < $delta_threshold) {
 			next;
 		}
 		$offset = int(($longest_seq - length($seq->{$last_line . "_" . $strains[0]}))/2);
@@ -493,6 +498,8 @@ sub analyze_motif_pos{
 	my $lookup = $_[7];
 	my $motif_diff = $_[8];
 	my $motif_diff_percentage = $_[9];
+	my $delta_tag = $_[10];
+	my $delta_threshold = $_[11];
 	my $max_motif= 0;
 	my @fc_split;
 	my @char_one;
@@ -572,41 +579,72 @@ sub analyze_motif_pos{
 								}
 							}
 							if($num_of_muts > 2) {
-								if($fc_split[$i + $j - 1] > log($fc_significant)/log(2) || $fc_split[$i + $j - 1] < log(1/$fc_significant)/log(2)) {
-									$matrix_pos_muts{$motif}{'indel'}{'S'}++;
+								if($delta_tag == 0) {
+									if($fc_split[$i + $j - 1] > log($fc_significant)/log(2) || $fc_split[$i + $j - 1] < log(1/$fc_significant)/log(2)) {
+										$matrix_pos_muts{$motif}{'indel'}{'S'}++;
+									} else {
+										$matrix_pos_muts{$motif}{'indel'}{'N'}++;
+									}
 								} else {
-									$matrix_pos_muts{$motif}{'indel'}{'N'}++;
+									if(abs($fc_split[$i + $j - 1]) > $delta_threshold) {
+										$matrix_pos_muts{$motif}{'indel'}{'S'}++;
+									} else {
+										$matrix_pos_muts{$motif}{'indel'}{'N'}++;
+									}
 								}
 								next;
 							}
 							if($num_of_muts > 1) {
-								if($fc_split[$i + $j - 1] > log($fc_significant)/log(2) || $fc_split[$i + $j - 1] < log(1/$fc_significant)/log(2)) {
-									$matrix_pos_muts{$motif}{'multi'}{'S'}++;
+								if($delta_tag == 0) {
+									if($fc_split[$i + $j - 1] > log($fc_significant)/log(2) || $fc_split[$i + $j - 1] < log(1/$fc_significant)/log(2)) {
+										$matrix_pos_muts{$motif}{'multi'}{'S'}++;
+									} else {
+										$matrix_pos_muts{$motif}{'multi'}{'N'}++;
+									}
 								} else {
-									$matrix_pos_muts{$motif}{'multi'}{'N'}++;
+									if(abs($fc_split[$i + $j -1]) > $delta_threshold) {
+										$matrix_pos_muts{$motif}{'multi'}{'S'}++;
+									} else {
+										$matrix_pos_muts{$motif}{'multi'}{'N'}++;
+
+									}
 								}
 								next;
 							}
 
 							for(my $c = 0; $c < @char_one; $c++) {
 								if($char_one[$c] ne $char_two[$c]) {
-									if($fc_split[$i + $j - 1] > log($fc_significant)/log(2) || $fc_split[$i + $j - 1] < log(1/$fc_significant)/log(2)) {
-										#S meaning significant
-										if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
-											$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'S'}++;
+									if($delta_tag == 0) {
+										if($fc_split[$i + $j - 1] > log($fc_significant)/log(2) || $fc_split[$i + $j - 1] < log(1/$fc_significant)/log(2)) {
+											#S meaning significant
+											if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
+												$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'S'}++;
+											} else {
+												$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'S'}++;
+											}
 										} else {
-											$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'S'}++;
+											if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
+												$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'N'}++;
+											} else {
+												$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'N'}++;
+											}
 										}
-								#		print $motif . "\t" . $char_one[$c] . "\t" . $char_two[$c] . "\t" . $c . "\t" . $fc_split[$i+$j-1] . "\t" . $last_line . "\n";
-								#		print $motif . "\t" . join("", @char_one) . " (" . $block{$last_line}{$motif}{$motif_pos}{$strains[$i]} . ")\t" . join("", @char_two) . "(" . $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}. ")\n";
-								#		print $motif . "\t" . join("", @char_one) . "\n";
-								#		print $motif . "\t" . join("", @char_two) . "\n\n\n";
 									} else {
-										if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
-											$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'N'}++;
+										if(abs($fc_split[$i + $j - 1]) > $delta_threshold) {
+											#S meaning significant
+											if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
+												$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'S'}++;
+											} else {
+												$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'S'}++;
+											}
 										} else {
-											$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'N'}++;
+											if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
+												$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'N'}++;
+											} else {
+												$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'N'}++;
+											}
 										}
+
 									}
 								}
 							}
@@ -618,6 +656,7 @@ sub analyze_motif_pos{
 	}
 	return \%matrix_pos_muts;
 }
+
 sub log_fc {
 	my $local_delta = $_[0];
 	if($local_delta < 0) {
