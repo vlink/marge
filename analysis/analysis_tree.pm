@@ -95,7 +95,8 @@ sub analyze_motifs{
 		$pos_beginning = $header[1] - ($region/2);
 		$chr_num = substr($header[0], 3);
 		if($chr_num !~ /\d+/ && !exists $lookup->{$header[3]}->{$chr_num}) {
-			print STDERR "Skip analysis of chromosome " . $chr_num;
+			print STDERR "Skip analysis of chromosome " . $chr_num . " in analyze_motifs\n";
+			print STDERR $chr_num . "\t" . $header[3] . "\n";
 		}
 		if(exists $lookup->{$header[3]}->{$chr_num}) {
 			$chr_num = $lookup->{$header[3]}->{$chr_num};
@@ -118,6 +119,7 @@ sub analyze_motifs{
 		}
 		$block{$last_line}{$split[3]}{$motif_pos}{$header[-1]} = $split[-1];
 		$block{$last_line}{$split[3]}{$motif_pos}{'length'} = length($split[2]);
+		$block{$last_line}{$split[3]}{$motif_pos}{'orientation'} = $split[4];
         }
 	return \%block;
 }
@@ -139,11 +141,21 @@ sub merge_block {
 	my @strains = @{$_[2]};
 	my $overlap = $_[1];
 	my $seq = $_[3];
+	my $tree = $_[4];
+	my $lookup = $_[5];
+	my $last = $_[6];
+	my $tree_tmp;
 	my $ab_mut = 0;
 	my $num_of_bp = 0;
+	my $chr_num;
+	my $shift_vector;
+	my $current_pos;
+	my $prev_shift;
+	my $current_shift;
         #Now run through all motifs and see if they are in all the other strains
         my %ignore = ();
 	foreach my $chr_pos (keys %block) {
+		$current_pos = (split("_", $chr_pos))[1];
 		foreach my $motif (keys %{$block{$chr_pos}}) {
 			%existance = ();
 			%diff = ();
@@ -162,6 +174,14 @@ sub merge_block {
 				$save_pos = $motif_pos;
 				$motif_score = 0;
 				for(my $i = 0; $i < @strains; $i++) {
+					$chr_num = substr((split('_', $chr_pos))[0], 3);
+					if($chr_num !~ /\d+/ && !exists $lookup->{$strains[$i]}->{$chr_num}) {
+						print STDERR "Skip analysis of chromosome " . $chr_num . " in merge_block\n";
+						next;
+					}
+					if(exists $lookup->{$strains[$i]}->{$chr_num}) {
+						$chr_num = $lookup->{$strains[$i]}->{$chr_num};
+					}
 					if(!exists $diff{$strains[$i]}) {
 						$diff{$strains[$i]} = 0;
 					}
@@ -182,7 +202,14 @@ sub merge_block {
 						}
 					}
 					if($block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} eq "" || !exists $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}) {
-						$block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} = &calculate_motif_score($motif, substr($seq->{$chr_pos . "_" . $strains[$i]}, $motif_pos + 1, $block{$chr_pos}{$motif}{$motif_pos}{'length'}));
+						if(defined $tree->{$strains[$i]}->{$chr_num}) {
+							$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
+							$current_shift = $tree_tmp->[$i]->{'shift'};
+							$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->fetch($current_pos, $current_pos + 1);
+							$prev_shift = $tree_tmp->[$i]->{'shift'};
+							$shift_vector = $current_shift - $prev_shift;	
+						}
+						$block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} = &calculate_motif_score($motif, substr($seq->{$chr_pos . "_" . $strains[$i]}, $motif_pos + $shift_vector, $block{$chr_pos}{$motif}{$motif_pos}{'length'}), $block{$chr_pos}{$motif}{$motif_pos}{'orientation'});
 						$diff{$strains[$i]} += $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]};
 					} else {
 						$diff{$strains[$i]} += $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]};
@@ -209,12 +236,15 @@ sub output_motifs{
 		$fc_exists = 1;
 	}
 	my %recenter_conversion = %{$_[8]};
+	my $motif_diff = $_[9];
+	my $motif_diff_percentage = $_[10];
 	my $curr_chr;
 	my $curr_pos;
 	my $ab;
 	my $ab_mut;
 	my %diff;
 	my %existance;
+	my $max_motif = 0;
         #Now run through all motifs and see if they are in all the other strains
 	foreach my $chr_pos (keys %block) {
 		@split = split("_", $chr_pos);
@@ -230,11 +260,30 @@ sub output_motifs{
 			$fileHandlesMotif[$index_motifs{$motif}]->print($tag_counts{$curr_chr}{$curr_pos});
 			foreach my $motif_pos (keys %{$block{$chr_pos}{$motif}}) {
 				for(my $i = 0; $i < @strains; $i++) {
-					if(!exists $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} || $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} == 0) {
+					#Filter by motif existance - either motif is not there at all (default) or diff_motif is set
+					if(!exists $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} || ($motif_diff == 0 && $motif_diff_percentage == 0 && $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} == 0)) {
 						$existance{$strains[$i]} = 1;
+					}
+					if($block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} > $max_motif) {
+						$max_motif = $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]};
 					}
 					$diff{$strains[$i]} = $diff{$strains[$i]} + $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]};
 				}
+				if($motif_diff != 0) {
+					for(my $i = 0; $i < @strains; $i++) {
+						if($max_motif - $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} > $motif_diff) {
+							$existance{$strains[$i]} = 1;
+						}
+					}
+				}
+				if($motif_diff_percentage != 0) {
+					for(my $i = 0; $i < @strains; $i++) {
+						if($max_motif - $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} > ($max_motif * $motif_diff_percentage)) {
+							$existance{$strains[$i]} = 1;
+						}
+					}
+				}
+				$max_motif = 0;
 			}
 			if($fc_exists == 1) {
 				$fileHandlesMotif[$index_motifs{$motif}]->print($fc{$curr_chr}{$curr_pos});
@@ -253,9 +302,6 @@ sub output_motifs{
 				}
 			}
 			$fileHandlesMotif[$index_motifs{$motif}]->print("" . (keys %{$block{$chr_pos}{$motif}}) . "\n");
-	#		if($mut_pos == 1 && $fc_exists == 1) {
-	#			&analyze_motif_pos(\%block, $last_line, $fc{$curr_chr}{$curr_pos}, \@strains, $fc_significant);
-	#		}
 		}
 	}
 }
@@ -438,22 +484,86 @@ sub background_dist_plot{
 
 sub analyze_motif_pos{
 	my %block = %{$_[0]};
-	my %fc = %{$_[1]};
+	my $fc = $_[1];
 	my @strains = @{$_[2]};
 	my $fc_significant = $_[3];
+	my $seq = $_[4];
+	my $tree = $_[5];
+	my $last = $_[6];
+	my $lookup = $_[7];
+	my $motif_diff = $_[8];
+	my $motif_diff_percentage = $_[9];
+	my $max_motif= 0;
 	my @fc_split;
 	my @char_one;
 	my @char_two;
 	my $num_of_muts = 0;
+	my @header;
+	$_ = 0 for my($current_shift, $prev_shift, $shift_vector, $chr_num, $current_pos);
+	$_ = () for my($tree_tmp);
 	foreach my $last_line (keys %block) {
-		@fc_split = split('\t', $fc{$last_line});
+		chomp $last_line;
+		@header = split("_", $last_line);
+		$chr_num = substr($header[0], 3);
+		@fc_split = split('\t', $fc->{$chr_num}->{$header[1]});
+		$current_pos = $header[1];
+		for(my $i = 0; $i < @strains; $i++) {
+			if($chr_num !~ /\d+/ && !exists $lookup->{$strains[$i]}->{$chr_num}) {
+				print STDERR "Skip analysis of chromosome " . $chr_num . "in analyze_motifs_pos\n";
+				print STDERR $chr_num . "\t" . $strains[$i] . "\n";
+			}
+			if(exists $lookup->{$strains[$i]}->{$chr_num}) {
+				$chr_num = $lookup->{$strains[$i]}->{$chr_num};
+			}
+		}
 		foreach my $motif (keys %{$block{$last_line}}) {
+			if(!exists $matrix_pos_muts{$motif}{'indel'}) {
+				$matrix_pos_muts{$motif}{'indel'}{'N'} = 0;
+				$matrix_pos_muts{$motif}{'indel'}{'S'} = 0;
+			}
+			if(!exists $matrix_pos_muts{$motif}{'multi'}) {
+				$matrix_pos_muts{$motif}{'multi'}{'N'} = 0;
+				$matrix_pos_muts{$motif}{'multi'}{'S'} = 0;
+			}
 			foreach my $motif_pos (keys %{$block{$last_line}{$motif}}) {
+				if($motif_diff > 0 || $motif_diff_percentage > 0) {
+					$max_motif = 0;
+					for(my $i = 0; $i < @strains; $i++) {
+						if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $max_motif) {
+							$max_motif = $block{$last_line}{$motif}{$motif_pos}{$strains[$i]};
+						}
+					}
+				}
 				for(my $i = 0; $i < @strains - 1; $i++) {
 					for(my $j = $i + 1; $j < @strains; $j++) {
-						if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} != $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
-							@char_one = split("", substr($seq{$last_line . "_" . $strains[$i]}, $motif_pos, $block{$last_line}{$motif}{$motif_pos}{'length'}));
-							@char_two = split("", substr($seq{$last_line . "_" . $strains[$j]}, $motif_pos, $block{$last_line}{$motif}{$motif_pos}{'length'}));
+						if(($motif_diff == 0 && $motif_diff_percentage == 0 && ($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} == 0 || $block{$last_line}{$motif}{$motif_pos}{$strains[$j]} == 0)) ||
+						($motif_diff > 0 && abs($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} - $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) > $motif_diff) ||
+						($motif_diff_percentage > 0 && abs($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} - $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) > ($max_motif * $motif_diff_percentage))) {
+							if(defined $tree->{$strains[$i]}->{$chr_num}) {
+								$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
+								$current_shift = $tree_tmp->[$i]->{'shift'};
+								$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->fetch($current_pos, $current_pos + 1);
+								$prev_shift = $tree_tmp->[$i]->{'shift'};
+								$shift_vector = $current_shift - $prev_shift;	
+							}
+							if($block{$last_line}{$motif}{$motif_pos}{'orientation'} eq "+") {
+								@char_one = split("", substr($seq{$last_line . "_" . $strains[$i]}, $motif_pos + $shift_vector, $block{$last_line}{$motif}{$motif_pos}{'length'}));
+							} else {
+								@char_one = split("", &rev_comp(substr($seq{$last_line . "_" . $strains[$i]}, $motif_pos + $shift_vector, $block{$last_line}{$motif}{$motif_pos}{'length'})));
+							}
+							$shift_vector = 0;
+							if(defined $tree->{$strains[$j]}->{$chr_num}) {
+								$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
+								$current_shift = $tree_tmp->[$j]->{'shift'};
+								$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->fetch($current_pos, $current_pos + 1);
+								$prev_shift = $tree_tmp->[$j]->{'shift'};
+								$shift_vector = $current_shift - $prev_shift;	
+							}
+							if($block{$last_line}{$motif}{$motif_pos}{'orientation'} eq "+") {
+								@char_two = split("", substr($seq{$last_line . "_" . $strains[$j]}, $motif_pos + $shift_vector, $block{$last_line}{$motif}{$motif_pos}{'length'}));
+							} else {
+								@char_two = split("", &rev_comp(substr($seq{$last_line . "_" . $strains[$j]}, $motif_pos + $shift_vector, $block{$last_line}{$motif}{$motif_pos}{'length'})));
+							}
 							#Count number of differences - if more than 2 dismiss this comparison because motifs are not the same
 							$num_of_muts = 0;
 							for(my $c = 0; $c < @char_one; $c++) {
@@ -461,18 +571,38 @@ sub analyze_motif_pos{
 									$num_of_muts++;
 								}
 							}
-							if($num_of_muts > 2) { next; }
+							if($num_of_muts > 2) {
+								if($fc_split[$i + $j - 1] > log($fc_significant)/log(2) || $fc_split[$i + $j - 1] < log(1/$fc_significant)/log(2)) {
+									$matrix_pos_muts{$motif}{'indel'}{'S'}++;
+								} else {
+									$matrix_pos_muts{$motif}{'indel'}{'N'}++;
+								}
+								next;
+							}
+							if($num_of_muts > 1) {
+								if($fc_split[$i + $j - 1] > log($fc_significant)/log(2) || $fc_split[$i + $j - 1] < log(1/$fc_significant)/log(2)) {
+									$matrix_pos_muts{$motif}{'multi'}{'S'}++;
+								} else {
+									$matrix_pos_muts{$motif}{'multi'}{'N'}++;
+								}
+								next;
+							}
+
 							for(my $c = 0; $c < @char_one; $c++) {
 								if($char_one[$c] ne $char_two[$c]) {
 									if($fc_split[$i + $j - 1] > log($fc_significant)/log(2) || $fc_split[$i + $j - 1] < log(1/$fc_significant)/log(2)) {
 										#S meaning significant
-										if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$motif}{$motif_pos}{$strains[$j]}) {
+										if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
 											$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'S'}++;
 										} else {
 											$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'S'}++;
 										}
+								#		print $motif . "\t" . $char_one[$c] . "\t" . $char_two[$c] . "\t" . $c . "\t" . $fc_split[$i+$j-1] . "\t" . $last_line . "\n";
+								#		print $motif . "\t" . join("", @char_one) . " (" . $block{$last_line}{$motif}{$motif_pos}{$strains[$i]} . ")\t" . join("", @char_two) . "(" . $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}. ")\n";
+								#		print $motif . "\t" . join("", @char_one) . "\n";
+								#		print $motif . "\t" . join("", @char_two) . "\n\n\n";
 									} else {
-										if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$motif}{$motif_pos}{$strains[$j]}) {
+										if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
 											$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'N'}++;
 										} else {
 											$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'N'}++;
@@ -501,26 +631,24 @@ sub log_fc {
 }
 
 sub calculate_motif_score{
-	my $score_forward = 0;
-	my $score_reverse = 0;
+	my $score = 0;
 	my $motif = $_[0];
 	my $local_seq = $_[1];
+	my $orientation = $_[2];
 	my @base = split('', $local_seq);
-	for(my $b = 0; $b < @base; $b++) {
-		$score_forward += log($PWM{$motif}{$b}{$base[$b]}/0.25); 
-	}
-	$local_seq = &rev_comp($local_seq);	
-	@base = split('', $local_seq);
-	for(my $b = 0; $b < @base; $b++) {
-		$score_reverse += log($PWM{$motif}{$b}{$base[$b]}/0.25); 
-	}
-	if($score_reverse < 0) { $score_reverse = 0;}
-	if($score_forward < 0) { $score_forward = 0;}
-	if($score_reverse > $score_forward) {
-		return sprintf("%.6f", $score_reverse);	
+	if($orientation eq "+") {
+		for(my $b = 0; $b < @base; $b++) {
+			$score += log($PWM{$motif}{$b}{$base[$b]}/0.25); 
+		}
 	} else {
-		return sprintf("%.6f", $score_forward);
+		$local_seq = &rev_comp($local_seq);	
+		@base = split('', $local_seq);
+		for(my $b = 0; $b < @base; $b++) {
+			$score += log($PWM{$motif}{$b}{$base[$b]}/0.25); 
+		}
 	}
+	if($score < 0) { $score = 0;}
+	return sprintf("%.6f", $score);	
 }
 
 sub rev_comp{
@@ -618,8 +746,6 @@ sub read_motifs{
 			$PWM{$name}{$pos}{'C'} = $split[1];
 			$PWM{$name}{$pos}{'G'} = $split[2];
 			$PWM{$name}{$pos}{'T'} = $split[3];
-			$matrix_pos_muts{$name}{$pos}{'S'} = 0;
-			$matrix_pos_muts{$name}{$pos}{'N'} = 0;
 			$pos++;
 		}
 	}
@@ -691,7 +817,7 @@ sub get_seq_for_peaks {
 				$chr_num = $lookup->{$strains[0]}->{$chr};
 			}
 			if($chr !~ /\d+/ && !exists $lookup->{$strains[$i]}->{$chr}) {
-				print STDERR "Skip peaks for chromosome " . $chr . "\n";
+				print STDERR "Skip peaks for chromosome " . $chr . " in get_seq_for_peaks\n";
 				next;
 			}
 			$current_tree = $tree->{$strains[$i]}->{$chr_num};

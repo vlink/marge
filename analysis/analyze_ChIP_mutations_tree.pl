@@ -20,7 +20,7 @@ print STDERR "p-value calculation of pearson correlation taken out for the momen
 
 $_ = "" for my($genome, $file, $tf, $filename, $last_line, $name, $output, $ab, $plots, $overlap, $save, $load, $tmp_out, $tmp_out_no_motif, $tmp_out_far_motif, $data, $seq_no_motif, $seq_far_motif, $seq_recentered, $tmp_center);
 $_ = () for my(@strains, %peaks, @split, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %all_trees, %lookup_strain, %last_strain, %tree, $seq, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, @shuffle_array, $pvalue);
-$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $shuffle_k, $pvalue_option, $shuffle_between, $shuffle_within);
+$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $shuffle_k, $pvalue_option, $shuffle_between, $shuffle_within, $motif_diff, $motif_diff_percentage);
 #$data = "/Users/verenalink/workspace/strains/data/";
 
 sub printCMD {
@@ -34,6 +34,7 @@ sub printCMD {
         print STDERR "\t-homo: Data is homozygouse\n";
 	print STDERR "\t-region: Size of the region used to look for other motifs (Default: 200)\n";
 	print STDERR "\t-delta: Uses motif score differences instead of binary existance\n";
+	print STDERR "\t-motif_diff: Difference in the motif score to count it as mutated motif (for pairwise analysis) - can either be a percentage or absolute number (please use % for percentage)\n";
 	print STDERR "\t-output: Name of the output files\n";
 	print STDERR "\n\nAnalysis options for peaks\n";
 	print STDERR "\t-motif: analyzes sequences with TF motif\n";
@@ -87,6 +88,7 @@ GetOptions(     "genome=s" => \$genome,
 		"-AB=s" => \$ab,
 		"-keep" => \$keep, 
 		"-data_dir=s" => \$data,
+		"-motif_diff=s" => \$motif_diff,
 		"-tg=s" => \$tg,
 		"-shuffle=s" => \$shuffle_k,
 		"-shuffle_within" => \$shuffle_within,
@@ -138,10 +140,19 @@ if($effect == 1) { $dist_plot = 1; }
 if($fc_significant == 0) {
 	$fc_significant = 2;
 }
+
+if(substr($motif_diff, length($motif_diff) -1) eq "%") {
+	$motif_diff_percentage = substr($motif_diff, 0, length($motif_diff) - 1)/100;
+	$motif_diff = 0;
+}
+
+
 #Save motif files
 my ($index_motif_ref, $PWM_ref, $score_ref) = analysis::read_motifs($tf);
 %index_motifs = %$index_motif_ref;
 %motif_scan_scores = %$score_ref;
+
+
 
 if($ab ne "") {
 	if(!exists $index_motifs{$ab}) {
@@ -288,7 +299,7 @@ sub screen_and_plot{
 	analysis::write_header(\@fileHandlesMotif, \@strains, 0);
 	my ($block_ref) = analysis::analyze_motifs($tmp_out_main_motif, $seq, \@strains, \%tree, \%lookup_strain);
 	my %block = %$block_ref;
-	$block_ref = analysis::merge_block(\%block, $overlap, \@strains, $seq);
+	$block_ref = analysis::merge_block(\%block, $overlap, \@strains, $seq, \%tree, \%lookup_strain, \%last_strain);
 	%block = %$block_ref;
 	if(@strains > 2) {
 		($correlation, $pvalue) = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains);
@@ -308,7 +319,6 @@ sub screen_and_plot{
 							$run_index++;
 						}
 					}
-				#	print Dumper @shuffle;
 					foreach my $chr (keys %tag_counts) {
 						foreach my $pos (keys %{$tag_counts{$chr}}) {
 							$random = int(rand(@shuffle));
@@ -340,15 +350,15 @@ sub screen_and_plot{
 		}
 		&generate_all_vs_all_R_files($plots . ".R", $output, $correlation, \@shuffle_array, $pvalue);
 	} else { 
-		analysis::output_motifs(\%block, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, $fc_significant, $overlap, \%fc, \%recenter_conversion);
+		analysis::output_motifs(\%block, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, $fc_significant, $overlap, \%fc, \%recenter_conversion, $motif_diff, $motif_diff_percentage);
 		for(my $i = 0; $i < @fileHandlesMotif; $i++) {
 			close $fileHandlesMotif[$i];
 		}
 		print STDERR "Generating R files!\n";
 		&generate_R_files($plots . ".R", $output);
 		if($mut_pos == 1) {
-			my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant);
-			%mut_pos_analysis = %$mut_pos_analysis_ref; 
+			my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant, \%seq, \%tree, \%last_strain, \%lookup_strain, $motif_diff, $motif_diff_percentage);
+			%mut_pos_analysis = %$mut_pos_analysis_ref;
 			&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs.R");
 		}
 	}
@@ -407,7 +417,7 @@ sub screen_and_plot{
 				}
 			}
 			if($mut_pos == 1) {
-				my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant);
+				my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant, \%seq, \%tree, \%last_strain, \%lookup_strain, $motif_diff, $motif_diff_percentage);
 				%mut_pos_analysis = %$mut_pos_analysis_ref;
 				&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs_removed.R");
 			}
@@ -702,7 +712,7 @@ sub generate_mut_pos_analysis_file{
 			print R $y_sig . "\n";
 			print R $y_unsig . "\n";
 			if($first == 0) { 
-				print R "plot(y_sig, mut_freq_sig_" . $base . ", xlab=NA, ylim=c(-0.5, " . $max . " + 1), axes=FALSE, main=\"" . $motif . "\", col=\"" . $col{$base} . "\", pch=20, xlim=c(0, ". (keys %{$PWM{$motif}}) . "))\n";
+				print R "plot(y_sig, mut_freq_sig_" . $base . ", xlab=NA, ylim=c(-0.5, " . $max . " * 1.5), axes=FALSE, main=\"" . $motif . "\", col=\"" . $col{$base} . "\", pch=20, xlim=c(0, ". (keys %{$PWM{$motif}}) . "))\n";
 				$first++;
 			} else {
 				print R "points(y_sig, mut_freq_sig_" . $base . ", col=\"" . $col{$base} . "\", pch=20)\n";
@@ -710,7 +720,7 @@ sub generate_mut_pos_analysis_file{
 			print R "points(y_unsig, mut_freq_unsig_" . $base . ", col=\"" . $col{$base} . "\", pch=8)\n";
 			print R "axis(2)\n";
 		}
-		print R "legend(\"topleft\", c(\"sig\", \"unsig\", \"A\", \"C\", \"G\", \"T\"), col=c(\"black\", \"black\", \"" . $col{'A'} . "\", \"" . $col{'C'} . "\", \"" . $col{'G'} . "\", \"" . $col{'T'} . "\"), pch=c(20, 8, 16, 16, 16, 16))\n";
+		print R "legend(\"topleft\", c(\"sig\", \"unsig\", \"A\", \"C\", \"G\", \"T\", \"InDels sig: " . $mut_pos_analysis{$motif}{'indel'}{'S'} . "\", \"Indels not-s: " . $mut_pos_analysis{$motif}{'indel'}{'N'} . "\", \"Multiple SNPS sig: " . $mut_pos_analysis{$motif}{'multi'}{'S'} . "\",\"Multiple SNPs not-s: " . $mut_pos_analysis{$motif}{'multi'}{'N'} . "\"), col=c(\"black\", \"black\", \"" . $col{'A'} . "\", \"" . $col{'C'} . "\", \"" . $col{'G'} . "\", \"" . $col{'T'} . "\", \"black\", \"black\", \"black\", \"black\"), pch=c(20, 8, 16, 16, 16, 16, 16, 16, 16, 16), ncol=4, bty=\"n\")\n";
 		print R "opar <- par(las=1)\n";
 		print R "par(opar)\n";	
 		print R "mtext(\"Frequencies\", 2, 3)\n";
@@ -752,6 +762,7 @@ sub generate_R_files {
 			next;
 		}
 		open FH, "<$filename" or die "Can't find $filename: $!\n";
+		print STDERR $filename . "\n";
 		print R "par(oma=c(0,0,0,0))\n";
 		$f = 0;
 		%ranked_order = ();
@@ -943,7 +954,7 @@ sub center_peaks{
 	open FH, "<output_tmp.txt";
 	my ($block_ref) = analysis::analyze_motifs("output_tmp.txt", \%save_local_shift, \@strains, \%tree, \%lookup_strain, \%last_strain, $allele, $region);
 	%block = %$block_ref;
-	my ($block_ref) = analysis::merge_block(\%block, $overlap, \@strains, \%seq);
+	my ($block_ref) = analysis::merge_block(\%block, $overlap, \@strains, \%seq, \%tree, \%lookup_strain, \%last_strain);
 	%block = %$block_ref;
 	my $peak_center;
 	my $dist_to_center;
