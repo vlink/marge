@@ -18,9 +18,9 @@ use Set::IntervalTree;
 print STDERR "Add pairwise comparison\n";
 print STDERR "p-value calculation of pearson correlation taken out for the moment\n";
 
-$_ = "" for my($genome, $file, $tf, $filename, $last_line, $name, $output, $ab, $plots, $overlap, $save, $load, $tmp_out, $tmp_out_no_motif, $tmp_out_far_motif, $data, $seq_no_motif, $seq_far_motif, $seq_recentered, $tmp_center);
-$_ = () for my(@strains, %peaks, @split, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %all_trees, %lookup_strain, %last_strain, %tree, $seq, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, @shuffle_array, $pvalue);
-$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $shuffle_k, $pvalue_option, $shuffle_between, $shuffle_within, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick);
+$_ = "" for my($genome, $file, $tf, $filename, $last_line, $name, $output, $ab, $plots, $overlap, $save, $load, $tmp_out, $tmp_out_no_motif, $tmp_out_far_motif, $data, $seq_no_motif, $seq_far_motif, $seq_recentered, $tmp_center, @tf_dir);
+$_ = () for my(@strains, %peaks, @split, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %analysis_result, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %all_trees, %lookup_strain, %last_strain, %tree, $seq, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, @shuffle_array, $pvalue, %wrong_direction, %right_direction, %middle_direction, %tf_for_direction);
+$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $shuffle_k, $pvalue_option, $shuffle_between, $shuffle_within, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high);
 #$data = "/Users/verenalink/workspace/strains/data/";
 
 sub printCMD {
@@ -42,6 +42,7 @@ sub printCMD {
 	print STDERR "\t-far_motif: analyzses sequences with TF motif that is more thatn 25bp away from peak center\n";
 	print STDERR "\t-shuffle: <number of repeats for generating bg distribution (default: 10)\n";
 	print STDERR "\n\nAdditional options:\n";
+	print STDERR "\t-tf_direction <list with TF>: (comma seperated list) for each of these transcription factor 3 output files are printed (all peaks where mutation and loss of binding are in the same direction (same_direction_<TF>.txt), all peaks with mutations that are between significant foldchange (between_foldchanges_<TF>.txt) and all peaks where mutation and loss of binding are in the opposite direction (opposite_direction_<TF>.txt) - all: all motifs\n";
 	print STDERR "\t-plots: Output name of the plots\n";
 	print STDERR "\t-keep: keep temporary files\n";
 	print STDERR "\t-save <output name>: saves sequence files\n";
@@ -98,6 +99,7 @@ GetOptions(     "genome=s" => \$genome,
 		"-delta_threshold=s" => \$delta_threshold,
 		"-plots=s" => \$plots,
 		"-AB=s" => \$ab,
+		"-tf_direction=s{,}" => \@tf_dir,
 		"-keep" => \$keep, 
 		"-data_dir=s" => \$data,
 		"-motif_diff=s" => \$motif_diff,
@@ -134,6 +136,7 @@ if($delta_tag == 1 && $delta_threshold == 0) {
 	$delta_threshold = 100;
 }
 
+
 if($center == 1) {
 	#Add 100bp so we can center on peak and then shorten the sequence, so we don't ahve to pull the seq twice
 	$analyze_motif = 1;
@@ -168,7 +171,16 @@ my ($index_motif_ref, $PWM_ref, $score_ref) = analysis::read_motifs($tf);
 %index_motifs = %$index_motif_ref;
 %motif_scan_scores = %$score_ref;
 
-
+if(@tf_dir == 1 && $tf_dir[0] eq "all") {
+	foreach my $motif (keys %index_motifs) {
+		$tf_for_direction{$motif} = 1;
+	}
+} else {
+	for(my $i = 0; $i < @tf_dir; $i++) {
+		$tf_dir[$i] =~ s/,//g;
+		$tf_for_direction{$tf_dir[$i]} = 1;
+	}
+}
 
 if($ab ne "") {
 	if(!exists $index_motifs{$ab}) {
@@ -187,7 +199,7 @@ for(my $i = 0; $i < @strains; $i++) {
 print STDERR "Saving peaks\n";
 my $filter_out = 0;
 open FH, "<$file";
-my $line_number = 0;
+my $line_number = 1;
 foreach my $line (<FH>) {
 	chomp $line;
 	if(substr($line, 0, 1) eq "#" || substr($line, 0, 6) eq "PeakID") {
@@ -839,6 +851,8 @@ sub generate_R_files {
 		}
 		for(my $i = 0; $i < @strains - 1; $i++) {
 			for(my $j = $i + 1; $j < @strains; $j++) {
+			print "keys rank order: " . (keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) . "\n";
+			print "sequences we look at: " . $line_number . "\n";
 				my $dist_one = "one <- c(";
 				my $dist_two = "two <- c(";
 				my $dist_no_mut = "no_mut <- c(";
@@ -862,8 +876,12 @@ sub generate_R_files {
 				#Make ticks bigger because scale is bigger
 				if($delta_tag == 1) {
 					$delta_tick = ((abs($min) + abs($max))/50);
+					$fc_low = abs($fc_significant) * (-1);
+					$fc_high = abs($fc_significant);
 				} else {
 					$delta_tick = 0.5;
+					$fc_low = (log(1/$fc_significant)/log(2));
+					$fc_high = log($fc_significant)/log(2);
 				}
 				#Sort by fold change value between strains
 				foreach my $rank (sort {$ranked_order{$strains[$i] . "_" . $strains[$j]}{$a} <=> $ranked_order{$strains[$i] . "_" . $strains[$j]}{$b}} keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) {
@@ -873,6 +891,15 @@ sub generate_R_files {
 							print R "points(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", pch=8, col=\"red\")\n";
 						 	print R "segments(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", x1 = " . $x_count . ", y1= " . ($ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} + $delta_score{$strains[$i] . "_" . $strains[$j]}{$rank}) . ", col=\"red\")\n";
 						} else {
+							if(exists $tf_for_direction{$motif}) {
+								if($ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} < $fc_low) {
+									$right_direction{$motif}{$rank} = 1;
+								} elsif($fc_low < $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} && $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} < $fc_high) {
+									$middle_direction{$motif}{$rank} = 1;
+								} else {
+									$wrong_direction{$motif}{$rank} = 1;
+								}
+							}
 							print R "segments(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . " - " . $delta_tick . ", x1 = " . $x_count . ", y1= " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . "+" . $delta_tick . ", col=\"red\")\n";
 						
 						}
@@ -883,6 +910,15 @@ sub generate_R_files {
 							print R "points(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", pch=8, col=\"blue\")\n";
 							print R "segments(" . $x_count . " + 0.1, " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", x1 = " . $x_count . " + 0.1" . ", y1= " . ($ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} + $delta_score{$strains[$i] . "_" . $strains[$j]}{$rank}) . ", col=\"blue\")\n";
 						} else {
+							if(exists $tf_for_direction{$motif}) {
+								if($ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} < $fc_low) {
+									$wrong_direction{$motif}{$rank} = 1;
+								} elsif($fc_low < $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} && $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} < $fc_high) {
+									$middle_direction{$motif}{$rank} = 1;
+								} else {
+									$right_direction{$motif}{$rank} = 1;
+								}
+							}
 							print R "segments(" . $x_count . " + 0.1, " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", x1 = " . $x_count . " + 0.1" . ", y1= " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . "+ (2*" . $delta_tick . "), col=\"blue\")\n";
 						}
 					}
@@ -909,19 +945,51 @@ sub generate_R_files {
 				if($count_obs_one >= 4 && $count_obs_two >= 4 && $count_obs_both >= 4) {
 					$cal_pvalue = 1;
 				}
+				print "keys mut one: " . (keys %mut_one) . "\n";
+				print "keys mut two: " . (keys %mut_two) . "\n";
 				print R $dist_one . "\n";
 				print R $dist_two . "\n";
 				print R $dist_no_mut . "\n";
-				print R "legend(\"topleft\", c(paste(\"" . $strains[$i] . ": \", length(one), \" muts\", sep=\"\"), paste(\"" . $strains[$j] . ": \", length(two), \" muts\", sep=\"\")), col=c(\"red\", \"blue\"), pch=16)\n";
+				print R "legend(\"topleft\", c(paste(\"" . $strains[$i] . ": \", length(one), \" muts\", sep=\"\"), paste(\"" . $strains[$j] . ": \", length(two), \" muts\", sep=\"\")), col=c(\"red\", \"blue\", \"white\"), pch=c(16, 16), bty=\'n\')\n";
+				print R "legend(\"bottomleft\", \"peaks: " . (keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) . " with " . $motif . "/" . $line_number . " total (" . sprintf("%.2f", ((keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}})/$line_number) * 100) . "%)\", bty=\'n\')\n";
 				if($cal_pvalue == 1) {
 					print R "boxplot(c(no_mut), c(one), c(two), boxwex=" . (int($width_boxplot/3) - 10) . ", add=TRUE, at=c(" . ($number_peaks + int($add_additional/3)) . "," . ($number_peaks + (int($add_additional/3) * 2)) . "," . ($number_peaks + (int($add_additional/3) * 3)) . "), col=c(\"grey\", \"red\", \"blue\"), outline=FALSE, axes=FALSE)\n";
 					print R "p_one <- t.test(no_mut, one)\$p.value\n";
 					print R "p_two <- t.test(no_mut, two)\$p.value\n";
 					print R "p_both <- t.test(one, two)\$p.value\n";
+
+print "keys rank order: " . (keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) . "\n";
+			print "sequences we look at: " . $line_number . "\n";
+
 					print R "legend(\"bottomright\", c(\"p-values: \", paste(\"" . $strains[$i] . " vs bg: \", round(p_one, digits=6), sep=\"\"), paste(\"" . $strains[$j] . " vs bg: \", round(p_two, digits=6), sep=\"\"), paste(\"" . $strains[$i] . " vs " . $strains[$j] . ": \", round(p_both, digits=6), sep=\"\")), text.col=c(\"black\", \"red\", \"blue\", \"purple\"), cex=0.8, bty=\'n\')\n"; 
 				}
 			}
 		} 
+	}
+
+	#Time to create direction files
+	foreach my $motif (keys %right_direction) {
+		open OUT, ">same_direction_$motif.txt";
+		foreach my $pos (keys %{$right_direction{$motif}}) {
+			$pos =~ s/_/\t/g;
+			print OUT $pos . "\n";
+		}
+		close OUT;
+	}
+	foreach my $motif (keys %middle_direction) {
+		open OUT, ">between_foldchange_$motif.txt";
+		foreach my $pos (keys %{$middle_direction{$motif}}) {
+			$pos =~ s/_/\t/g;
+			print OUT $pos . "\n";
+		}
+		close OUT;
+	}
+	foreach my $motif (keys %wrong_direction) {
+		open OUT, ">opposite_direction_$motif.txt";
+		foreach my $pos (keys %{$wrong_direction{$motif}}) {
+			$pos =~ s/_/\t/g;
+			print OUT $pos . "\n";
+		}
 	}
 	print R "dev.off()\n";
 	close R;
