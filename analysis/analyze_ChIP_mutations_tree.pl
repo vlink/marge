@@ -385,7 +385,7 @@ sub screen_and_plot{
 			}
 		}
 		&generate_all_vs_all_R_files($plots . ".R", $output, $correlation, \@shuffle_array, $pvalue);
-	} else { 
+	} else {
 		analysis::output_motifs(\%block, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, $fc_significant, $overlap, \%fc, \%recenter_conversion, $motif_diff, $motif_diff_percentage);
 		for(my $i = 0; $i < @fileHandlesMotif; $i++) {
 			close $fileHandlesMotif[$i];
@@ -851,8 +851,6 @@ sub generate_R_files {
 		}
 		for(my $i = 0; $i < @strains - 1; $i++) {
 			for(my $j = $i + 1; $j < @strains; $j++) {
-			print "keys rank order: " . (keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) . "\n";
-			print "sequences we look at: " . $line_number . "\n";
 				my $dist_one = "one <- c(";
 				my $dist_two = "two <- c(";
 				my $dist_no_mut = "no_mut <- c(";
@@ -945,8 +943,6 @@ sub generate_R_files {
 				if($count_obs_one >= 4 && $count_obs_two >= 4 && $count_obs_both >= 4) {
 					$cal_pvalue = 1;
 				}
-				print "keys mut one: " . (keys %mut_one) . "\n";
-				print "keys mut two: " . (keys %mut_two) . "\n";
 				print R $dist_one . "\n";
 				print R $dist_two . "\n";
 				print R $dist_no_mut . "\n";
@@ -957,10 +953,6 @@ sub generate_R_files {
 					print R "p_one <- t.test(no_mut, one)\$p.value\n";
 					print R "p_two <- t.test(no_mut, two)\$p.value\n";
 					print R "p_both <- t.test(one, two)\$p.value\n";
-
-print "keys rank order: " . (keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) . "\n";
-			print "sequences we look at: " . $line_number . "\n";
-
 					print R "legend(\"bottomright\", c(\"p-values: \", paste(\"" . $strains[$i] . " vs bg: \", round(p_one, digits=6), sep=\"\"), paste(\"" . $strains[$j] . " vs bg: \", round(p_two, digits=6), sep=\"\"), paste(\"" . $strains[$i] . " vs " . $strains[$j] . ": \", round(p_both, digits=6), sep=\"\")), text.col=c(\"black\", \"red\", \"blue\", \"purple\"), cex=0.8, bty=\'n\')\n"; 
 				}
 			}

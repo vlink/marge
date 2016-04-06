@@ -174,6 +174,7 @@ sub merge_block {
 				$save_pos = $motif_pos;
 				$motif_score = 0;
 				for(my $i = 0; $i < @strains; $i++) {
+					$shift_vector = 0;
 					$chr_num = substr((split('_', $chr_pos))[0], 3);
 					if($chr_num !~ /\d+/ && !exists $lookup->{$strains[$i]}->{$chr_num}) {
 						print STDERR "Skip analysis of chromosome " . $chr_num . " in merge_block\n";
@@ -260,7 +261,7 @@ sub output_motifs{
 			$fileHandlesMotif[$index_motifs{$motif}]->print($tag_counts{$curr_chr}{$curr_pos});
 			foreach my $motif_pos (keys %{$block{$chr_pos}{$motif}}) {
 				for(my $i = 0; $i < @strains; $i++) {
-					#Filter by motif existance - either motif is not there at all (default) or diff_motif is set
+					#Filter by motif exist$iance - either motif is not there at all (default) or diff_motif is set
 					if(!exists $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} || ($motif_diff == 0 && $motif_diff_percentage == 0 && $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} == 0)) {
 						$existance{$strains[$i]} = 1;
 					}
