@@ -31,6 +31,7 @@ sub write_header{
 	my @fileHandlesMotif = @{$_[0]};
 	my @strains = @{$_[1]};
 	my $fc = $_[2];
+	my $delta = $_[3];
 	for(my $files = 0; $files < @fileHandlesMotif; $files++) {
 		$fileHandlesMotif[$files]->print("motif\tpos\t");
 		for(my $i = 0; $i < @strains; $i++) {
@@ -39,7 +40,11 @@ sub write_header{
 		if($fc == 0) {
 			for(my $i = 0; $i < @strains - 1; $i++) {
 				for(my $j = $i + 1; $j < @strains; $j++) {
-					$fileHandlesMotif[$files]->print("fc ". $strains[$i] . " vs " . $strains[$j] . "\t");
+					if($delta == 1) {
+						$fileHandlesMotif[$files]->print("delta of tg" . $strains[$i] . " vs " . $strains[$j] . "\t");
+					} else {
+						$fileHandlesMotif[$files]->print("log2 fc ". $strains[$i] . " vs " . $strains[$j] . "\t");
+					}
 				}
 			}
 		}
@@ -163,7 +168,7 @@ sub merge_block {
 				if($overlap eq "half") {
 					$num_of_bp = int($block{$chr_pos}{$motif}{$motif_pos}{'length'}/2)
 				} elsif($overlap eq "complete") {
-					$num_of_bp = 0;
+					$num_of_bp = $block{$chr_pos}{$motif}{$motif_pos}{'length'};
 				} else {
 					$num_of_bp = ($overlap*1);
 				}
@@ -189,15 +194,22 @@ sub merge_block {
 					if(!exists $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}) {
 						#Check in vicinity (+/- motif_lenght-1) - if there is a motif within motif/2 -> save the current motif under this position, to not count them as separate motifs
 						$existance{$strains[$i]} = 1;
+					#	print $chr_pos . "\t" . $motif . "\t" . $motif_pos . "\t" . $strains[$i] . "\n";
 						for(my $run_motif = $motif_pos - $num_of_bp; $run_motif < $motif_pos + $num_of_bp; $run_motif++) {
-							if(exists $block{$chr_pos}{$motif}{$run_motif} && exists $block{$chr_pos}{$motif}{$run_motif}{$strains[$i]} && $run_motif != $motif_pos) {
-								$block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} = $block{$chr_pos}{$motif}{$run_motif}{$strains[$i]};
-								$diff{$strains[$i]} += $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]};
-								delete $existance{$strains[$i]};
-								delete $block{$chr_pos}{$motif}{$run_motif}{$strains[$i]};
+					#		print "current pos: " . $run_motif . "\n";
+						#	if(exists $block{$chr_pos}{$motif}{$run_motif} && exists $block{$chr_pos}{$motif}{$run_motif}{$strains[$i]} && $run_motif != $motif_pos) {
+							if(exists $block{$chr_pos}{$motif}{$run_motif} && $run_motif != $motif_pos) {
+					#			print "run_motif: " . $run_motif . "\n";
+								for(my $run_strains = 0; $run_strains < @strains; $run_strains++) {
+									if(!exists $block{$chr_pos}{$motif}{$run_motif}{$strains[$run_strains]}) { next; }
+									$block{$chr_pos}{$motif}{$motif_pos}{$strains[$run_strains]} += $block{$chr_pos}{$motif}{$run_motif}{$strains[$run_strains]};
+									$diff{$strains[$run_strains]} += $block{$chr_pos}{$motif}{$motif_pos}{$strains[$run_strains]};
+									delete $existance{$strains[$run_strains]};
+									delete $block{$chr_pos}{$motif}{$run_motif}{$strains[$run_strains]};
+								}
 								$ignore{$run_motif} = 1;
-								if(exists $block{$chr_pos}{$motif}{$run_motif}{'length'}) {
-									delete $block{$chr_pos}{$motif}{$run_motif}{'length'};
+								if(exists $block{$chr_pos}{$motif}{$run_motif}{'length'} || $block{$chr_pos}{$motif}{$run_motif}{'orientation'}) {
+									delete $block{$chr_pos}{$motif}{$run_motif};
 								}
 							}
 						}
@@ -507,8 +519,10 @@ sub analyze_motif_pos{
 	my @char_two;
 	my $num_of_muts = 0;
 	my @header;
+	my $max = 0;
 	$_ = 0 for my($current_shift, $prev_shift, $shift_vector, $chr_num, $current_pos);
 	$_ = () for my($tree_tmp);
+	%matrix_pos_muts = ();
 	foreach my $last_line (keys %block) {
 		chomp $last_line;
 		@header = split("_", $last_line);
@@ -549,9 +563,9 @@ sub analyze_motif_pos{
 						($motif_diff_percentage > 0 && abs($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} - $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) > ($max_motif * $motif_diff_percentage))) {
 							if(defined $tree->{$strains[$i]}->{$chr_num}) {
 								$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
-								$current_shift = $tree_tmp->[$i]->{'shift'};
+								$current_shift = $tree_tmp->[0]->{'shift'};
 								$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->fetch($current_pos, $current_pos + 1);
-								$prev_shift = $tree_tmp->[$i]->{'shift'};
+								$prev_shift = $tree_tmp->[0]->{'shift'};
 								$shift_vector = $current_shift - $prev_shift;	
 							}
 							if($block{$last_line}{$motif}{$motif_pos}{'orientation'} eq "+") {
@@ -562,9 +576,9 @@ sub analyze_motif_pos{
 							$shift_vector = 0;
 							if(defined $tree->{$strains[$j]}->{$chr_num}) {
 								$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
-								$current_shift = $tree_tmp->[$j]->{'shift'};
+								$current_shift = $tree_tmp->[0]->{'shift'};
 								$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->fetch($current_pos, $current_pos + 1);
-								$prev_shift = $tree_tmp->[$j]->{'shift'};
+								$prev_shift = $tree_tmp->[0]->{'shift'};
 								$shift_vector = $current_shift - $prev_shift;	
 							}
 							if($block{$last_line}{$motif}{$motif_pos}{'orientation'} eq "+") {
@@ -846,6 +860,7 @@ sub get_seq_for_peaks {
 	my $chr_num;
 	my $shift_vector;
 	my $no_shift = 0;
+	my $filter_no_mut = 0;
 	$line_number = $line_number * @strains;
 	for(my $i = 0; $i < @strains; $i++) {
 		foreach my $chr (keys %peaks) {
@@ -912,12 +927,40 @@ sub get_seq_for_peaks {
 		}
 	}
 	print STDERR "\n";
+	if($mut_only == 1) {
+		print STDERR "Filter out peaks without mutations\n";
+		my %seen_part = ();
+		my @split_part;
+		my $h;
+		my $seq_first;
+		my $mut = 0;
+		foreach my $key (keys %seq) {
+			@split_part = split("_", $key);
+			$h = $split_part[0] . "_" . $split_part[1] . "_" . $split_part[2];
+			if(exists $seen_part{$h}) { next; }
+			$seq_first = $seq{$h . "_" . $strains[0]};
+			for(my $i = 1; $i < @strains; $i++) {
+				if($seq_first ne $seq{$h . "_" . $strains[$i]}) {
+					$mut = 1;
+				} 
+			}
+			if($mut == 0) {
+				$filter_no_mut++;
+				for(my $i = 0; $i < @strains; $i++) {
+					delete $seq{$h . "_" . $strains[$i]};
+				}
+			}
+			$mut = 0;
+			$seen_part{$h} = 1;
+		}
+	}
+	print STDERR "" . $filter_no_mut . " sequences were filtered out because of no variance between the strains\n";
 	foreach my $key (sort {$a cmp $b} keys %seq) {
 		print OUT ">" . $key . "\n";
 		print OUT $seq{$key}  . "\n";
 	}
 	close OUT;
-	return(\%seq, $longest_seq);
+	return(\%seq, $longest_seq, $filter_no_mut);
 }
 
 sub all_vs_all_comparison{
