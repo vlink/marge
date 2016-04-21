@@ -159,4 +159,144 @@ sub create_offset_strain_to_ref {
 	}
 	return \%last_shift_pos_strain;
 }
+
+sub get_refseq_for_gene{
+	my $gene_file = $_[0];
+	my $gene = $_[1];
+        open FH, "<$gene_file";
+	$_ = "" for my($transcript, $refseq_NM);
+        my $gene_found = 0;
+        foreach my $line (<FH>) {
+                chomp $line;
+                @split = split('\t', $line);
+                for(my $i = 0; $i < @split; $i++) {
+                        if(uc($split[$i]) eq uc($gene)) {
+                                $gene_found = 1;
+                        }
+                        if(substr($split[$i], 0, 2) eq "NM") {
+                                $refseq_NM = $split[$i];
+                        }
+                }
+                if($gene_found == 1) {
+                        $transcript = $refseq_NM;
+                        last;
+                }
+        }
+        close FH;
+	return $refseq_NM;
+}
+
+
+sub save_transcript {
+	my $refseq_file = $_[0];
+	my $transcript = $_[1];
+        $_ = "" for my ($stop, $chr, $strand);
+	$_ = () for my (@introns, @parts, %peaks, %exons);
+	$_ = 0 for my ($start, $exon);
+        open FH, "<$refseq_file";
+        foreach my $line (<FH>) {
+                chomp $line;
+                @split = split('\t', $line);
+                if($split[0] eq $transcript) {
+                        $chr = $split[1];
+                        $strand = $split[4];
+                        @introns = split(",", $split[5]);
+                        if($split[4] eq "-") {
+                                for(my $i = @introns - 1; $i > 0; $i--) {
+                                        @parts = split(":", $introns[$i]);
+                                        if(length($parts[0]) > 4) {
+                                                next;
+                                        }
+                                        if(substr($parts[0], 0, 1) eq "E") {
+                                                $start = $parts[1] - 1;
+                                                $i--;
+                                                @parts = split(":", $introns[$i]);
+                                                if(length($parts[0]) < 6 && substr($parts[0], 0, 1) eq "I") {
+                                                        print STDERR "Weird annotation!\n";
+                                                }
+                                                $stop = $parts[1] - 1;
+                                                $peaks{substr($split[1], 3)}{$start} = $stop;
+                                                $exons{$start . "_" . $stop} = $exon;
+                                                $exon++;
+                                        }
+                                }
+                        } else {
+                                for(my $i = 0; $i < @introns; $i++) {
+                                        @parts = split(':', $introns[$i]);
+                                        if(length($parts[0]) > 4) {
+                                                next;
+                                        }
+                                        if(substr($parts[0], 0, 1) eq "E") {
+                                                $start = $parts[1] - 1;
+                                                $i++;
+                                                if(@introns > $i) {
+                                                        @parts = split(':', $introns[$i]);
+                                                        if(length($parts[0]) < 4 && substr($parts[0], 0, 1) ne "I") {
+                                                                print STDERR "Weird pos strand\n";
+                                                        }
+                                                        $stop = $parts[1] - 1;
+                                                } else {
+                                                        $stop = $split[3];
+                                                }
+                                                $peaks{substr($split[1], 3)}{$start} = $stop;
+                                                $exons{$start . "_" . $stop} = $exon;
+                                                $exon++;
+                                        }
+                                }
+                        }
+                }
+        }
+        return ($strand, $chr, \%peaks, \%exons);
+}
+
+sub check_homer_files{
+	my $refseq_file = $_[0];
+	my $gene_file = $_[1];
+	my $config = $_[2];
+	my $gene_number = $_[3];
+	my $genome = $_[4];
+	my $path;
+	my $species;
+        if($refseq_file eq "" && exists $config->{'homer_path'} && $config->{'homer_path'} ne "") {
+                #Homer exists now check if the genome and the annotation files exist
+                $path = $config->{'homer_path'} . "/data/genomes/" . $genome . "/" . $genome . ".rna";
+                if(!(-e $path)) {
+                        print STDERR "File $path is missing!\n";
+                        exit;
+                }
+                $refseq_file = $path;
+                if($gene_number > 0) {
+                        #First find out which species this genome belongs to - homer config
+                        $path = $config->{'homer_path'} . "/config.txt";
+                        open FH, "<$path" or die "Can not find $path!\n";
+                        foreach my $line (<FH>) {
+                                chomp $line;
+                                @split = split('\t', $line);
+                                if($split[0] eq $genome) {
+                                        my @a = split(",", $split[-1]);
+                                        $species = $a[0];
+                                }
+                        }
+                        if($species eq "") {
+                                print STDERR "Could not figure out which species this genome belongs to - please specify it!\n";
+                                exit;
+                        }
+                        $path = $config->{'homer_path'} . "/data/accession/" . lc($species) . "2gene.tsv";
+                        if(!(-e $path)) {
+                                print STDERR "File $path is missing!\n";
+                                exit;
+                        }
+                        $gene_file = $path;
+                }
+        }
+        if($refseq_file eq "") {
+                print STDERR "No RefSeq file specified and RefSeq File could not be found!\n";
+                exit;
+        }
+        if($gene_number > 0 && $gene_file eq "") {
+                print STDERR "No gene file specified and Gene file cound not be found!\n";
+                exit;
+        }
+	return($refseq_file, $gene_file);
+}
 1;
