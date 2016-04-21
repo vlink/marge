@@ -21,6 +21,7 @@ $comp{'A'} = 'T';
 $comp{'T'} = 'A';
 $comp{'C'} = 'G';
 $comp{'G'} = 'C';
+$comp{'-'} = '-';
 
 
 print STDERR "Matrix is defined in read_motifs and it is storred globally in this module!\n";
@@ -386,10 +387,8 @@ sub background_dist_plot{
 		$delete->{$tmp_motif} = 1;
 		open TMP, ">$tmp_motif";
 		foreach my $motif (keys %scan_candidates) {
-			print $motif . "\n";
 			print TMP ">consensus_" . $motif . "\t$motif\t" . $motif_scan_score->{$motif} . "\n";
 			foreach my $pos (sort {$a <=> $b} keys %{$PWM{$motif}}) {
-				print $pos . "\n";
 				print TMP $PWM{$motif}{$pos}{'A'} . "\t" . $PWM{$motif}{$pos}{'C'} . "\t" . $PWM{$motif}{$pos}{'G'} . "\t" . $PWM{$motif}{$pos}{'T'} . "\n";
 			}
 		}
@@ -431,10 +430,10 @@ sub background_dist_plot{
 	open FH, "<$motif_genomewide";
 	my %background;
 	my %background_saved;
-	my @background;
 	my $current_chr = "";
 	my $first = 0;
 	my $count = 0;
+	print "Saving chipped TF " . $motif_genomewide . "\n";
 	foreach my $line (<FH>) {
 		chomp $line;
 		@split = split('\t', $line);
@@ -443,17 +442,14 @@ sub background_dist_plot{
 			$first++;
 		}
 		if($split[0] ne $current_chr) {
-			$background_saved{$current_chr} = \@background;
-			@background = ();
 			$count = 0;
 		}
 		$current_chr = $split[0];
-		$background[$count] = $split[1];
+		$background_saved{$current_chr}[$count] = $split[1];
 		$background{$split[0]}{$split[1]} = $split[2];
 		$count++;
 	}
 	close FH;
-	$background_saved{$current_chr} = \@background;
 	my $last_index = 0;
 	$count = 0;
 	#Time to start calculation background distribution
@@ -465,15 +461,16 @@ sub background_dist_plot{
 	my $main_tf_end;
 	my $length = 0;
 	foreach my $motif (keys %index_motifs) {
+		print "Processing " . $motif . "\n";
 		my $file = $background_folder . "/" . $genome . "_" . $motif . ".txt";
 		open FH, "<$file";
 		$count = 0;
 		foreach my $line (<FH>) {
 			chomp $line;
+			#Start with first binding motif of the reference transcription factor and run through second TF till the distance of count is smaller than the distance of count + 1 (we start running away from the motif again - so this is the closest instance) 
 			@split = split('\t', $line);
 			$current_dist = $split[1] - $background_saved{$split[0]}[$count];
 			$next_dist = $split[1] - $background_saved{$split[0]}[$count + 1];
-			
 			while(abs($split[1] - $background_saved{$split[0]}[$count]) > abs($split[1] - $background_saved{$split[0]}[$count + 1])) {
 				$count++;
 			}
@@ -481,13 +478,14 @@ sub background_dist_plot{
 			$next_dist = $split[1] - $background_saved{$split[0]}[$count + 1];
 			if(abs($current_dist) < abs($next_dist)) {
 				$smallest_dist = $current_dist;
-				$main_tf_start = $background[$count];
+				$main_tf_start = $background_saved{$split[0]}[$count];
 				$main_tf_end = $background{$split[0]}{$main_tf_start};
 			} else {
 				$smallest_dist = $next_dist;
-				$main_tf_start = $background[$count + 1];
+				$main_tf_start = $background_saved{$split[0]}[$count + 1];
 				$main_tf_end = $background{$split[0]}{$main_tf_start};
 			}
+			#Test if smallest instance is closer within the length of sequences we looked at
 			if(abs($smallest_dist) < int($longest_seq/2) + $region) {
 				$length = ($main_tf_end - $main_tf_start);
 				for(my $i = int($length/2) * -1; $i < int($length/2); $i++) {
@@ -856,7 +854,6 @@ sub get_seq_for_peaks {
 	my $current_tree = Set::IntervalTree->new;
 	my $header;
 	my $byte_offset;
-	my $newlines;
 	my $chr_num;
 	my $shift_vector;
 	my $no_shift = 0;
@@ -922,7 +919,7 @@ sub get_seq_for_peaks {
 				$seq{$header} = uc($seq);
 				$seq = "";
 				$seq_number++;
-				print STDERR "" . $seq_number . " of " . $line_number . " gathered\r";
+			#	print STDERR "" . $seq_number . " of " . $line_number . " gathered\r";
 			}
 		}
 	}
@@ -954,7 +951,9 @@ sub get_seq_for_peaks {
 			$seen_part{$h} = 1;
 		}
 	}
-	print STDERR "" . $filter_no_mut . " sequences were filtered out because of no variance between the strains\n";
+	if($filter_no_mut > 0) {
+		print STDERR "" . $filter_no_mut . " sequences were filtered out because of no variance between the strains\n";
+	}
 	foreach my $key (sort {$a cmp $b} keys %seq) {
 		print OUT ">" . $key . "\n";
 		print OUT $seq{$key}  . "\n";
@@ -968,8 +967,8 @@ sub all_vs_all_comparison{
 	my $recenter_conversion = $_[1];
 	my $tag_counts = $_[2];
 	my @strains = @{$_[3]};
-	$_ = () for my(@split, %correlation, @sum, @tag_sum, $vector_motifs, $vector_tagcounts, @split, %correlation, $chr, %pvalue, $p, $stddev_m, $stddev_t, $cor, $t);
-	my($con_pos, $r, $r2, $p);
+	$_ = () for my(%correlation, @sum, @tag_sum, $vector_motifs, $vector_tagcounts, @split, $chr, %pvalue, $p, $stddev_m, $stddev_t, $cor, $t);
+	my($con_pos, $r, $r2);
 	foreach my $pos (keys %{$block}) {
 		@split = split("_", $pos);
 		$chr = substr($split[0], 3);
