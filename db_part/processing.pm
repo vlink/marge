@@ -188,18 +188,23 @@ sub get_refseq_for_gene{
 
 
 sub save_transcript {
+	my $transcript = "";
 	my $refseq_file = $_[0];
-	my $transcript = $_[1];
+	if(@_ > 1) {
+		$transcript = $_[1];
+	}
         $_ = "" for my ($stop, $chr, $strand);
-	$_ = () for my (@introns, @parts, %peaks, %exons);
+	$_ = () for my (@introns, @parts, %peaks, %exons, %save_all_exons);
 	$_ = 0 for my ($start, $exon);
         open FH, "<$refseq_file";
         foreach my $line (<FH>) {
                 chomp $line;
                 @split = split('\t', $line);
-                if($split[0] eq $transcript) {
+                if($transcript eq "" || $split[0] eq $transcript) {
+			my %exons = ();
                         $chr = $split[1];
                         $strand = $split[4];
+			$exon = 0;
                         @introns = split(",", $split[5]);
                         if($split[4] eq "-") {
                                 for(my $i = @introns - 1; $i > 0; $i--) {
@@ -212,7 +217,7 @@ sub save_transcript {
                                                 $i--;
                                                 @parts = split(":", $introns[$i]);
                                                 if(length($parts[0]) < 6 && substr($parts[0], 0, 1) eq "I") {
-                                                        print STDERR "Weird annotation!\n";
+                                                       # print STDERR "Weird annotation!\n";
                                                 }
                                                 $stop = $parts[1] - 1;
                                                 $peaks{substr($split[1], 3)}{$start} = $stop;
@@ -244,9 +249,17 @@ sub save_transcript {
                                         }
                                 }
                         }
+			if($transcript eq "") {
+				$save_all_exons{$split[0]} = \%exons;
+			}	
                 }
         }
-        return ($strand, $chr, \%peaks, \%exons);
+	if($transcript eq "") {
+		return (\%save_all_exons);
+	} else {
+        	return ($strand, $chr, \%peaks, \%exons);
+	}
+	return 0;
 }
 
 sub check_homer_files{
