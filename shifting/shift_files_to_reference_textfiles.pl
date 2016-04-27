@@ -1,17 +1,17 @@
-#!/usr/bin/perl -w
+
 
 use strict;
 use Getopt::Long;
 use Storable;
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
 use config;
-use Data::Dumper;
+use general;
 use Set::IntervalTree;
-
+use Data::Dumper;
 
 $_ = 0 for my ($first, $end, $start, $current_pos, $sam, $peak, $tag, $help, $all, $iterate_chr, $SS, $print_header);
 $_ = "" for my ($dir, $organism, $name, $chr, $last, $data_dir, $out_name);
-$_ = () for my (@files, @strains, $dbh, $sth, @split, $c, $shift, %shift, %shift_vector, $allele, @a, %last, @shift_vector, @shift_files, @saved_file, %chr, %seen, @tag_files, %tag_files, %lookup, %lookup_chr, @split_tree, %tree_save);
+$_ = () for my (@files, @strains, $dbh, $sth, @split, $c, $shift, %shift, %shift_vector, $allele, @a, %last, @shift_vector, @shift_files, @saved_file, %chr, %seen, @tag_files, %tag_files, %lookup, %lookup_chr, @split_tree, %tree, @tmp);
 my $print = 1;
 $allele = 1;
 
@@ -30,11 +30,6 @@ sub printCMD {
 	print STDERR "\t-homer: shifts HOMER peak and RNA files\n";
 	print STDERR "\t-tag: shifts tag directory\n";
 	print STDERR "\n\n";
-        print STDERR "Run modes:\n";
-        print STDERR "\t-all: Saves all shifting vectors per strain: needs most memory - default\n";
-        print STDERR "\t-chr: shifts files per chromosomes\n";
-        print STDERR "\t-SS: saves sam files when shifting perl chromosome - default: iterate over sam file (slower but less memory intensive)\n";
-        print STDERR "\n";
 	print STDERR "-h | --help: prints help\n";
         exit;
 }
@@ -55,9 +50,6 @@ GetOptions(     "dir=s" => \$dir,
                 "sam" => \$sam,
                 "homer" => \$peak,
                 "tag" => \$tag,
-                "all" => \$all,
-                "chr" => \$iterate_chr,
-                "SS" => \$SS,
                 "h" => \$help,
                 "help" => \$help)
         or die (&printCMD());
@@ -90,7 +82,7 @@ if(@files == 0) {
 		@files = `ls $dir/*sam`;
 	}
 	if($tag == 1) {
-		@files = `ls $dir/*tags.tsv`;
+		@files = `ls $dir/* -d`;
 	}
 	if($peak == 1) {
 		@files = `ls $dir/*`;
@@ -123,167 +115,32 @@ if($data_dir eq "") {
 }
 
 #Choose run modes
-if($all == 1 && $tag == 0) {
-	my $last_strain = "";
-	#Save all vectors befor shifting!
-	#There is only one strain specified - all files are shifted with the same vector
-	for(my $i = 0; $i < @strains; $i++) {
-		if($last_strain ne $strains[$i]) {
-			$last = $data_dir . "/" . $strains[$i] . "/last_shift_strain.txt"; 
-			%last = %{retrieve($last)};
-			$last = $data_dir . "/" . $strains[$i] . "/lookup_table_chr.txt";
-			%lookup = %{retrieve($last)};
-			@shift_files = `ls $data_dir/$strains[$i]/*allele_$allele*strain_to_ref.vector`;
-			foreach my $shift (@shift_files) {
-				chomp $shift;
-				print STDERR "load " . $shift . "\n";
-				chomp $shift;
-				@split = split("chr", $shift);
-				@split = split("_", $split[-1]);
-				if(exists $lookup{$split[0]}) {
-					$split[0] = $lookup{$split[0]};
-				}
-				my $tree = Set::IntervalTree->new;
-				open SHIFT, "<$shift";
-				print STDERR $split[0] . "\n";
-				foreach my $line (<SHIFT>) {
-					chomp $line;
-					@split_tree = split('\t', $line);
-					$tree->insert( {'shift'=>$split_tree[0] }, $split_tree[1], $split_tree[2]);	
-				}
-				close SHIFT;
-				$tree_save{$split[0]} = $tree;
-			}
-		}
-		if($sam == 1) {
-			$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_from_" . $strains[$i] . ".sam";
-			open OUT, ">$out_name";
-			&shift_sam_file($files[$i], $strains[$i], 0);
-			close OUT;
-		} elsif($peak == 1) {
-			$out_name = $files[$i] . "_shifted_from_" . $strains[$i] . ".txt";
-			open OUT, ">$out_name";
-			&shift_peak_file($files[$i], $strains[$i], 0);
-			close OUT;
-
-		}
-		$last_strain = $strains[$i];
+my $last_strain = "";
+#Save all vectors befor shifting!
+#There is only one strain specified - all files are shifted with the same vector
+for(my $i = 0; $i < @strains; $i++) {
+	if($last_strain ne $strains[$i]) {
+		my($tree_ref, $last, $lookup) = general::read_strains_data($strains[$i], $data_dir, $allele, "strain_to_ref");
+		%tree = %{$tree_ref};
+		%last = %{$last};
+		%lookup = %{$lookup};
 	}
-} elsif($tag == 0) {
-	#Save sam file
-	if($SS == 1) {
-		for(my $i = 0; $i < @strains; $i++) {
-			@saved_file = ();
-			$last = $data_dir . "/" . $strains[$i] . "/last_shift_strain.txt";
-			%last = %{retrieve($last)};
-			$last = $data_dir . "/" . $strains[$i] . "/lookup_table_chr.txt";
-			%lookup = %{retrieve($last)};
-			#Save sam file
-			open FH, "<$files[$i]";
-			if($sam == 1) {
-				$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_from_" . $strains[$i] . ".sam";
-				open OUT, ">$out_name";
-				foreach my $line (<FH>) {
-					chomp $line;
-					if(substr($line, 0, 1) eq "@") {
-						print OUT $line . "\n";
-						next;
-					}
-					@split = split('\t', $line);
-					$chr{substr($split[2], 3)} = 1;
-					push(@{$saved_file[substr($split[2], 3)]}, $line);	
-				}
-				close FH;
-			} elsif($peak == 1) {
-				print STDERR "save peak files!\n";
-				$out_name = $files[$i]. "_shifted_from_" . $strains[$i] . ".txt";
-				open OUT, ">$out_name";
-				foreach my $line (<FH>) {
-					chomp $line;
-					if(substr($line, 0, 1) eq "#") {
-						print OUT $line . "\n";
-					}
-					@split = split('\t', $line);
-					$chr{substr($split[1], 3)} = 1;
-					push(@{$saved_file[substr($split[1], 3)]}, $line);
-				}
-			}
-			my $first = 0;
-			foreach my $c (keys %chr) {
-				$shift = $data_dir . "/" . $strains[$i] . "/chr" . $c . "_allele_" . $allele . ".strain_to_ref.vector";
-				if(exists $lookup{$c}) {
-					$c = $lookup{$c};
-				}
-				my $tree = Set::IntervalTree->new;
-				open SHIFT, "<$shift";
-				foreach my $line (<SHIFT>) {
-					chomp $line;
-					@split_tree = split('\t', $line);
-					$tree->insert( {'shift'=>$split_tree[0] }, $split_tree[1], $split_tree[2]);
-				}
-				close SHIFT;
-				$tree_save{$c} = $tree;		
-				if($sam == 1) {
-					&shift_sam_file_saved($c, $first);
-				} elsif($peak == 1) {
-					&shift_peak_file_saved($c, $first);
-				}
-				$first++;
-			}
-			close OUT;
-		}
+	if($sam == 1) {
+		$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_from_" . $strains[$i] . ".sam";
+		&shift_sam_file($files[$i], $strains[$i], 0, $out_name);
+	} elsif($peak == 1) {
+		$out_name = $files[$i] . "_shifted_from_" . $strains[$i] . ".txt";
+		&shift_peak_file($files[$i], $strains[$i], 0, $out_name);
+
 	} else {
-		for(my $i = 0; $i < @strains; $i++) {
-			$last = $data_dir . "/" . $strains[$i] . "/last_shift_strain.txt";
-			%last = %{retrieve($last)};
-			$last = $data_dir . "/" . $strains[$i] . "/lookup_table_chr.txt";
-			%lookup = %{retrieve($last)};
-			#iterate over sam file
-			if($sam == 1) {
-				$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_from_" . $strains[$i] . ".sam";
-			} elsif($peak == 1) {
-				$out_name = $files[$i] . "_shifted_from_" . $strains[$i] . ".txt";
-			}
-			open OUT, ">$out_name";
-			@shift_files = `ls $data_dir/$strains[$i]/*allele_$allele*strain_to_ref.vector`;
-			foreach my $shift (@shift_files) {
-				chomp $shift;
-				@split = split("chr", $shift);
-				@split = split("_", $split[-1]);
-				if(exists $lookup{$split[0]}) {
-					$split[0] = $lookup{$split[0]};
-				}
-				my $tree = Set::IntervalTree->new;
-				open SHIFT, "<$shift";
-				foreach my $line (<SHIFT>) {
-					chomp $line;
-					@split_tree = split('\t', $line);
-					$tree->insert( {'shift'=>$split_tree[0] }, $split_tree[1], $split_tree[2]);
-				}
-				close SHIFT;
-				$tree_save{$split[0]} = $tree;		
-				if($sam == 1) {
-					&shift_sam_file($files[$i], $strains[$i], $split[0]);
-				} elsif($peak == 1) {
-					&shift_peak_file($files[$i], $strains[$i], $split[0]);
-				}
-			}
-			close OUT;
+		$out_name = $files[$i];
+		while(substr($out_name, length($out_name) - 1) eq "/") {
+			$out_name = substr($out_name, 0, length($out_name) - 1);
 		}
+		$out_name .= "_shifted_from_" . $strains[$i];
+		&shift_tag_directory($files[$i], $out_name);
 	}
-} else {
-	for(my $i = 0; $i < @files; $i++) {
-		chomp $files[$i];
-		@tag_files = `ls $files[$i]/*tags.tsv`;		
-		for(my $j = 0; $j < @tag_files; $j++) {
-			chomp $tag_files[$j];
-			$chr = substr($split[-1], 3, length($split[-1]) - 12);
-			@split = split("/", $tag_files[$j]);
-			$tag_files{$chr}{$tag_files[$j]} = 1;
-		}
-	}
-	print Dumper %tag_files;
-
+	$last_strain = $strains[$i];
 }
 
 #Shifts position
@@ -300,7 +157,7 @@ sub shift{
 	if($pos_to_shift > $last{$chr}{$allele}{'pos'}) {
 		$pos_shifted = $pos_to_shift + $last{$chr}{$allele}{'shift'};
 	} else {
-		$fetch = $tree_save{$chr_num}->fetch($pos_to_shift, $pos_to_shift + 1);
+		$fetch = $tree{$chr_num}->fetch($pos_to_shift, $pos_to_shift + 1);
 		if(scalar(@$fetch) == 0) {
 			$pos_shifted = $pos_to_shift;
 		} else {
@@ -311,50 +168,14 @@ sub shift{
 }
 
 
-sub shift_sam_file_saved{
-	#Shift files when all or one chromosomes are saved in memory and sam file is not
-	my $chr = $_[0];
-	my $first = $_[1];
-	print $chr . "\t" . $first . "\n";
-	foreach my $line (@{$saved_file[$chr]}) {
-		chomp $line;
-		@split = split('\t', $line);
-		if(!exists $last{$chr}{$allele}) {
-			print OUT $line . "\n";
-			next;
-		}
-		print OUT $split[0] . "\t" . $split[1] . "\t" . $split[2] . "\t" . &shift($chr, $allele, $split[3]);
-		for(my $j = 4; $j < @split; $j++) {
-			print OUT "\t" . $split[$j];
-		}
-		print OUT "\n";
-	}
-}
-
-sub shift_peak_file_saved{
-	my $chr = $_[0];
-	my $first = $_[1];
-	foreach my $line (@{$saved_file[$chr]}) {
-		chomp $line;
-		@split = split('\t', $line);
-		if(!exists $last{$chr}{$allele}) {
-			print OUT $line . "\n";
-			next;
-		}
-		print OUT $split[0] . "\t" . $split[1] . "\t" . &shift($chr, $allele, $split[2]) . "\t" . &shift($chr, $allele, $split[3]);
-		for(my $j = 4; $j < @split; $j++) {
-			print OUT "\t" . $split[$j];
-		}	
-		print OUT "\n";
-	}
-}
-
 
 sub shift_sam_file{
 	#Shift files when all or one chromosomes are saved in memory and sam file is not
 	my $file = $_[0];
 	my $strain = $_[1];
 	my $chr_to_work_on = $_[2];
+	my $out_file = $_[3];
+	open OUT, ">$out_file" or die "Can't open $out_file: $!\n";
 	open FH, "<$file";
 	print STDERR "Reading in " . $file . "\n";
 	foreach my $line (<FH>) {
@@ -366,6 +187,7 @@ sub shift_sam_file{
 		}
 		$print_header++;
 		if(length($split[2]) < 4) {
+			print OUT $line. "\n";
 			next;
 		}
 		$chr = substr($split[2], 3);
@@ -385,16 +207,22 @@ sub shift_sam_file{
 		}
 		print OUT "\n";
 	}
+	close OUT;
 }
 
 sub shift_peak_file{
 	my $file = $_[0];
 	my $strain = $_[1];
 	my $chr_to_work_on = $_[2];
+	my $out_file = $_[3];
+	open OUT, ">$out_file" or die "Can't open $out_file: $!\n";
 	open FH, "<$file";
 	foreach my $line (<FH>) {
 		chomp $line;
+		print $line . "\n";
 		@split = split('\t', $line);
+		@tmp = split("_", $split[1]);
+		$chr = substr($tmp[0], 3);
 		if(!exists $last{$chr}{$allele}) {
 			if($chr_to_work_on == 0) {
 				print OUT $line . "\n";
@@ -410,5 +238,44 @@ sub shift_peak_file{
 			print OUT "\t" . $split[$j];
 		}
 		print OUT "\n";
+	}
+	close OUT;
+}
+
+sub shift_tag_directory{
+	my $directory = $_[0];
+	my @files = `ls $directory/*tags.tsv`;
+	my $output_dir = $_[1];
+	if(-e $output_dir) {
+		print STDERR "" . $output_dir . " already exists!\n";
+		print STDERR "Overwriting directory in 10 seconds\n";
+		print STDERR "Press Ctrl + C to stop\n";
+		print STDERR "Waiting: ";
+		for(my $i = 0; $i < 10; $i++) {
+			print STDERR ".";
+			sleep(1)
+		}
+		print STDERR "\n";
+		`rm -rf $output_dir/*`;
+	} else {
+		`mkdir $output_dir`;
+	}
+	#Copy txt files
+	`cp $directory/*txt $output_dir`;
+	foreach my $file (@files) {
+		chomp $file;
+		print STDERR "shifting " . $file . "\n";
+		@split = split("/", $file);
+		$file = $split[-1];
+		open OUT, ">$output_dir/$file";
+		open FH, "<$directory/$file";
+		print "input: " . "$directory/$file\n";
+		foreach my $line (<FH>) {
+			chomp $line;
+			@split = split('\t', $line);
+			@tmp = split("_", $split[1]);
+			$chr = substr($tmp[0], 3);
+			print OUT $split[0] . "\t" . $split[1] . "\t" . &shift($chr, $allele, $split[2]) . "\t" . $split[3] . "\t" . $split[4] . "\t" . $split[5] . "\n";
+		}
 	}
 }
