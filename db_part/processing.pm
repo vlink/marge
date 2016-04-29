@@ -1,7 +1,9 @@
 #!/usr/bin/perl -w
 
 package processing;
+use Data::Dumper;
 
+#Method to generate the strain genome out of the mutation files
 sub create_genome {
 	my $chr = $_[0];
 	my %strains = %{$_[1]};
@@ -14,6 +16,7 @@ sub create_genome {
 	#First save the genome in an array
 	$_ = () for my (@cache, @save_cache, @split, @split_mut);
 	my $strain_seq;
+	#Read in the reference genome in an array so every position of the reference genome can be changed
 	foreach my $line (<FH>) {
 		chomp $line;
 		if(substr($line, 0, 1) eq ">") {
@@ -27,32 +30,32 @@ sub create_genome {
 	#Save reference genome array, so when there are several strains we can reset the genome for every strain
 	@save_cache = @cache;
 	foreach my $strains (keys %strains) {
+		#Read in strain mutation files and create strain chromsome file
 		$mutation_file = $input . "/" . $strains . "/chr" . $chr . "_allele_" . $allele . ".mut";
 		$output = $output_dir . "/" . $strains . "/chr" . $chr . "_allele_" . $allele . ".fa";
-		#Now open the mutation file and change the mutated sequences
-		if(!(-e $mutation_file)) {
-			print STDERR $mutation_file . " does not exist - go to next strain\n";
-			next;
-		}
 		if(!(-e $output_dir . "/" . $strains)) {
 			`mkdir -p $output_dir/$strains`;
 		}
-		open FH, "<$mutation_file" or die "Can't open $mutation_file\n";
-		#Add SNPs and InDels into reference genome array
-		foreach my $line (<FH>) {
-			chomp $line;
-			@split_mut = split('\t', $line);
-			if($split_mut[0] > @cache) { last; }
-			if(length($split_mut[1]) > 1) {
-				for(my $i = 1; $i < length($split_mut[1]); $i++) {
-					$cache[$split_mut[0] + $i - 1] = "";
+		#Now open the mutation file and change the mutated sequences
+		if(-e $mutation_file) {
+			open FH, "<$mutation_file" or die "Can't open $mutation_file\n";
+			#Add SNPs and InDels into reference genome array
+			foreach my $line (<FH>) {
+				chomp $line;
+				@split_mut = split('\t', $line);
+				if($split_mut[0] > @cache) { last; }
+				if(length($split_mut[1]) > 1) {
+					for(my $i = 1; $i < length($split_mut[1]); $i++) {
+						$cache[$split_mut[0] + $i - 1] = "";
+					}
+				} else {
+					$cache[$split_mut[0] - 1] = $split_mut[2];
 				}
-			} else {
-				$cache[$split_mut[0] - 1] = $split_mut[2];
 			}
+			close FH;
+		} else {
+			print STDERR $mutation_file . " does not exist - go to next strain\n";
 		}
-		close FH;
-
 		#Write strain genome output - use 50bg per line (default HOMER uses and needed for grabbing sequenes with byte offsets later on)
 		print STDERR "\t\t" . $strains . "\n";
 		$strain_seq = join("", @cache);
@@ -74,9 +77,6 @@ sub create_offset_ref_to_strain {
 	my $strain = $_[2];
 	my %last_shift_pos_ref = %{$_[3]};
 	my $data = $_[4];
-	if(exists $lookup_number{$chr}) {
-		$chr = $lookup_number{$chr};
-	}
         $filename = $data . "/" . $strain . "/chr" . $chr . "_allele_" . $a . ".mut";
 	my $out = $data . "/" . $strain . "/chr" . $chr . "_allele_" . $a . ".ref_to_strain.vector";
 	$_ = () for my(@array_shift, @tmp_split, @a);
@@ -94,7 +94,7 @@ sub create_offset_ref_to_strain {
 			$last_shift = $last_shift + (length($tmp_split[2]) - length($tmp_split[1]));
 			$run = $tmp_split[0] + 1;
 			#Save last shift 
-			$last_shift_pos_ref{$strain}{$chr}{$a}{'pos'} = $tmp_split[0] + 1;
+			$last_shift_pos_ref{$strain}{$chr}{$a}{'pos'} = $run;
 			$last_shift_pos_ref{$strain}{$chr}{$a}{'shift'} = $last_shift;
                 }
 		close OUT;
@@ -109,9 +109,6 @@ sub create_offset_strain_to_ref {
 	my $strain = $_[2];
 	my %last_shift_pos_strain = %{$_[3]};
 	my $data = $_[4];
-	if(exists $lookup_number{$chr}) {
-		$chr = $lookup_number{$chr};
-	}
         my $last_shift = 0;
 	$_ = () for my (@array_shift, @tmp_split);
 	$_ = 0 for my ($start, $diff);
@@ -149,6 +146,8 @@ sub create_offset_strain_to_ref {
 				$shift = $shift + $diff;
 			}
 			print OUT $last_shift . "\t" . $last_strain . "\t" . $strain_pos . "\n";
+			$last_shift_pos_strain{$strain}{$chr}{$a}{'pos'} = $last_strain;
+			$last_shift_pos_strain{$strain}{$chr}{$a}{'shift'} = $last_shift;
 			$last_shift = $shift;
 			$strain_pos++;
 			$ref_pos++;
@@ -160,6 +159,7 @@ sub create_offset_strain_to_ref {
 	return \%last_shift_pos_strain;
 }
 
+#Get the refseq ID for a gene
 sub get_refseq_for_gene{
 	my $gene_file = $_[0];
 	my $gene = $_[1];
@@ -186,7 +186,7 @@ sub get_refseq_for_gene{
 	return $refseq_NM;
 }
 
-
+#Save transcript from RefSeq ID - only save exons
 sub save_transcript {
 	my $transcript = "";
 	my $refseq_file = $_[0];
@@ -216,9 +216,6 @@ sub save_transcript {
                                                 $start = $parts[1] - 1;
                                                 $i--;
                                                 @parts = split(":", $introns[$i]);
-                                                if(length($parts[0]) < 6 && substr($parts[0], 0, 1) eq "I") {
-                                                       # print STDERR "Weird annotation!\n";
-                                                }
                                                 $stop = $parts[1] - 1;
                                                 $peaks{substr($split[1], 3)}{$start} = $stop;
                                                 $exons{$start . "_" . $stop} = $exon;
@@ -236,9 +233,6 @@ sub save_transcript {
                                                 $i++;
                                                 if(@introns > $i) {
                                                         @parts = split(':', $introns[$i]);
-                                                        if(length($parts[0]) < 4 && substr($parts[0], 0, 1) ne "I") {
-                                                                print STDERR "Weird pos strand\n";
-                                                        }
                                                         $stop = $parts[1] - 1;
                                                 } else {
                                                         $stop = $split[3];

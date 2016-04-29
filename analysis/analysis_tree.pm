@@ -1,33 +1,19 @@
 #!/usr/bin/perl
-
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
 package analysis;
 use strict;
-use Getopt::Long;
-#require '/Users/verenalink/workspace/strains/general/config.pm';
 use config;
-use Data::Dumper;
 use Statistics::Basic qw(:all);
 use Statistics::Distributions;
-#require '../db_part/database_interaction.pm';
 
-$_ = "" for my($genome, $file, $tf, $filename, $last_line);
-$_ = () for my(@strains, %promoter, %exp, @split, @name, %mutation_pos, %shift, %current_pos, %save_local_shift, %seq, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, @header, %block, %existance, %diff, %ranked_order, %mut_one, %mut_two, %delta_score, %matrix_pos_muts, %network_save, %cytoscape_sig, %cytoscape_unsig);
-$_ = 0 for my($homo, $allele, $region, $motif_score, $motif_start, $more_motifs, $save_pos, $delta, $tmp_out, $tmp_out_main_motif, $line_number);
-my $data = config::read_config()->{'data_folder'};
-
-my %comp = ();
+$_ = () for my(@split, %PWM, @tmp_split, %comp);
 $comp{'A'} = 'T';
 $comp{'T'} = 'A';
 $comp{'C'} = 'G';
 $comp{'G'} = 'C';
 $comp{'-'} = '-';
 
-
-print STDERR "Matrix is defined in read_motifs and it is storred globally in this module!\n";
-print STDERR "Change that!!!!!\n\n";
-
-
+#Write header for mutation distribution plots
 sub write_header{
 	my @fileHandlesMotif = @{$_[0]};
 	my @strains = @{$_[1]};
@@ -38,6 +24,7 @@ sub write_header{
 		for(my $i = 0; $i < @strains; $i++) {
 			$fileHandlesMotif[$files]->print("tg " . $strains[$i] . "\t");
 		}
+		#Check if foldchange is set 
 		if($fc == 0) {
 			for(my $i = 0; $i < @strains - 1; $i++) {
 				for(my $j = $i + 1; $j < @strains; $j++) {
@@ -59,31 +46,20 @@ sub write_header{
 	}
 }
 
-
+#This method summarizes the output of HOMER's motif scan for every peak. It generates a hash that contains all motifs for all strains per peak
+#The method reports the motif positions from the beginning of the sequence and takes care of shifting through indels within this sequence
+#All motif positions are realtive to the reference motif position
 sub analyze_motifs{
-	my @split;
-	my @header;
+	$_ = () for my(@split, @header, %block, $tree_tmp, $last_line);
+	$_ = 0 for my($pos_beginning, $shift_beginning, $pos_current, $pos_end, $shift_current, $shift_diff, $shift_end, $motif_pos, $chr_num, $motif_start);
 	my $motif_file = $_[0];
-	my $seq = $_[1];
-	my @strains = @{$_[2]};
-	my $tree = $_[3];
-	my $lookup = $_[4];
-	my $last = $_[5];
-	my $allele = $_[6];
-	my $region = $_[7];
+	my @strains = @{$_[1]};
+	my $tree = $_[2];
+	my $lookup = $_[3];
+	my $last = $_[4];
+	my $allele = $_[5];
+	my $region = $_[6];
         open FH, "<$motif_file";
-        my $last_line = "";
-	my %block = ();
-	my $pos_beginning;
-	my $shift_beginning;
-	my $pos_current;
-	my $pos_end;
-	my $shift_current;
-	my $shift_diff;
-	my $shift_end;
-	my $tree_tmp;
-	my $motif_pos;
-	my $chr_num;
         foreach my $line (<FH>) {
                 chomp $line;
                 @split = split('\t', $line);
@@ -94,12 +70,14 @@ sub analyze_motifs{
 		$motif_pos = $split[1];
 		#define motif start
 		$motif_start = $motif_start + $header[1];
+		#Motif is on negative strand - adjust start position
 		if($split[4] eq "-") {
 			$motif_start = $motif_start - length($split[2]) + 1;
 			$motif_pos = $motif_pos - length($split[2]) + 1;
 		}
 		$pos_beginning = $header[1] - ($region/2);
-		$chr_num = substr($header[0], 3);
+		@tmp_split = split("_", $header[0]);
+		$chr_num = substr($tmp_split[0], 3);
 		if($chr_num !~ /\d+/ && !exists $lookup->{$header[3]}->{$chr_num}) {
 			print STDERR "Skip analysis of chromosome " . $chr_num . " in analyze_motifs\n";
 			print STDERR $chr_num . "\t" . $header[3] . "\n";
@@ -107,22 +85,27 @@ sub analyze_motifs{
 		if(exists $lookup->{$header[3]}->{$chr_num}) {
 			$chr_num = $lookup->{$header[3]}->{$chr_num};
 		}
+		#Check if there is a interval tree for this strain and chromosome
 		if(defined $tree->{$header[3]}->{$chr_num}) {
+			#Get shifting vector for the beginning of the sequence that was used to scan for the motif
 			$tree_tmp = $tree->{$header[3]}->{$chr_num}->fetch($pos_beginning, $pos_beginning + 1);
 			if(!exists $tree_tmp->[0]->{'shift'}) {
 				$shift_beginning = $last->{$header[3]}->{$header[0]}->{$allele}->{'shift'};
 			} else {
 				$shift_beginning = $tree_tmp->[0]->{'shift'};
 			}
+			#Get shifting vector for the position of the motif
 			$tree_tmp = $tree->{$header[3]}->{$chr_num}->fetch($motif_start, $motif_start + 1);
 			if(!exists $tree_tmp->[0]->{'shift'}) {
 				$shift_current = $last->{$header[3]}->{$header[0]}->{$allele}->{'shift'};
 			} else {
 				$shift_current = $tree_tmp->[0]->{'shift'};
 			}
+			#Calculate the difference between the shfiting vector at the beginning of the sequence and the shifting vector at the beginning of the motif - if different then there is a InDel in this sequence and shifting is necessary
 			$shift_diff = $shift_beginning - $shift_current;
 			$motif_pos = $motif_pos + $shift_diff;
 		}
+		#Save motif, length and orientation for this strain at the position in a hash
 		$block{$last_line}{$split[3]}{$motif_pos}{$header[-1]} = $split[-1];
 		$block{$last_line}{$split[3]}{$motif_pos}{'length'} = length($split[2]);
 		$block{$last_line}{$split[3]}{$motif_pos}{'orientation'} = $split[4];
@@ -130,18 +113,11 @@ sub analyze_motifs{
 	return \%block;
 }
 
-sub save_all_motifs{
-	my $block_ref = $_[0];
-	my $last_line = $_[1];
-	my %block = %$block_ref;
-	foreach my $motif (keys %block) {
-		foreach my $pos (keys %{$block{$motif}}) {
-			$network_save{$last_line}{$pos}{$motif} = $block{$motif}{$pos};
-		}
-	}
-}
-
+#The block hash is merged when necessary when overlap is set and motifs are overlapping
+#The method also determines whether or not there is a mutation in one of the strains
 sub merge_block {
+	$_ = () for my($tree_tmp, $shift_vector, %ignore, %existance, %diff);
+	$_ = 0 for my($num_of_bp, $chr_num, $current_pos, $prev_shift, $current_shift, $save_pos, $motif_score);
 	my $block_ref = $_[0];
 	my %block = %$block_ref;
 	my @strains = @{$_[2]};
@@ -150,21 +126,13 @@ sub merge_block {
 	my $tree = $_[4];
 	my $lookup = $_[5];
 	my $last = $_[6];
-	my $tree_tmp;
-	my $ab_mut = 0;
-	my $num_of_bp = 0;
-	my $chr_num;
-	my $shift_vector;
-	my $current_pos;
-	my $prev_shift;
-	my $current_shift;
         #Now run through all motifs and see if they are in all the other strains
-        my %ignore = ();
 	foreach my $chr_pos (keys %block) {
 		$current_pos = (split("_", $chr_pos))[1];
 		foreach my $motif (keys %{$block{$chr_pos}}) {
 			%existance = ();
 			%diff = ();
+			#When overlap is set, define the number of basepairs the motif can overlap in order to be merged
 			foreach my $motif_pos (keys %{$block{$chr_pos}{$motif}}) {
 				if($overlap eq "half") {
 					$num_of_bp = int($block{$chr_pos}{$motif}{$motif_pos}{'length'}/2)
@@ -173,6 +141,7 @@ sub merge_block {
 				} else {
 					$num_of_bp = ($overlap*1);
 				}
+				#Motif was handled already in another part of this method (e.g. motif overlapped and was merged into another peak, so this one has to be deleted)
 				if(exists $ignore{$motif_pos}) {
 					delete $block{$chr_pos}{$motif}{$motif_pos};
 					next;
@@ -192,15 +161,16 @@ sub merge_block {
 					if(!exists $diff{$strains[$i]}) {
 						$diff{$strains[$i]} = 0;
 					}
+					#Motif does not exist at this position in this strain
 					if(!exists $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}) {
 						#Check in vicinity (+/- motif_lenght-1) - if there is a motif within motif/2 -> save the current motif under this position, to not count them as separate motifs
 						$existance{$strains[$i]} = 1;
-					#	print $chr_pos . "\t" . $motif . "\t" . $motif_pos . "\t" . $strains[$i] . "\n";
+						#Check if there is an overlap of a motif nearby in this strain (e.g. in this strain there was a indel that shifted the motif by some basepairs)
+						#If overlap is not set, $number_of_bp is 0
 						for(my $run_motif = $motif_pos - $num_of_bp; $run_motif < $motif_pos + $num_of_bp; $run_motif++) {
-					#		print "current pos: " . $run_motif . "\n";
-						#	if(exists $block{$chr_pos}{$motif}{$run_motif} && exists $block{$chr_pos}{$motif}{$run_motif}{$strains[$i]} && $run_motif != $motif_pos) {
+							#There is a motif nearby and the current position we are looking it is not the motif position 
 							if(exists $block{$chr_pos}{$motif}{$run_motif} && $run_motif != $motif_pos) {
-					#			print "run_motif: " . $run_motif . "\n";
+								#Run through all strains now and shift this motif to the current motif position and then delete the other motif position
 								for(my $run_strains = 0; $run_strains < @strains; $run_strains++) {
 									if(!exists $block{$chr_pos}{$motif}{$run_motif}{$strains[$run_strains]}) { next; }
 									$block{$chr_pos}{$motif}{$motif_pos}{$strains[$run_strains]} += $block{$chr_pos}{$motif}{$run_motif}{$strains[$run_strains]};
@@ -208,6 +178,7 @@ sub merge_block {
 									delete $existance{$strains[$run_strains]};
 									delete $block{$chr_pos}{$motif}{$run_motif}{$strains[$run_strains]};
 								}
+								#Add motif to ignore motif
 								$ignore{$run_motif} = 1;
 								if(exists $block{$chr_pos}{$motif}{$run_motif}{'length'} || $block{$chr_pos}{$motif}{$run_motif}{'orientation'}) {
 									delete $block{$chr_pos}{$motif}{$run_motif};
@@ -215,7 +186,10 @@ sub merge_block {
 							}
 						}
 					}
+					#Motif either has no score in this strain or does not exist at all and also was not merged
 					if($block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} eq "" || !exists $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}) {
+						#Define the position of this motif in the strain that is currently investigated
+						#Then pull this sequence from the sequence hash and calculate the motif score
 						if(defined $tree->{$strains[$i]}->{$chr_num}) {
 							$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
 							$current_shift = $tree_tmp->[$i]->{'shift'};
@@ -235,30 +209,24 @@ sub merge_block {
 	return \%block;
 }
 
+#Method outputs the analyze motifs for further analysis in other methods 
+#Files are per motif and summarize the number of mutation in every peak per strain
 sub output_motifs{
+	$_ = 0 for my($fc_exists, $max_motif);
+	$_ = () for my($curr_chr, $curr_pos, %diff, %existance);
 	my $block_ref = $_[0];
 	my %block = %$block_ref;
 	my @fileHandlesMotif = @{$_[1]};
 	my %tag_counts = %{$_[2]};
 	my @strains = @{$_[3]};
 	my %index_motifs = %{$_[4]};
-	my $fc_significant = $_[5];
-	my $overlap = $_[6];
-	my %fc = %{$_[7]};
-	my $fc_exists = 0;
+	my %fc = %{$_[5]};
 	if((keys %fc) > 1) {
 		$fc_exists = 1;
 	}
-	my %recenter_conversion = %{$_[8]};
-	my $motif_diff = $_[9];
-	my $motif_diff_percentage = $_[10];
-	my $curr_chr;
-	my $curr_pos;
-	my $ab;
-	my $ab_mut;
-	my %diff;
-	my %existance;
-	my $max_motif = 0;
+	my %recenter_conversion = %{$_[6]};
+	my $motif_diff = $_[7];
+	my $motif_diff_percentage = $_[8];
         #Now run through all motifs and see if they are in all the other strains
 	foreach my $chr_pos (keys %block) {
 		@split = split("_", $chr_pos);
@@ -274,7 +242,7 @@ sub output_motifs{
 			$fileHandlesMotif[$index_motifs{$motif}]->print($tag_counts{$curr_chr}{$curr_pos});
 			foreach my $motif_pos (keys %{$block{$chr_pos}{$motif}}) {
 				for(my $i = 0; $i < @strains; $i++) {
-					#Filter by motif exist$iance - either motif is not there at all (default) or diff_motif is set
+					#Filter by motif existance - either motif is not there at all (default) or diff_motif is set
 					if(!exists $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} || ($motif_diff == 0 && $motif_diff_percentage == 0 && $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} == 0)) {
 						$existance{$strains[$i]} = 1;
 					}
@@ -283,6 +251,7 @@ sub output_motifs{
 					}
 					$diff{$strains[$i]} = $diff{$strains[$i]} + $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]};
 				}
+				#not binary motif existance, but difference in motif score is used to determine if there is a mutation within the peak
 				if($motif_diff != 0) {
 					for(my $i = 0; $i < @strains; $i++) {
 						if($max_motif - $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} > $motif_diff) {
@@ -290,6 +259,7 @@ sub output_motifs{
 						}
 					}
 				}
+				#not binary motif existance or absolute difference in motif score is used, but difference percentage between the two motif scores
 				if($motif_diff_percentage != 0) {
 					for(my $i = 0; $i < @strains; $i++) {
 						if($max_motif - $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} > ($max_motif * $motif_diff_percentage)) {
@@ -305,12 +275,10 @@ sub output_motifs{
 			for(my $i = 0; $i < @strains; $i++) {
 				$fileHandlesMotif[$index_motifs{$motif}]->print($diff{$strains[$i]} . "\t");
 			}
+			#output number of mutations in peak for this motif
 			for(my $i = 0; $i < @strains; $i++) {
 				if(exists $existance{$strains[$i]}) {
 					$fileHandlesMotif[$index_motifs{$motif}]->print("1\t");
-					if($motif eq $ab) {
-						$ab_mut = 1;
-					}
 				} else {
 					$fileHandlesMotif[$index_motifs{$motif}]->print("0\t");
 				}
@@ -321,6 +289,7 @@ sub output_motifs{
 }
 
 
+#Method prepares output hash for distance plots
 sub distance_plot{
 	my %block = %{$_[0]};
 	my @strains = @{$_[1]};
@@ -335,12 +304,15 @@ sub distance_plot{
 	my $offset;
 	foreach my $last_line (keys %block) {
 		@split = split("_", $last_line);
+		#Only keeps peaks where there is an effect, so when the foldchange between the two peaks is not significant peak is ignored - only if fold change of strains, not absoulte difference of tag counts per strain is used
 		if($delta_tag == 0 && $effect == 1 && ($fc{substr($split[0], 3)}{$split[1]} < log($fc_significant)/log(2) && $fc{substr($split[0], 3)}{$split[1]} > log(1/$fc_significant)/log(2))) {
 			next;
 		}
+		#Only keeps peaks where there is an effect, so when the delta between the tag counts of the two strains is smaller then the threshold set for significance (absolute value) the peak is ignored
 		if($delta_tag == 1 && $effect == 1 && abs($fc{substr($split[0], 3)}{$split[1]}) < $delta_threshold) {
 			next;
 		}
+		#Define the offset, because sequences are differently long but so the center of the sequence is different - the longest sequence is used so all sequences will be able to fit
 		$offset = int(($longest_seq - length($seq->{$last_line . "_" . $strains[0]}))/2);
 		foreach my $motif (keys %{$block{$last_line}}) {
 			foreach my $pos (keys %{$block{$last_line}{$motif}}) {
@@ -348,8 +320,8 @@ sub distance_plot{
 					if(!exists $block{$last_line}{$motif}{$pos}{$strains[$i]}) {
 						next;
 					}
+					#add 1 to counter whenever there is a motif at this position in a peak
 					for(my $l = 0; $l < $block{$last_line}{$motif}{$pos}{'length'}; $l++) {
-					#	$dist_plot{$motif}{$strains[$i]}{($pos + $l + $offset - int($longest_seq/2))}++;
 						$dist_plot{$motif}{$strains[$i]}{($pos + $l + $offset)}++;
 					}
 				}
@@ -359,7 +331,11 @@ sub distance_plot{
 	return \%dist_plot;
 }
 
+#Method prepares output hash for the background distribution in the distance plots
 sub background_dist_plot{
+	$_ = () for my (%scan_candidates, %motifs, @fileHandlesBackground, @name, %background, %background_saved, %dist_plot_background);
+	$_ = "" for my ($motif_genomewide, $command, $tmp_motif, $tmp_motif2, $filename, $current_chr, $file);
+	$_ = 0 for my ($i, $first, $count, $current_dist, $next_dist, $smallest_dist, $main_tf_start, $main_tf_end, $length);
 	my $background_folder = $_[0];	
 	my %index_motifs = %{$_[1]};
 	my $delete = $_[2];
@@ -368,10 +344,7 @@ sub background_dist_plot{
 	my $ab = $_[5];
 	my $region = $_[6];
 	my $longest_seq = $_[7];
-	my $motif_genomewide;
-	my %scan_candidates;
-	my %background_dist;	
-
+	#Once the motif was scanned in this genome it is saved - so check if the data is already there otherwise add it to the list of motifs to scan for
 	print STDERR "Checking for genome wide scan of motifs\n";
 	foreach my $motif (keys %index_motifs) {
 		$motif_genomewide = $background_folder . "/" . $genome . "_" . $motif . ".txt";
@@ -379,11 +352,9 @@ sub background_dist_plot{
 			$scan_candidates{$motif} = 1;
 		}
 	}
-
-
 	#Scan for motifs that were not already proprocessed
 	if(keys %scan_candidates > 0) {
-		my $tmp_motif = "tmp" . rand(15) . ".txt";
+		$tmp_motif = "tmp" . rand(15) . ".txt";
 		$delete->{$tmp_motif} = 1;
 		open TMP, ">$tmp_motif";
 		foreach my $motif (keys %scan_candidates) {
@@ -395,26 +366,22 @@ sub background_dist_plot{
 		close TMP;
 
 		print STDERR "Scan motifs genome wide\n";
-		my $tmp_motif2 = "tmp" . rand(15);
+		$tmp_motif2 = "tmp" . rand(15);
 		$delete->{$tmp_motif2} = 1;
-		my $command = "scanMotifGenomeWide.pl " . $tmp_motif . " " . $genome . " > " . $tmp_motif2;
+		$command = "scanMotifGenomeWide.pl " . $tmp_motif . " " . $genome . " > " . $tmp_motif2;
 		`$command`;
 		open FH, "<$tmp_motif2";
-
 		#Save motifs in file
-		my %motifs;
-		my $i = 0;
-		my @fileHandlesBackground;
+		#Open filehandle for the background file for every motif
 		foreach my $motif (keys %scan_candidates) {
-			my $filename = $background_folder . "/" . $genome . "_" . $motif . ".txt";
+			$filename = $background_folder . "/" . $genome . "_" . $motif . ".txt";
 			open my $fh, ">", $filename or die "Can't open $filename: $!\n";
 			$motifs{$motif} = $i;
 			$fileHandlesBackground[$motifs{$motif}] = $fh;
 			$i++;
 		}
-		my @name;
+		#Write output of motif scan in all the different files
 		foreach my $line (<FH>) {
-			print $line;
 			chomp $line;
 			@split = split('\t', $line);
 			@name = split('-', $split[0]);
@@ -424,16 +391,11 @@ sub background_dist_plot{
 			close $fileHandlesBackground[$motifs{$motif}];
 		}
 	}
-
-	#Now read in all file - we start with the main transcription factor
+	#Read in all files with background distribution of motifs that are in the list - start with transcription factor that was use for the cip
 	$motif_genomewide = $background_folder . "/" . $genome . "_" . $ab . ".txt";
 	open FH, "<$motif_genomewide";
-	my %background;
-	my %background_saved;
-	my $current_chr = "";
-	my $first = 0;
-	my $count = 0;
-	print "Saving chipped TF " . $motif_genomewide . "\n";
+	print STDERR "Saving chipped TF " . $motif_genomewide . "\n";
+	#Save the positions of the TF used for the chip, which will be the reference for the distance of all the other TF
 	foreach my $line (<FH>) {
 		chomp $line;
 		@split = split('\t', $line);
@@ -450,19 +412,11 @@ sub background_dist_plot{
 		$count++;
 	}
 	close FH;
-	my $last_index = 0;
 	$count = 0;
-	#Time to start calculation background distribution
-	my $current_dist = 0;
-	my $next_dist = 0;
-	my $smallest_dist = 0;
-	my %dist_plot_background;
-	my $main_tf_start;
-	my $main_tf_end;
-	my $length = 0;
+	#After knowing where the main TF is, calculate the distance distribution of all the other TF
 	foreach my $motif (keys %index_motifs) {
-		print "Processing " . $motif . "\n";
-		my $file = $background_folder . "/" . $genome . "_" . $motif . ".txt";
+		print STDERR "Processing " . $motif . "\n";
+		$file = $background_folder . "/" . $genome . "_" . $motif . ".txt";
 		open FH, "<$file";
 		$count = 0;
 		foreach my $line (<FH>) {
@@ -476,6 +430,7 @@ sub background_dist_plot{
 			}
 			$current_dist = $split[1] - $background_saved{$split[0]}[$count];
 			$next_dist = $split[1] - $background_saved{$split[0]}[$count + 1];
+			#Determine which motif is closer to the main TF (the one to the left (current_dist) or to the right (next_dist)
 			if(abs($current_dist) < abs($next_dist)) {
 				$smallest_dist = $current_dist;
 				$main_tf_start = $background_saved{$split[0]}[$count];
@@ -485,9 +440,10 @@ sub background_dist_plot{
 				$main_tf_start = $background_saved{$split[0]}[$count + 1];
 				$main_tf_end = $background{$split[0]}{$main_tf_start};
 			}
-			#Test if smallest instance is closer within the length of sequences we looked at
+			#Test if smallest distance is within the length of sequences that was defined by the longest sequence in the peak file
 			if(abs($smallest_dist) < int($longest_seq/2) + $region) {
 				$length = ($main_tf_end - $main_tf_start);
+				#If this is the case add motif to background distribution plot
 				for(my $i = int($length/2) * -1; $i < int($length/2); $i++) {
 					$dist_plot_background{$motif}{$smallest_dist + $i}++;
 				}
@@ -497,8 +453,10 @@ sub background_dist_plot{
 	return ($delete, \%dist_plot_background);
 }
 
-
+#Method that analyzes the different bases within the motif to find which bases are mutated the most and have the most impact on the TF binding
 sub analyze_motif_pos{
+	$_ = 0 for my($current_shift, $prev_shift, $shift_vector, $chr_num, $current_pos, $max_motif, $num_of_muts, $max);
+	$_ = () for my($tree_tmp, @fc_split, @char_one, @char_two, @header, %matrix_pos_muts);
 	my %block = %{$_[0]};
 	my $fc = $_[1];
 	my @strains = @{$_[2]};
@@ -511,16 +469,7 @@ sub analyze_motif_pos{
 	my $motif_diff_percentage = $_[9];
 	my $delta_tag = $_[10];
 	my $delta_threshold = $_[11];
-	my $max_motif= 0;
-	my @fc_split;
-	my @char_one;
-	my @char_two;
-	my $num_of_muts = 0;
-	my @header;
-	my $max = 0;
-	$_ = 0 for my($current_shift, $prev_shift, $shift_vector, $chr_num, $current_pos);
-	$_ = () for my($tree_tmp);
-	%matrix_pos_muts = ();
+	my $allele = 1;
 	foreach my $last_line (keys %block) {
 		chomp $last_line;
 		@header = split("_", $last_line);
@@ -537,6 +486,7 @@ sub analyze_motif_pos{
 			}
 		}
 		foreach my $motif (keys %{$block{$last_line}}) {
+			#Define indels, snps and multiple snps (N == not significant, S == significant) 
 			if(!exists $matrix_pos_muts{$motif}{'indel'}) {
 				$matrix_pos_muts{$motif}{'indel'}{'N'} = 0;
 				$matrix_pos_muts{$motif}{'indel'}{'S'} = 0;
@@ -545,7 +495,9 @@ sub analyze_motif_pos{
 				$matrix_pos_muts{$motif}{'multi'}{'N'} = 0;
 				$matrix_pos_muts{$motif}{'multi'}{'S'} = 0;
 			}
+			#Run through all the motif occurrences in the peak file
 			foreach my $motif_pos (keys %{$block{$last_line}{$motif}}) {
+				#If not binary decisions but motif score difference define significane, the strain motif with the highest score needs to be found first
 				if($motif_diff > 0 || $motif_diff_percentage > 0) {
 					$max_motif = 0;
 					for(my $i = 0; $i < @strains; $i++) {
@@ -554,37 +506,62 @@ sub analyze_motif_pos{
 						}
 					}
 				}
+				#Run through all pairwise strain comparisons
 				for(my $i = 0; $i < @strains - 1; $i++) {
 					for(my $j = $i + 1; $j < @strains; $j++) {
+						#Motif is different between the strains
+						#motif differences and percentage of motif difference is not used to call different motifs - the score of the motif is 0 in one of the strains
 						if(($motif_diff == 0 && $motif_diff_percentage == 0 && ($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} == 0 || $block{$last_line}{$motif}{$motif_pos}{$strains[$j]} == 0)) ||
+						#Motif difference is used to call different motifs and the difference between the two motif scores is greater than what is defined as minmum different to be significant
 						($motif_diff > 0 && abs($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} - $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) > $motif_diff) ||
+						#Percentage of motif score difference is used to call different motifs and the percentual difference is bigger than the defined minimum to call it as significant
 						($motif_diff_percentage > 0 && abs($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} - $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) > ($max_motif * $motif_diff_percentage))) {
+							#Check if there was an indel between the start of the sequence and the position of the motif in the strain because the original sequences needs to be used in this method
 							if(defined $tree->{$strains[$i]}->{$chr_num}) {
-								$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
-								$current_shift = $tree_tmp->[0]->{'shift'};
-								$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->fetch($current_pos, $current_pos + 1);
-								$prev_shift = $tree_tmp->[0]->{'shift'};
+								if($current_pos + $motif_pos > $last->{$strains[$i]}->{$chr_num}->{$allele}->{'pos'}) {
+									$current_shift = $last->{$strains[$i]}->{$chr_num}->{$allele}->{'shift'};
+								} else {
+									$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
+									$current_shift = $tree_tmp->[0]->{'shift'};
+								}
+								if($current_pos > $last->{$strains[$i]}->{$chr_num}->{$allele}->{'pos'}) {
+									$prev_shift = $last->{$strains[$i]}->{$chr_num}->{$allele}->{'shift'};
+								} else {
+									$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->fetch($current_pos, $current_pos + 1);
+									$prev_shift = $tree_tmp->[0]->{'shift'};
+								}
 								$shift_vector = $current_shift - $prev_shift;	
 							}
+							#Split the original strain motif sequence into an array, so a base by base comparison is possible
 							if($block{$last_line}{$motif}{$motif_pos}{'orientation'} eq "+") {
-								@char_one = split("", substr($seq{$last_line . "_" . $strains[$i]}, $motif_pos + $shift_vector, $block{$last_line}{$motif}{$motif_pos}{'length'}));
+								@char_one = split("", substr($seq->{$last_line . "_" . $strains[$i]}, $motif_pos + $shift_vector, $block{$last_line}{$motif}{$motif_pos}{'length'}));
 							} else {
-								@char_one = split("", &rev_comp(substr($seq{$last_line . "_" . $strains[$i]}, $motif_pos + $shift_vector, $block{$last_line}{$motif}{$motif_pos}{'length'})));
+								@char_one = split("", &rev_comp(substr($seq->{$last_line . "_" . $strains[$i]}, $motif_pos + $shift_vector, $block{$last_line}{$motif}{$motif_pos}{'length'})));
 							}
 							$shift_vector = 0;
+							#Check if there was an indel between the start of the sequence and the position of the motif in the second strain
 							if(defined $tree->{$strains[$j]}->{$chr_num}) {
-								$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
-								$current_shift = $tree_tmp->[0]->{'shift'};
-								$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->fetch($current_pos, $current_pos + 1);
-								$prev_shift = $tree_tmp->[0]->{'shift'};
+								if($current_pos + $motif_pos > $last->{$strains[$j]}->{$chr_num}->{$allele}->{'pos'}) {
+									$current_shift = $last->{$strains[$j]}->{$chr_num}->{$allele}->{'shift'};
+								} else {
+									$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
+									$current_shift = $tree_tmp->[0]->{'shift'};
+								}
+								if($current_pos > $last->{$strains[$j]}->{$chr_num}->{$allele}->{'pos'}) {
+									$prev_shift = $last->{$strains[$j]}->{$chr_num}->{$allele}->{'shift'};
+								} else {
+									$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->fetch($current_pos, $current_pos + 1);
+									$prev_shift = $tree_tmp->[0]->{'shift'};
+								}
 								$shift_vector = $current_shift - $prev_shift;	
 							}
+							#Split the original sequence of the second strain into an array for base by base comparison
 							if($block{$last_line}{$motif}{$motif_pos}{'orientation'} eq "+") {
-								@char_two = split("", substr($seq{$last_line . "_" . $strains[$j]}, $motif_pos + $shift_vector, $block{$last_line}{$motif}{$motif_pos}{'length'}));
+								@char_two = split("", substr($seq->{$last_line . "_" . $strains[$j]}, $motif_pos + $shift_vector, $block{$last_line}{$motif}{$motif_pos}{'length'}));
 							} else {
-								@char_two = split("", &rev_comp(substr($seq{$last_line . "_" . $strains[$j]}, $motif_pos + $shift_vector, $block{$last_line}{$motif}{$motif_pos}{'length'})));
+								@char_two = split("", &rev_comp(substr($seq->{$last_line . "_" . $strains[$j]}, $motif_pos + $shift_vector, $block{$last_line}{$motif}{$motif_pos}{'length'})));
 							}
-							#Count number of differences - if more than 2 dismiss this comparison because motifs are not the same
+							#Count number of differences - if more than 2 dismiss this comparison because motifs are not the same and count it as indel
 							$num_of_muts = 0;
 							for(my $c = 0; $c < @char_one; $c++) {
 								if($char_one[$c] ne $char_two[$c]) {
@@ -592,6 +569,7 @@ sub analyze_motif_pos{
 								}
 							}
 							if($num_of_muts > 2) {
+								#Number of mutation is greater than 2 -> mutation is counted as indel - check FC in order to define if mutation changed the binding of TF
 								if($delta_tag == 0) {
 									if($fc_split[$i + $j - 1] > log($fc_significant)/log(2) || $fc_split[$i + $j - 1] < log(1/$fc_significant)/log(2)) {
 										$matrix_pos_muts{$motif}{'indel'}{'S'}++;
@@ -605,9 +583,8 @@ sub analyze_motif_pos{
 										$matrix_pos_muts{$motif}{'indel'}{'N'}++;
 									}
 								}
-								next;
-							}
-							if($num_of_muts > 1) {
+							} elsif($num_of_muts > 1) {
+							#Mnumber of mutation is greather than 1 (and smaller than 2) -> count it as multiple mutations within the same motif - check FC in order to define if mutation changed the binding of TF
 								if($delta_tag == 0) {
 									if($fc_split[$i + $j - 1] > log($fc_significant)/log(2) || $fc_split[$i + $j - 1] < log(1/$fc_significant)/log(2)) {
 										$matrix_pos_muts{$motif}{'multi'}{'S'}++;
@@ -622,42 +599,42 @@ sub analyze_motif_pos{
 
 									}
 								}
-								next;
-							}
-
-							for(my $c = 0; $c < @char_one; $c++) {
-								if($char_one[$c] ne $char_two[$c]) {
-									if($delta_tag == 0) {
-										if($fc_split[$i + $j - 1] > log($fc_significant)/log(2) || $fc_split[$i + $j - 1] < log(1/$fc_significant)/log(2)) {
-											#S meaning significant
-											if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
-												$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'S'}++;
+							} elsif($num_of_muts == 1) {
+								#Number of mutation is exactly 1 - check the kind of subsitution and determine if it was significant or not
+								for(my $c = 0; $c < @char_one; $c++) {
+									if($char_one[$c] ne $char_two[$c]) {
+										if($delta_tag == 0) {
+											if($fc_split[$i + $j - 1] > log($fc_significant)/log(2) || $fc_split[$i + $j - 1] < log(1/$fc_significant)/log(2)) {
+												#S meaning significant
+												if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
+													$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'S'}++;
+												} else {
+													$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'S'}++;
+												}
 											} else {
-												$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'S'}++;
+												if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
+													$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'N'}++;
+												} else {
+													$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'N'}++;
+												}
 											}
 										} else {
-											if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
-												$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'N'}++;
+											if(abs($fc_split[$i + $j - 1]) > $delta_threshold) {
+												#S meaning significant
+												if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
+													$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'S'}++;
+												} else {
+													$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'S'}++;
+												}
 											} else {
-												$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'N'}++;
+												if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
+													$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'N'}++;
+												} else {
+													$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'N'}++;
+												}
 											}
-										}
-									} else {
-										if(abs($fc_split[$i + $j - 1]) > $delta_threshold) {
-											#S meaning significant
-											if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
-												$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'S'}++;
-											} else {
-												$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'S'}++;
-											}
-										} else {
-											if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}) {
-												$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'N'}++;
-											} else {
-												$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'N'}++;
-											}
-										}
 
+										}
 									}
 								}
 							}
@@ -670,18 +647,7 @@ sub analyze_motif_pos{
 	return \%matrix_pos_muts;
 }
 
-sub log_fc {
-	my $local_delta = $_[0];
-	if($local_delta < 0) {
-		$local_delta = $local_delta * (-1);
-		$local_delta = log($local_delta+1)/log(2);
-		$local_delta = $local_delta * (-1);
-	} else {
-		$local_delta = log($local_delta+1)/log(2);
-	}
-	return $local_delta;
-}
-
+#Calculate the score of the motif
 sub calculate_motif_score{
 	my $score = 0;
 	my $motif = $_[0];
@@ -703,6 +669,7 @@ sub calculate_motif_score{
 	return sprintf("%.6f", $score);	
 }
 
+#Generate reverse complementary sequence
 sub rev_comp{
 	my $local_seq = $_[0];
 	my $rev = reverse($local_seq);
@@ -714,17 +681,19 @@ sub rev_comp{
 	return $comp;
 }
 
+#Print motif name from HOMER motif file in are more human readable format - maybe skip for other motif files
 sub get_motif_name{
         my $name = $_[0];
+	$_ = () for my (@clean1, @clean2, @underscore, @paren);
 	#First check if it comes from homer motif analysis or database
 	if(index($name, "BestGuess") != -1) {
 		#Get rid of consensus sequence at the beginning
-		my @clean1 = split("BestGuess:", $name);
+		@clean1 = split("BestGuess:", $name);
 		#Get rid of best guess
 		#Get rif of everything in paraenthesis 
-		my @clean2 = split/[\(,\/]+/, $clean1[-1];
+		@clean2 = split/[\(,\/]+/, $clean1[-1];
 		$name = $clean2[0];
-		my @underscore = split('_', $clean2[0]);
+		@underscore = split('_', $clean2[0]);
 		for(my $i = @underscore - 1; $i > 0; $i--) {
 			if(length($underscore[$i]) > 2 && $underscore[$i] =~ /[a-zA-Z]+/) {
 				$name = $underscore[$i];
@@ -732,21 +701,22 @@ sub get_motif_name{
 				last;
 			}
 		}
-		my @paren = split('\(', $name);
+		@paren = split('\(', $name);
 		$name = $paren[0];
 	} else {
-		my @clean1 = split(',', $name);
+		@clean1 = split(',', $name);
 		if(@clean1 > 1) {
 			$name = $clean1[1];
 		} else {
 			$name = $clean1[0];
 		}
-		my @clean2 = split/[\(,\/]+/, $name;
+		@clean2 = split/[\(,\/]+/, $name;
 		$name = $clean2[0];
 	}
 	return $name;
 }
 
+#Open filehandles for writing
 sub open_filehandles{
 	my %motifs = %{$_[0]};
 	my %del = %{$_[1]};
@@ -762,6 +732,7 @@ sub open_filehandles{
 	return (\@fileHandlesMotif, \%del);
 }
 
+#Read motifs from motif file and save PWM in a global variable that every method in this package can access - should be changed at some point
 sub read_motifs{
 	open FH, "<$_[0]";
 	my $pos = 0;
@@ -769,7 +740,6 @@ sub read_motifs{
 	my $index = 0;
 	my $name;
 	my %index_motifs;
-#	my @fileHandlesMotif;
 	my %score;
 	foreach my $line (<FH>) {
 		chomp $line;
@@ -778,17 +748,15 @@ sub read_motifs{
 			$pos = 0;
 			#Open file per motif
 			$name = &get_motif_name($motif);
-#			my $filename = $output_mut . "_" . $name . ".txt";
-	#		$del{$filename} = 1;
-#			open my $fh, ">", $filename or die "Can't open $filename: $!\n";
+			#Read in when not already in index_motifs (different motifs with same name are overwritten - maybe change at some point)
 			if(!exists $index_motifs{$name}) {
 				$index_motifs{$name} = $index;
-	#			$fileHandlesMotif[$index] = $fh;
 				$index++;
 				@split = split('\t', $line);
 				$score{$name} = $split[2];
 			}
 		} else {
+			#Change positions with probabailty 0 to 0.001 (easier when calculating motif score)
 			@split = split('\t', $line);
 			if($split[0] == 0) { $split[0] += 0.001; }
 			if($split[1] == 0) { $split[1] += 0.001; }
@@ -801,23 +769,25 @@ sub read_motifs{
 			$pos++;
 		}
 	}
-#	return (\%index_motifs, \%PWM, \@fileHandlesMotif, \%del, \%score);
 	return (\%index_motifs, \%PWM, \%score);
 }
 
+#Scan the sequecnes with HOMER to find motifs
 sub scan_motif_with_homer{
 	my $seq_file = $_[0];
 	my $out_file = $_[1];
-	print STDERR "out file: " . $out_file . "\n";
 	my $tf = $_[2];
 	my $command = "homer2 find -i " . $seq_file . " -m " . $tf . " -offset 0 > " . $out_file;
-	print STDERR $command . "\n";
 	`$command`;	
 }
 
+#Get strain sequences for every peak
 sub get_seq_for_peaks {
+	$_ = 0 for my ($general_offset, $seq_number, $newlines, $longest_seq, $no_shift, $filter_no_mut, $length, $ref_start, $working_start, $working_stop, $byte_offset, $chr_num, $shift_vector, $mut); 
+	$_ = "" for my($seq, $h, $header, $seq_first, $filename);
+	$_ = () for my(@fileHandles, %current_pos, @tmp_split, %seen_part, @split_part, %seq); 
+	my $current_tree = Set::IntervalTree->new;
 	open OUT, ">$_[0]";
-	print STDERR $_[0] . "\n";
 	my %peaks = %{$_[1]};
 	my @strains = @{$_[2]};
 	my $data = $_[3];
@@ -828,36 +798,6 @@ sub get_seq_for_peaks {
 	my $tree = $_[8];
 	my $lookup = $_[9];
 	my $last = $_[10];
-	my $general_offset = 0;
-	my $seq_number = 0;
-	my $seq = "";
-	my $length;
-	my $newlines = 0;
-	my $newlines_seq = 0;
-	my @fileHandles;
-	my $shift_start = 0;
-	my $shift_stop = 0;
-	my $strain_spec_start;
-	my $strain_spec_stop;
-	my $mut_number_start = 0;
-	my $mut_number_stop = 0;
-	my %current_pos;
-	my $equal = 0;
-	my $ref_seq = "";
-	my $longest_seq = 0;
-	my $h;
-	my $ref_start;
-	my $ref_stop;
-	my $stop_pos;
-	my $working_start;
-	my $working_stop;
-	my $current_tree = Set::IntervalTree->new;
-	my $header;
-	my $byte_offset;
-	my $chr_num;
-	my $shift_vector;
-	my $no_shift = 0;
-	my $filter_no_mut = 0;
 	$line_number = $line_number * @strains;
 	for(my $i = 0; $i < @strains; $i++) {
 		foreach my $chr (keys %peaks) {
@@ -877,7 +817,25 @@ sub get_seq_for_peaks {
 				$no_shift = 1;
 			}
 			$filename = $data . "/" . uc($strains[$i]) . "/chr" . $chr . "_allele_" . $allele . ".fa";
+			if(!-e $filename) {
+				print STDERR "Can't open $filename\n";
+				print STDERR "Exclude chromosome $chr from analysis\n";
+				delete $peaks{$chr};
+				#Also remove it from sequence 
+				foreach my $s (%seq) {
+					@tmp_split = split("_", $s);
+					$h = $tmp_split[0];
+					for(my $k = 1; $k < @tmp_split - 3; $k++) {
+						$h .= "_" . $tmp_split[$k];
+					}
+					if($h eq "chr" . $chr) {
+						delete $seq{$s};
+					}
+				}
+				next;	
+			}	
                         open my $fh, "<", $filename or die "Can't open $filename: $!\n";
+			#Save file in filehandle to access it via byteOffsets
                         $fileHandles[0] = $fh;
 			open FH, "<$filename";
 			foreach my $start_pos (sort {$a <=> $b} keys %{$peaks{$chr}}) {
@@ -902,10 +860,12 @@ sub get_seq_for_peaks {
 					$working_stop = $working_stop + $shift_vector;
 				}
 				$header = "chr" . $chr . "_" . $start_pos . "_" . $peaks{$chr}{$start_pos} . "_" . $strains[$i];
-				#Calculate length and newlines (fastq file saves seq in 50bp lines)
+				#Calculate length and newlines (fastq file saves seq in 50bp lines) 
 				$length = $working_stop - $working_start;
 				$newlines = int($working_stop/50) - int($working_start/50);
+				#Add number of newlines to length (because working on bytes)
 				$length = $length + $newlines;
+				#Calculate the number of newlines before before working start in sequence
 				$newlines = int(($working_start)/50);
 				#Calculate offset - general offset is first line
 				$byte_offset = $working_start + $general_offset + $newlines;
@@ -919,23 +879,18 @@ sub get_seq_for_peaks {
 				$seq{$header} = uc($seq);
 				$seq = "";
 				$seq_number++;
-			#	print STDERR "" . $seq_number . " of " . $line_number . " gathered\r";
 			}
 		}
 	}
-	print STDERR "\n";
+	#Only peaks with mutations are considered in this analysis
 	if($mut_only == 1) {
 		print STDERR "Filter out peaks without mutations\n";
-		my %seen_part = ();
-		my @split_part;
-		my $h;
-		my $seq_first;
-		my $mut = 0;
 		foreach my $key (keys %seq) {
 			@split_part = split("_", $key);
 			$h = $split_part[0] . "_" . $split_part[1] . "_" . $split_part[2];
 			if(exists $seen_part{$h}) { next; }
 			$seq_first = $seq{$h . "_" . $strains[0]};
+			#Compare all strains to first strain - if one sequence is different keep sequences
 			for(my $i = 1; $i < @strains; $i++) {
 				if($seq_first ne $seq{$h . "_" . $strains[$i]}) {
 					$mut = 1;
@@ -943,6 +898,7 @@ sub get_seq_for_peaks {
 			}
 			if($mut == 0) {
 				$filter_no_mut++;
+				#No mutation was found - delete this peak
 				for(my $i = 0; $i < @strains; $i++) {
 					delete $seq{$h . "_" . $strains[$i]};
 				}
@@ -954,6 +910,7 @@ sub get_seq_for_peaks {
 	if($filter_no_mut > 0) {
 		print STDERR "" . $filter_no_mut . " sequences were filtered out because of no variance between the strains\n";
 	}
+	#Save sequences in a file so HOMER can scan sequences for motifs
 	foreach my $key (sort {$a cmp $b} keys %seq) {
 		print OUT ">" . $key . "\n";
 		print OUT $seq{$key}  . "\n";
@@ -962,6 +919,7 @@ sub get_seq_for_peaks {
 	return(\%seq, $longest_seq, $filter_no_mut);
 }
 
+#Compare the all vs all comparison hash
 sub all_vs_all_comparison{
 	my $block = $_[0];
 	my $recenter_conversion = $_[1];
@@ -978,19 +936,27 @@ sub all_vs_all_comparison{
 		}
 		foreach my $motif (keys %{$block->{$pos}}) {
 			@sum = ();
+			#Sum over motif score for this strain and this peak when there are multiple motifs of the same TF
 			foreach my $motif_pos (keys %{$block->{$pos}->{$motif}}) {
 				for(my $i = 0; $i < @strains; $i++) {
 					$sum[$i] += $block->{$pos}->{$motif}->{$motif_pos}->{$strains[$i]};
 				}
 			}
+			#Convert into a vector - vector of motif scores per strain
 			$vector_motifs = vector(@sum);
+			#Convert tag counts into a vector - vector of tag counts per strain
 			@tag_sum = split('\s+', $tag_counts->{$chr}->{$con_pos});
 			$vector_tagcounts = vector(@tag_sum);
+			#Calculate standard deviation for motifs and tag counts
 			$stddev_m = stddev( $vector_motifs) * 1;
 			$stddev_t = stddev( $vector_tagcounts) * 1;
+			#Set SD to 0 if very small
 			if($stddev_m < 0.00001) { $stddev_m = 0; }
 			if($stddev_t < 0.00001) { $stddev_t = 0; }
+			#Calcualte pearson correlation between motif vector and tag count vector
 			$cor = correlation( $vector_motifs, $vector_tagcounts );
+			#If correlation is na - save it
+			#If correalation is na either the motif score vector or the tag count vector consisted of identical values so there was no information in it
 			if($cor ne "n/a" && $stddev_m > 0 && $stddev_t > 0) {
 				$correlation{$motif}{$cor}++;
 				#Try p-value: 
