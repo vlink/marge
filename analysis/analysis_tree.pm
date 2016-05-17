@@ -726,6 +726,7 @@ sub open_filehandles{
 	foreach my $motif (keys %motifs) {
 		my $filename = $output_mut . "_" . $motif . ".txt";
 		$del{$filename} = 1;
+	#	my $fh = cacheout ">", $filename or die "Can'topen $filename: $!\n"; 
 		open my $fh, ">", $filename or die "Can't open $filename: $!\n";
 		$fileHandlesMotif[$motifs{$motif}] = $fh;
 	}
@@ -960,17 +961,17 @@ sub all_vs_all_comparison{
 			if($cor ne "n/a" && $stddev_m > 0 && $stddev_t > 0) {
 				$correlation{$motif}{$cor}++;
 				#Try p-value: 
-				if(@strains >= 6) {
-					$r = $cor;
-					$r2 = $cor * $cor;
-					if((1-$r2) < 0 || sqrt((1-$r2)/(@strains - 2)) == 0) {
-						$t = 1;
-					} else {
-						$t = $r/sqrt((1-$r2)/(@strains - 2));
-					}
-					$p = Statistics::Distributions::tprob(@strains - 1,$t);
-					$pvalue{$motif}{$p}++;
-				}
+			#	if(@strains >= 6) {
+			#		$r = $cor;
+			#		$r2 = $cor * $cor;
+			#		if((1-$r2) < 0 || sqrt((1-$r2)/(@strains - 2)) == 0) {
+			#			$t = 1;
+			#		} else {
+			#			$t = $r/sqrt((1-$r2)/(@strains - 2));
+			#		}
+			#		$p = Statistics::Distributions::tprob(@strains - 1,$t);
+			#		$pvalue{$motif}{$p}++;
+			#	}
 			}
 		}
 	}

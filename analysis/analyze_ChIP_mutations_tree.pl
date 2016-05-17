@@ -11,9 +11,9 @@ use general;
 use analysis_tree;
 use Set::IntervalTree;
 
-$_ = "" for my($genome, $file, $tf, $filename, $output, $ab, $plots, $overlap, $tmp_out, $data, $tmp_center, $genome_dir);
-$_ = () for my(@strains, %peaks, @split, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, %block, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %lookup_strain, %last_strain, %tree, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, @shuffle_array, $pvalue, %wrong_direction, %right_direction, %middle_direction, %tf_for_direction, %num_of_peaks, @tf_dir);
-$_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $shuffle_k, $shuffle_between, $shuffle_within, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $center_dist, $filter_out);
+$_ = "" for my($genome, $file, $tf, $filename, $output, $ab, $plots, $overlap, $tmp_out, $data, $tmp_center, $genome_dir, $center_dist);
+$_ = () for my(@strains, %peaks, @split, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, %block, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %lookup_strain, %last_strain, %tree, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, @shuffle_array, $pvalue, %wrong_direction, %right_direction, %middle_direction, %tf_for_direction, %num_of_peaks, @tf_dir, $seq);
+$_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $shuffle_k, $shuffle_between, $shuffle_within, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $filter_out);
 my $line_number = 1;
 
 sub printCMD {
@@ -113,7 +113,6 @@ GetOptions(     "genome=s" => \$genome,
 #First step: Get the sequences for the peaks
 
 #Set variables
-my $reference_strain = config::reference_genome($genome);
 if($genome_dir eq "" && $data eq "") {
 	$genome_dir = config::read_config()->{'data_folder'};
 	$data = config::read_config()->{'data_folder'};
@@ -158,7 +157,7 @@ if(substr($motif_diff, length($motif_diff) -1) eq "%") {
 	$motif_diff = 0;
 }
 if($tf eq "") {
-	$tf = config::read_config()->{'homer_path'} . "/homer/data/knownTFs/all.motifs"; 
+	$tf = config::read_config()->{'homer_path'} . "/data/knownTFs/all.motifs"; 
 }
 for(my $i = 0; $i < @strains; $i++) {
 	$strains[$i] =~ s/,//g;
@@ -196,7 +195,7 @@ if($ab ne "") {
 %PWM = %$PWM_ref;
 
 print STDERR "Saving peaks\n";
-open FH, "<$file";
+open FH, "<$file" or die "Can't open $file!\n";
 foreach my $line (<FH>) {
 	chomp $line;
 	if(substr($line, 0, 1) eq "#" || substr($line, 0, 6) eq "PeakID") {
@@ -210,15 +209,17 @@ foreach my $line (<FH>) {
 			exit;
 		} 
 	}
-	$filter_tg = 0;
-	for(my $i = @split - @strains; $i < @split; $i++) {
-		if($split[$i] > $tg) {
-			$filter_tg = 1;
-		} 
-	}	
-	if($filter_tg == 0) {
-		$filter_out++;
-		next;
+	if($tg > 0) {
+		$filter_tg = 0;
+		for(my $i = @split - @strains; $i < @split; $i++) {
+			if($split[$i] > $tg) {
+				$filter_tg = 1;
+			} 
+		}	
+		if($filter_tg == 0) {
+			$filter_out++;
+			next;
+		}
 	}
 	$peaks{substr($split[1], 3)}{$split[2]} = $split[3];
 	$tag_counts{substr($split[1], 3)}{$split[2]} = "";		
@@ -243,6 +244,13 @@ foreach my $line (<FH>) {
 	}
 }
 close FH;
+
+if($line_number == 1) {
+	print STDERR "File was empty!\n";
+	print STDERR "No peaks are saved!\n";
+	exit;
+}
+
 if($filter_out > 0) {
 	print STDERR "" . $filter_out . " peaks out of " . $line_number . " (" . sprintf("%.2f", (($filter_out/$line_number) *100)) . "%) filtered because of low tag counts\n";
 	$line_number = $line_number - $filter_out;
@@ -310,7 +318,7 @@ sub get_files_from_seq{
         $tmp_out = "tmp" . rand(15);
         $delete{$tmp_out} = 1;
         print STDERR "Extracting sequences from strain genomes\n";
-        my ($seq_ref, $l_seq, $filter) = analysis::get_seq_for_peaks($tmp_out, \%peaks, \@strains, $data, $allele, $line_number, $mut_only, $region, \%tree, \%lookup_strain, \%last_strain);
+        my ($seq_ref, $l_seq, $filter) = analysis::get_seq_for_peaks($tmp_out, \%peaks, \@strains, $genome_dir, $allele, $line_number, $mut_only, $region, \%tree, \%lookup_strain, \%last_strain);
 	$seq = $seq_ref;
 	#Important for distance plots
 	$longest_seq_motif = $l_seq;
@@ -331,7 +339,7 @@ sub screen_and_plot{
 	if(@_ > 7) {
 		$no_motif = 1;
 	}
-	my ($fileHandlesMotif_ref, $delete_ref) = analysis::open_filehandles(\%index_motifs, \%delete, $output);
+		my ($fileHandlesMotif_ref, $delete_ref) = analysis::open_filehandles(\%index_motifs, \%delete, $output);
 	@fileHandlesMotif = @$fileHandlesMotif_ref;
 	%delete = %$delete_ref;
 	#Scan sequences with HOMER scanMotifGenome
@@ -346,6 +354,11 @@ sub screen_and_plot{
 	#Merge the hash (when overlap is set, merge the overlapping motifs, calculate motif score if motif was not found)
 	$block_ref = analysis::merge_block(\%block, $overlap, \@strains, $seq, \%tree, \%lookup_strain, \%last_strain);
 	%block = %$block_ref;
+	analysis::output_motifs(\%block, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, \%fc, \%recenter_conversion, $motif_diff, $motif_diff_percentage);
+	for(my $i = 0; $i < @fileHandlesMotif; $i++) {
+		close $fileHandlesMotif[$i];
+	}
+
 	if(@strains > 2) {
 		($correlation, $pvalue) = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains);
 		if($shuffle_between == 1) {
@@ -405,14 +418,10 @@ sub screen_and_plot{
 	#Pairwise comparison instead of all vs all - there is no shuffling needed, because t-test is used for statistics
 	} else {
 		#Writes output file per motif for further analysis
-		analysis::output_motifs(\%block, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, $fc_significant, $overlap, \%fc, \%recenter_conversion, $motif_diff, $motif_diff_percentage);
-		for(my $i = 0; $i < @fileHandlesMotif; $i++) {
-			close $fileHandlesMotif[$i];
-		}
 		print STDERR "Generating R files!\n";
 		&generate_R_files($plots . ".R", $output, $seq_considered);
 		if($mut_pos == 1) {
-			my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant, \%seq, \%tree, \%last_strain, \%lookup_strain, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold);
+			my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant, $seq, \%tree, \%last_strain, \%lookup_strain, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold);
 			%mut_pos_analysis = %$mut_pos_analysis_ref;
 			&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs.R");
 		}
@@ -476,7 +485,7 @@ sub screen_and_plot{
 					}
 				}
 				%mut_pos_analysis = ();
-				my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant, \%seq, \%tree, \%last_strain, \%lookup_strain, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold);
+				my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant, $seq, \%tree, \%last_strain, \%lookup_strain, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold);
 				%mut_pos_analysis = %$mut_pos_analysis_ref;
 				&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs_removed.R");
 			}
@@ -496,7 +505,7 @@ sub generate_dist_plot{
 	print STDERR "Creating R script for $output\n";
 	open R, ">$output";
 	my $strain_number = 1;
-	my $tmp_ab = &motif_name($tmp_ab);
+	my $tmp_ab = &motif_name($ab);
 	#longest seq is needed for x axis
 	if($longest_seq % 2 == 1) {
 		$longest_seq++;
@@ -769,7 +778,7 @@ sub generate_mut_pos_analysis_file{
 			print R "points(y_unsig, mut_freq_unsig_" . $base . ", col=\"" . $col{$base} . "\", pch=8)\n";
 			print R "axis(2)\n";
 		}
-		print R "legend(\"topleft\", c(\"sig\", \"unsig\", \"A\", \"C\", \"G\", \"T\", \"InDels sig: " . $mut_pos_analysis{$motif}{'indel'}{'S'} . "\", \"Indels not-s: " . $mut_pos_analysis{$motif}{'indel'}{'N'} . "\", \"Multiple SNPS sig: " . $mut_pos_analysis{$motif}{'multi'}{'S'} . "\",\"Multiple SNPs not-s: " . $mut_pos_analysis{$motif}{'multi'}{'N'} . "\"), col=c(\"black\", \"black\", \"" . $col{'A'} . "\", \"" . $col{'C'} . "\", \"" . $col{'G'} . "\", \"" . $col{'T'} . "\", \"black\", \"black\", \"black\", \"black\"), pch=c(20, 8, 16, 16, 16, 16, 16, 16, 16, 16), ncol=4, bty=\"n\")\n";
+		print R "legend(\"topleft\", c(\"sig\", \"unsig\", \"A\", \"C\", \"G\", \"T\", \"InDels sig: " . $mut_pos_analysis{$motif}{'indel'}{'S'} . "\", \"Indels not-s: " . $mut_pos_analysis{$motif}{'indel'}{'N'} . "\", \"Multiple SNPS sig: " . $mut_pos_analysis{$motif}{'multi'}{'S'} . "\",\"Multiple SNPs not-s: " . $mut_pos_analysis{$motif}{'multi'}{'N'} . "\"), col=c(\"black\", \"black\", \"" . $col{'A'} . "\", \"" . $col{'C'} . "\", \"" . $col{'G'} . "\", \"" . $col{'T'} . "\", \"black\", \"black\", \"black\", \"black\"), pch=c(20, 8, 16, 16, 16, 16, 16, 16, 16, 16), ncol=4)\n";
 		print R "opar <- par(las=1)\n";
 		print R "par(opar)\n";	
 		print R "mtext(\"Frequencies\", 2, 3)\n";
@@ -788,7 +797,7 @@ sub generate_mut_pos_analysis_file{
 
 #Generate R files
 sub generate_R_files {
-	$_ = 0 for my($cal_pvalue, $count_obs_one, $count_obs_two, $count_obs_both, $f, $max, $min, $max_delta, $min_delta, $start_pos, $fac, $number_peaks, $width_plot, $add_additional, $num_of_muts);
+	$_ = 0 for my($cal_pvalue, $count_obs_one, $count_obs_two, $count_obs_both, $f, $max, $min, $max_delta, $min_delta, $start_pos, $fac, $number_peaks, $width_boxplot, $add_additional, $num_of_muts, $x_count);
 	$_ = "" for my($dist_one, $dist_two, $dist_no_mut, $delta_one, $delta_two, $delta_no_mut, $tmp_delta, $filename, $h);
 	$_ = () for(%ranked_order, %mut_one, %mut_two);
 	my $output_R_file = $_[0];
@@ -884,7 +893,7 @@ sub generate_R_files {
 					$fc_low = (log(1/$fc_significant)/log(2));
 					$fc_high = log($fc_significant)/log(2);
 				}
-				print R "plot(c(0," . ((keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) + $add_additional) . "), c(" . $min . " - (" . $delta_tick . " * 2), " . $max . " + (" . $delta_tick . " * 2)), col=\"white\", xlab=\"rank-ordered peaks\", ylab=\"FC " . $strains[$i] . " vs " . $strains[$j] . "\", main=\"" . $strains[$i] . " vs " . $strains[$j] . "\\n$motif\")\n"; 
+				print R "plot(c(0," . ((keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) + $add_additional) . "), c(" . $min . " - (" . $delta_tick . " * 2), " . $max . " + (" . $delta_tick . " * 2)), col=\"white\", xlab=\"rank-ordered peaks\", ylab=\"FC " . $strains[$i] . " vs " . $strains[$j] . " (log2)\", main=\"" . $strains[$i] . " vs " . $strains[$j] . "\\n$motif\")\n"; 
 				print R "abline(c(0,0), c(0,0))\n";
 				#Sort by fold change value between strains
 				foreach my $rank (sort {$ranked_order{$strains[$i] . "_" . $strains[$j]}{$a} <=> $ranked_order{$strains[$i] . "_" . $strains[$j]}{$b}} keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) {
@@ -1090,6 +1099,7 @@ sub center_peaks{
 		close TMP_MOTIF;
 	}
 	my $command = "homer2 find -i " . $tmp_out . " -m tmp_scan_motif_" . $ab . ".txt -offset 0 > output_tmp.txt";
+	print $command . "\n";
 	`$command`;
 	open FH, "<output_tmp.txt";
 	#Summarize and merge the peaks between the strains, so we know their exact position within the peak
@@ -1112,7 +1122,7 @@ sub center_peaks{
 					}
 				}
 			}
-		}		
+		}	
 		#Split them up in no motif at all, far motif, or motif in middle and center
 		#Save peaks that have the motif withing +/2 center_dist of the peak center - change the coordinates so the motif is in the center - we need to get new sequences for these peaks
 		if(abs($peak_center) < $center_dist) {
@@ -1158,7 +1168,7 @@ sub center_peaks{
 	}
 	close OUT;
 	#For sequences with a motif close to their center - get new sequences with motif exactly in the center
-	my ($seq_ref, $l_seq) = analysis::get_seq_for_peaks($tmp_out . ".recenter", \%peaks_recentered, \@strains, $data, $allele, $line_number, $mut_only, $region, \%tree, \%lookup_strain, \%last_strain);
+	my ($seq_ref, $l_seq) = analysis::get_seq_for_peaks($tmp_out . ".recenter", \%peaks_recentered, \@strains, $genome_dir, $allele, $line_number, $mut_only, $region, \%tree, \%lookup_strain, \%last_strain);
 	$delete{$tmp_out . ".recenter"} = 1;
 	%seq_recentered = %{$seq_ref};
 	$longest_seq_motif = $l_seq;
@@ -1181,6 +1191,7 @@ sub generate_all_vs_all_R_files{
 	my $pvalue = $_[4];
 	$_ = "" for my ($x, $y, $ks, $max);
 	open OUT, ">", $plots;
+	print STDERR "open $plots\n";
 	print OUT "pdf(\"" . $output . "\", width=10, height=5)\n";
 	print OUT "plot(0, 0, xlim=c(0,0), ylim=c(0,0), main=\"" . $commandline . "\", bty=\'n\', xaxt=\"n\", yaxt=\"n\", col=\"white\", xlab=\"\", ylab=\"\")\n";
 	print OUT "breaks <- seq(-1, 1, by=0.1)\n";
@@ -1217,7 +1228,7 @@ sub generate_all_vs_all_R_files{
 			foreach my $pos (sort {$a <=> $b} keys %{$correlation_shuffle->[$k]->{$motif}}) {
 				$x_shuffle .= $pos . ",";
 				$y_shuffle .= $correlation_shuffle->[$k]->{$motif}->{$pos} . ",";
-				for(my $i = 0; $i < $correlation->{$motif}->{$pos}; $i++) {
+				for(my $i = 0; $i < $correlation_shuffle->[$k]->{$motif}->{$pos}; $i++) {
 					$ks_shuffle .= $pos . ",";
 				}
 			}
