@@ -106,7 +106,6 @@ my %save;
 my %comp;
 
 my $print_line;
-my $sig = 0;
 
 foreach my $line (<FH>) {
 	chomp $line;
@@ -135,7 +134,7 @@ foreach my $motif (keys %save) {
 	for(my $i = 0; $i < @names; $i++) {
 #	foreach my $comp (keys %comp) {
 		if(exists $save{$motif}{$names[$i]}) {
-			if($save{$motif}{$names[$1]} < 1.0e-40) {
+			if($save{$motif}{$names[$i]} < 1.0e-40) {
 				$save{$motif}{$names[$i]} = 1.0e-40;
 			}
 			$print_line .= "\t" . $save{$motif}{$names[$i]};
