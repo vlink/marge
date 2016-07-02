@@ -10,8 +10,8 @@ use general;
 use analysis_tree;
 
 $_ = "" for my($file, $output, $data_dir, $genome_dir);
-$_ = () for my(@strains, %peaks, @split, %tree, %lookup_strain, %last_strain, @tmp_split);
-$_ = 0 for my($hetero, $allele, $line_number);
+$_ = () for my(@strains, %peaks, %strand, @split, %tree, %lookup_strain, %last_strain, @tmp_split, %save_id);
+$_ = 0 for my($hetero, $allele, $line_number, $id);
 
 sub printCMD {
         print STDERR "Usage:\n";
@@ -21,6 +21,7 @@ sub printCMD {
 	print STDERR "\t-genome_dir <path to strain genomes>: default defined in config\n";
 	print STDERR "\t-output: Name of the output files (default: sequences.txt)\n";
 	print STDERR "\t-hetero: Data is heterozygous\n";
+	print STDERR "\t-id: Use gene ID: can only be used when only one strain was specified\n";
         exit;
 }
 
@@ -38,6 +39,7 @@ GetOptions(   	"file=s" => \$file,
 		"genome_dir=s" => \$genome_dir,
 		"data_dir=s" => \$data_dir,
 		"hetero" => \$hetero,
+		"id" => \$id,
 		"output=s" => \$output)
 	or die(&printCMD());
 #First step: Get the sequences for the peaks
@@ -62,6 +64,10 @@ if($output eq "") {
 	$output = "sequences.txt";
 }
 
+if(@strains > 1 && $id == 1) {
+	$id = 0;
+}
+
 print STDERR "Saving peaks\n";
 open FH, "<$file";
 foreach my $line (<FH>) {
@@ -72,6 +78,8 @@ foreach my $line (<FH>) {
 	@split = split('\t', $line);
 	@tmp_split = split("_", $split[1]);
 	$peaks{substr($tmp_split[0], 3)}{$split[2]} = $split[3];
+	$strand{substr($tmp_split[0], 3)}{$split[2]} = $split[4];
+	$save_id{$split[1] . "_" . $split[2] . "_" . $split[3]} = $split[0];
 	$line_number++;
 }
 close FH;
@@ -86,5 +94,17 @@ for(my $a = 1; $a <= $allele; $a++) {
 		$last_strain{$strains[$i]} = $last;
 	}
 	#Get sequnecs for every peak
-	analysis::get_seq_for_peaks($output, \%peaks, \@strains, $genome_dir, $a, $line_number, 0, 0, \%tree, \%lookup_strain, \%last_strain);
+	if($id == 0) {
+		analysis::get_seq_for_peaks($output, \%peaks, \@strains, $genome_dir, $a, $line_number, 0, 0, \%tree, \%lookup_strain, \%last_strain, \%strand);
+	} else {
+		my $tmp = "tmp_" . rand(10) . ".txt";
+		my ($seq, $long, $mut) = analysis::get_seq_for_peaks($tmp, \%peaks, \@strains, $genome_dir, $a, $line_number, 0, 0, \%tree, \%lookup_strain, \%last_strain, \%strand);
+		`rm $tmp`;
+		open OUT, ">$output";
+		foreach my $header (keys %{$seq}) {
+			@split = split("_", $header);
+			print OUT $save_id{$split[0] . "_" . $split[1] . "_" . $split[2]} . "\t" . $seq->{$header} . "\n";
+		}
+		close OUT;
+	}
 }
