@@ -12,6 +12,7 @@ $comp{'T'} = 'A';
 $comp{'C'} = 'G';
 $comp{'G'} = 'C';
 $comp{'-'} = '-';
+$comp{'N'} = 'N';
 
 #Write header for mutation distribution plots
 sub write_header{
@@ -799,6 +800,7 @@ sub get_seq_for_peaks {
 	my $tree = $_[8];
 	my $lookup = $_[9];
 	my $last = $_[10];
+	my %strand = %{$_[11]};
 	$line_number = $line_number * @strains;
 	for(my $i = 0; $i < @strains; $i++) {
 		foreach my $chr (keys %peaks) {
@@ -876,7 +878,11 @@ sub get_seq_for_peaks {
 				if(length($seq) > $longest_seq) {
 					$longest_seq = length($seq);
 				}
-				$current_pos{$strains[$i]} = uc($seq);
+				$seq = uc($seq);
+				if($strand{$chr}{$start_pos} == 1 || $strand{$chr}{$start_pos} eq "-") {
+					$seq = &rev_comp($seq);
+				}
+				$current_pos{$strains[$i]} = $seq;
 				$seq{$header} = uc($seq);
 				$seq = "";
 				$seq_number++;
