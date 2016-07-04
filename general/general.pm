@@ -51,6 +51,36 @@ sub read_strains_data {
 	return (\%tree_strain, \%last, \%lookup);	
 }
 
+sub read_strains_mut {
+	my $strain = $_[0];
+	my $data_dir = $_[1];
+	my $allele = $_[2];
+	$_ = () for my (%tree_mut, @mut_files, @split, @name, %last);
+	$_ = "" for my ($chr);
+	@mut_files = `ls $data_dir/$strain/*mut 2> /dev/null`;
+	foreach my $file (@mut_files) {
+		chomp $file;
+		@split = split("/", $file);
+		@split = split("_", $split[-1]);
+		$chr = substr($split[0], 3);
+		print STDERR "\tfor chromosome" . $chr . "\n";
+		open FH, "<$file";
+		my $tree = Set::IntervalTree->new;
+		foreach my $line (<FH>) {
+			chomp $line;
+			@split = split('\t', $line);
+			$tree->insert( {'mut'=>1 }, $split[0], $split[0] + length($split[2])); 
+		}
+		close FH;
+		$tree_mut{$chr} = $tree;
+	}
+	$file = $data_dir . "/" . $strain . "/last_shift_ref.txt";
+	if(-e $file) {
+		%last = %{retrieve($file)};
+	}
+	return (\%tree_mut, \%last);
+}
+
 sub wait_10_secs{
 	my $file = $_[0];
 	print STDERR "$file exists already!\n";
