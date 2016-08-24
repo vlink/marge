@@ -60,9 +60,14 @@ for(my $i = 0; $i < @files; $i++) {
 
 print STDERR "Read in mutations\n";
 my ($tree, $last) = general::read_strains_mut($strain, $data_dir, $allele);
+my $next = 0;
+my $no_mut = 0;
+my $all_lines = 0;
+my $printed_lines = 0;
 
 print STDERR "Processing sam file\n";
 foreach my $file (@files) {
+	print STDERR $file . "\n";
 	open FH, "<$file";
 	@split = split("/", $file);
 	$output = "";
@@ -71,20 +76,33 @@ foreach my $file (@files) {
 	}
 	$output .= "only_muts_" . $split[-1];
 	open OUT, ">$output";
-
+	$_ = 0 for($next, $no_mut, $all_lines, $printed_lines);
 	foreach my $line (<FH>) {
+		$all_lines++;
 		chomp $line;
 		if(substr($line, 0, 1) eq "@") {
 			print OUT $line . "\n";
 		} else {
 			@split = split('\t', $line);
-			if($split[3] + length($split[9]) > $last->{substr($split[2], 3)}) { next; }
+			if($split[3] + length($split[9]) > $last->{substr($split[2], 3)}->{$allele}->{'pos'}) { $next++; next; }
 			$tree_tmp = $tree->{substr($split[2], 3)}->fetch($split[3], $split[3] + length($split[9]));	
 			if(exists $tree_tmp->[0]->{'mut'}) {
 				print OUT $line . "\n";
-			}	
+				$printed_lines++;
+			} else {
+				$no_mut++;
+			}
 		}
 	}
-	close FH;
+	close FH;	
 	close OUT;
+	open LOG, ">$output.log";
+	print LOG "Get only sequences spanning mutations for $file\n";
+	print LOG "All lines looked at:\t\t" . $all_lines. "\n";
+	print LOG "All lines spanning mutations:\t" . $printed_lines . "\t(" . ($printed_lines/$all_lines) . ")\n";
+	print LOG "All lines not sppaning mutations:\t" . $no_mut . "\t(" . ($no_mut/$all_lines) . ")\n";
+	print LOG "All lines skipped:\t\t" . $next . "\t(" . ($next/$all_lines) . ")\n";
+	close LOG;
 }
+
+

@@ -12,7 +12,7 @@ use analysis_tree;
 use Set::IntervalTree;
 
 $_ = "" for my($genome, $file, $tf, $filename, $output, $ab, $plots, $overlap, $tmp_out, $data, $tmp_center, $genome_dir, $center_dist);
-$_ = () for my(@strains, %peaks, @split, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, %block, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %lookup_strain, %last_strain, %tree, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, @shuffle_array, $pvalue, %wrong_direction, %right_direction, %middle_direction, %tf_for_direction, %num_of_peaks, @tf_dir, $seq);
+$_ = () for my(@strains, %peaks, @split, @split_one, @split_two, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, %block, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %lookup_strain, %last_strain, %tree, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, @shuffle_array, $pvalue, %wrong_direction, %right_direction, %middle_direction, %tf_for_direction, %num_of_peaks, @tf_dir, $seq);
 $_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $shuffle_k, $shuffle_between, $shuffle_within, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $filter_out);
 my $line_number = 1;
 
@@ -157,7 +157,8 @@ if(substr($motif_diff, length($motif_diff) -1) eq "%") {
 	$motif_diff = 0;
 }
 if($tf eq "") {
-	$tf = config::read_config()->{'homer_path'} . "/data/knownTFs/all.motifs"; 
+	$tf = config::read_config()->{'motif_file'}; 
+#	$tf = "/home/vlink/mouse_strains/motifs/jenhan_merged_motifs_5.txt";
 }
 for(my $i = 0; $i < @strains; $i++) {
 	$strains[$i] =~ s/,//g;
@@ -198,7 +199,7 @@ print STDERR "Saving peaks\n";
 open FH, "<$file" or die "Can't open $file!\n";
 foreach my $line (<FH>) {
 	chomp $line;
-	if(substr($line, 0, 1) eq "#" || substr($line, 0, 6) eq "PeakID") {
+	if(substr($line, 0, 1) eq "#" || substr($line, 0, 6) eq "PeakID" || substr($line, 0, 2) eq "ID") {
 		next;
 	}
 	$line_number++;
@@ -317,7 +318,6 @@ if($keep == 0) {
 sub get_files_from_seq{
         $tmp_out = "tmp" . rand(15);
         $delete{$tmp_out} = 1;
-        print STDERR "Extracting sequences from strain genomes\n";
         my ($seq_ref, $l_seq, $filter) = analysis::get_seq_for_peaks($tmp_out, \%peaks, \@strains, $genome_dir, $allele, $line_number, $mut_only, $region, \%tree, \%lookup_strain, \%last_strain);
 	$seq = $seq_ref;
 	#Important for distance plots
@@ -801,12 +801,16 @@ sub generate_R_files {
 	$_ = "" for my($dist_one, $dist_two, $dist_no_mut, $delta_one, $delta_two, $delta_no_mut, $tmp_delta, $filename, $h);
 	$_ = () for(%ranked_order, %mut_one, %mut_two);
 	my $output_R_file = $_[0];
+	my $output_R_file_den = substr($output_R_file, 0, length($output_R_file) - 2) . "_density.R";
 	my $output = $_[1];
 	my $considered = $_[2];
 	open R, ">", $output_R_file;
+	open R_DEN, ">", $output_R_file_den;
 	#### At some point filter the number of motifs within peak and just report the peaks with one motif
 	print R "pdf(\"" . substr($output_R_file, 0, length($output_R_file) - 2) . ".pdf\", width=10, height=5)\n";
 	print R "plot(0, 0, xlim=c(0,0), ylim=c(0,0), main=\"" . $commandline . "\", bty=\'n\', xaxt=\"n\", yaxt=\"n\", col=\"white\", xlab=\"\", ylab=\"\")\n";
+	print R_DEN "pdf(\"" . substr($output_R_file_den, 0, length($output_R_file_den) - 2) . ".pdf\", width=10, height=5)\n";
+	print R_DEN "plot(0, 0, xlim=c(0,0), ylim=c(0,0), main=\"" . $commandline . "\", bty=\'n\', xaxt=\"n\", yaxt=\"n\", col=\"white\", xlab=\"\", ylab=\"\")\n";
 	foreach my $motif (sort {$index_motifs{$a} cmp $index_motifs{$b}} keys %index_motifs) {
 		$filename = $output . "_" . $motif . ".txt";
 		$num_of_muts = `wc -l $filename`;
@@ -818,6 +822,7 @@ sub generate_R_files {
 		#Generate motif mutation distribution plots for every motif that occurs close to the chipped motif
 		open FH, "<$filename" or die "Can't find $filename: $!\n";
 		print R "par(oma=c(0,0,0,0))\n";
+		print R_DEN "par(oma=c(0,0,0,0))\n";
 		$f = 0;
 		$_ = () for (%ranked_order, %mut_one, %mut_two);
 		$_ = 0 for ($min, $max, $max_delta, $min_delta, $start_pos, $fac);
@@ -980,6 +985,27 @@ sub generate_R_files {
 					print R "p_both <- t.test(one, two)\$p.value\n";
 					print R "legend(\"bottomright\", c(\"p-values: \", paste(\"" . $strains[$i] . " vs bg: \", round(p_one, digits=6), sep=\"\"), paste(\"" . $strains[$j] . " vs bg: \", round(p_two, digits=6), sep=\"\"), paste(\"" . $strains[$i] . " vs " . $strains[$j] . ": \", round(p_both, digits=6), sep=\"\")), text.col=c(\"black\", \"red\", \"blue\", \"purple\"), cex=0.8, bty=\'n\')\n"; 
 				}
+				
+				#Kernel density plots
+				@split_one = split(",", $dist_one);
+				@split_two = split(",", $dist_two);
+				if(@split_one > 1 && @split_two > 1) {
+					print R_DEN $dist_one . "\n";
+					print R_DEN $dist_two . "\n";
+					print R_DEN $dist_no_mut . "\n";
+					print R_DEN "kde_all <- density(no_mut)\n";
+					print R_DEN "kde_one <- density(one)\n";
+					print R_DEN "kde_two <- density(two)\n";
+					print R_DEN "y_max <- max(kde_all\$y, kde_one\$y, kde_two\$y)\n";
+					print R_DEN "ks_all_one <- ks.test(no_mut, one)\n";
+					print R_DEN "ks_all_two <- ks.test(no_mut, two)\n";
+					print R_DEN "ks_one_two <- ks.test(one, two)\n";
+					print R_DEN "plot(kde_all, col=\"black\", lwd=4, main=\"" . $strains[$i] . " vs " . $strains[$j] . "\\n$motif\", ylim=c(0, y_max))\n";
+					print R_DEN "lines(kde_one, col=\"red\", lwd=4)\n";
+					print R_DEN "lines(kde_two, col=\"blue\", lwd=4)\n";
+					print R_DEN "legend(\"topleft\", c(\"background\", \"" . $strains[$i] . "\", \"" . $strains[$j] . "\"), col=c(\"black\", \"red\", \"blue\"), lty=1, lwd=4, bty=\'n\', cex=0.8)\n";
+					print R_DEN "legend(\"topright\", c(\"p-values: \", paste(\"" . $strains[$i] . " vs bg: \", round(ks_all_one\$p.value, digits=6), sep=\"\"), paste(\"" . $strains[$j] . " vs bg: \", round(ks_all_two\$p.value, digits=6), sep=\"\"), paste(\"" . $strains[$i] . " vs " . $strains[$j] . ": \", round(ks_one_two\$p.value, digits=6), sep=\"\")), text.col=c(\"black\", \"red\", \"blue\", \"purple\"), cex=0.8, bty=\'n\')\n";
+				}
 			}
 		} 
 	}
@@ -1031,8 +1057,11 @@ sub generate_R_files {
 		}
 	}
 	print R "dev.off()\n";
+	print R_DEN "dev.off()\n";
 	close R;
+	close R_DEN;
 	`Rscript $output_R_file 2> /dev/null`;	
+	`Rscript $output_R_file_den 2> /dev/null`;	
 }
 
 #Generate files for delta
@@ -1112,8 +1141,8 @@ sub center_peaks{
 	$delete{$tmp_center . ".far_motif"} = 1;
 	foreach my $position (keys %block) {
 		$peak_center = 10000;
-		foreach my $motif (keys $block{$position}) {
-			foreach my $pos (keys $block{$position}{$motif}) {		
+		foreach my $motif (keys %{$block{$position}}) {
+			foreach my $pos (keys %{$block{$position}{$motif}}) {		
 				for(my $i = 0; $i < @strains; $i++) {
 					$dist_to_center = int(length($seq->{$position . "_" . $strains[$i]})/2 - ($pos + ($block{$position}{$motif}{$pos}{'length'}/2)));
 					if(abs($dist_to_center) < abs($peak_center)) {

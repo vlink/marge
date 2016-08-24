@@ -32,7 +32,8 @@ my $deleteFlag = 1;
 my %toDelete = ();
 my $preparse_strain_exists = 0;
 my $config = HomerConfig::loadConfigFile();
-
+my $prefix;
+my $motif_file = "/home/vlink/mouse_strains/motifs/jenhan_merged_motifs_5.txt"; 
 if (@ARGV < 3) {
 	printCMD();
 }
@@ -70,7 +71,8 @@ sub printCMD {
 	print STDERR "\n\tStrain specific options:\n";
 	print STDERR "\t\t-fg_strain <strain>: Strain used in the foreground\n";
 	print STDERR "\t\t-bg_strain <strain>: Strain used in the background\n";
-
+	print STDERR "\t\t-compare_motif_file <motif file>: File used to compare de novo motifs to\n";
+	print STDERR "\t\tDefault: " . $motif_file . "\n";
 	print STDERR "\n\tScanning sequence for motifs\n";
 	print STDERR "\t\t-find <motif file> (This will cause the program to only scan for motifs)\n";
 
@@ -176,6 +178,8 @@ sub parseCMDLine {
 			$cmd->{'fg_strain'} = uc($ARGV[++$i]);
 		} elsif($ARGV[$i] eq '-bg_strain') {
 			$cmd->{'bg_strain'} = uc($ARGV[++$i]);
+		} elsif($ARGV[$i] eq '-compare_motif_file') {
+			$motif_file = $ARGV[++$i];
 		} elsif ($ARGV[$i] eq '-chopify') {
 			$cmd->{'chopify'} = 1;
 			print STDERR "\tChopping up large background regions to the avg size of target regions\n";
@@ -577,7 +581,7 @@ my $bgSeq = "";
 
 if ($cmd->{'bg'} eq '') {
 	$preparseFound = 0;
-	my $prefix = $cmd->{'genome'};
+	$prefix = $cmd->{'genome'};
 	if ($cmd->{'mask'}) {
 		$prefix .= "r";
 	}
@@ -909,16 +913,12 @@ if ($cmd->{'find'} eq '') {
 			} elsif ($cmd->{'cgweight'} == 1) { 
 				`wc -l "$targetCGBins" "$bgCGBins"`;
 				`cat "$targetCGBins" "$bgCGBins" > "$tmpFile"`;
-				print "cat $targetCGBins $bgCGBins > $tmpFile\n";
 				#`wc -l "$tmpFile" "$targetCGBins"`;
 				`makeBinaryFile.pl "$tmpFile" "$targetCGBins" > "$tmpFile2"`;
-				print "makeBinaryFile.pl $tmpFile $targetCGBins > $tmpFile2\n";
 				#`wc -l "$tmpFile2" "$tmpFile"`;
 				`randRemoveBackground.pl "$tmpFile2" "$cmd->{'numSeq'}" "$tmpFile" > "$tmpFile3"`;
-				print "randRemoveBackground.pl $tmpFile2 $cmd->{'numSeq'} $tmpFile > $tmpFile3\n";
 				#`wc -l "$tmpFile3" "$tmpFile"`;
 				`assignGeneWeights.pl "$tmpFile3" "$tmpFile" > "$groupFile"`;
-				print "assignGeneWeights.pl $tmpFile3 $tmpFile > $groupFile\n";
 			} elsif ($cmd->{'tssweight'} == 1) { 
 				#`cat "$targetTSSBins" "$bgTSSBins" > "$tmpFile"`;
 				#`makeBinaryFile.pl "$tmpFile" "$targetTSSBins" > "$tmpFile2"`;
@@ -934,13 +934,11 @@ if ($cmd->{'find'} eq '') {
 		
 			print STDERR "\tAssembling sequence file...\n";
 			`filterListBy.pl  "$bgSeq" "$groupFile" 0 1 > "$tmpFile"`;
-			print "filterListBy.pl  $bgSeq $groupFile 0 1 > $tmpFile\n";
 			if ($cmd->{'dumpFasta'}==1) {
 				`tab2fasta.pl "$tmpFile" > "$dumpFastaBackground"`;
 				`tab2fasta.pl "$targetNonRedun" > "$dumpFastaTarget"`;
 			}
 			`cat "$targetNonRedun" "$tmpFile" > "$seqFile"`;
-			print "cat $targetNonRedun $tmpFile > $seqFile\n";
 		#	`rm "$tmpFile" "$tmpFile2" "$tmpFile3"`;
 		}
 		$toDelete{$groupFile}=1;
@@ -962,9 +960,7 @@ if ($cmd->{'find'} eq '') {
 		$options .= " -nout \"$noutFile\" ";
 		$options .= $cmd->{'neutral'};
 		`homer2 norm -g "$groupFile" -s "$seqFile" $options  > "$tmpFile"`;
-		print "homer2 norm -g $groupFile -s $seqFile $options  > $tmpFile\n";
 		`mv "$tmpFile" "$groupFile"`;
-		print "mv $tmpFile $groupFile\n";
 	}
 
 
@@ -1144,7 +1140,7 @@ if ($cmd->{'find'} eq '') {
 			}
 			my $rnaFlag = "";
 			$rnaFlag = " -rna -norevopp " if ($cmd->{'rnaMode'});
-			`compareMotifs.pl "$cmd->{'output'}/homerMotifs.all.motifs" "$cmd->{'output'}/" -reduceThresh $reduceThresh -matchThresh $matchThresh -known "$cmd->{'mcheck'}" $cmd->{'bits'} $cmd->{'nofacts'} -cpu $cmd->{'cpus'} $rnaFlag`;
+			`compareMotifs.pl "$cmd->{'output'}/homerMotifs.all.motifs" "$cmd->{'output'}/" -reduceThresh $reduceThresh -matchThresh $matchThresh -known "$cmd->{'mcheck'}" $cmd->{'bits'} $cmd->{'nofacts'} -known $motif_file -cpu $cmd->{'cpus'} $rnaFlag`;
 		}
 		`rm -f "$tmpFile"`;
 	}

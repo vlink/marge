@@ -6,7 +6,7 @@ use config;
 use general;
 
 $_ = "" for my($path, $output, $chr, $data);
-$_ = () for my(@strains, @iles, @split);
+$_ = () for my(@strains, @iles, @split, @files);
 $_ = 0 for my($hetero, $allele, $exists);
 
 sub printCMD {
@@ -19,6 +19,7 @@ sub printCMD {
 
 if(@ARGV < 1) {
         &printCMD();
+	exit;
 }
 
 my %mandatory = ('-strains' => 1);
