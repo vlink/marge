@@ -283,9 +283,9 @@ if($genome ne "") {
 			#Copy fastq file to reference genome for downstream analysis
 			$command = "cp " . $genome . "/" . $g_file . " " . $genome_dir . "/" . uc($ref_name) . "/chr" . $chr . "_allele_" . ($i + 1) . ".fa";
 			`$command`;
-			#Generate genome
-			processing::create_genome($chr, \%strains_to_use, $data, $genome_dir, $genome . "/chr" . $chr . ".fa", $i+1);
 		}
+		#Generate genome
+		processing::create_genome($chr, \%strains_to_use, $data, $genome_dir, $genome . "/chr" . $chr . ".fa", $a);
 	}
 }
 

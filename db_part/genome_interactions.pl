@@ -5,7 +5,6 @@ BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
 use Getopt::Long;
 use config;
 use general;
-use Data::Dumper;
 my $config = config::read_config();
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/db_part'};
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/analysis'};
@@ -39,7 +38,7 @@ if(@ARGV < 1) {
 
 $_ = "" for my ($genome, $path, $species, $refseq_file, $gene_file, $data, $refseq_NM, $method, $strand, $chr, $gene, $transcript);
 $_ = 0 for my ($hetero, $html, $exon, $gene_found, $allele, $shift, $longest_seq, $filter_no_mut, $start);
-$_ = () for my (%strains, @split, @strains, @strains2, $seqs, @parts, @introns, %exons, %peaks, %gene, %codons, %tree, %last_strain, %lookup_strain, $f1, $mut_line, $f1_file, @fileHandles, @exons, %align_nt, %align_nt_seq, @gene, @transcript, @list, @list_id, @start, @end, @chr, @strand);
+$_ = () for my (%strains, @split, @strains, @strains2, $seqs, @parts, @introns, %exons, %peaks, %gene, %codons, %tree, %last_strain, %lookup_strain, $f1, $mut_line, $f1_file, @fileHandles, @exons, %align_nt, %align_nt_seq, @gene, @transcript, @list, @list_id, @start, @end, @chr, @strand, $peak_ref, $exon_ref, %strand);
 
 
 GetOptions(     "genome=s" => \$genome,
@@ -55,6 +54,7 @@ GetOptions(     "genome=s" => \$genome,
                 "chr=s{,}"=> \@chr,
                 "hetero" => \$hetero,
 		"data=s" => \$data,
+		"strand=s{,}" => \@strand, 
                 "html" => \$html)
         or die("Error in command line options!\n");
 
@@ -99,7 +99,7 @@ for(my $i = 0; $i < @start; $i++) {
 
 #Need to check if HOMER is installed so we can access the gene file or alternativel if a file is specified
 if(@gene > 0 || @transcript > 0) {
-	&check_homer_files();
+	($refseq_file, $gene_file) = processing::check_homer_files($refseq_file, $gene_file, $config, scalar @gene, $genome);
 }
 &write_codons();
 
@@ -127,17 +127,23 @@ for(my $entry_id = 0; $entry_id < @list; $entry_id++) {
 	if($list_id[$entry_id] eq "gene") {
 		$gene = $list[$entry_id];
 		print $gene . "\n";
-		&get_refseq_for_gene();
+		$transcript = processing::get_refseq_for_gene($gene_file, $gene);
 		if($transcript eq "") {
 			print STDERR "Could not find Ref-Seq entry for " . $gene . "\n";
 			print STDERR "Skip\n";
 			next;
 		}
-		($strand, $chr) = &save_transcript();
+		($strand, $chr, $peak_ref, $exon_ref) = processing::save_transcript($refseq_file, $transcript);
+		%peaks = %{$peak_ref};
+		%exons = %{$exon_ref};
+		%strand = %{$strand};
 	} elsif($list_id[$entry_id] eq "refseq") {
 		$transcript = $list[$entry_id];
 		print $transcript . "\n";
-		($strand, $chr) = &save_transcript();
+		($strand, $chr, $peak_ref, $exon_ref) = processing::save_transcript($refseq_file, $transcript);
+		%peaks = %{$peak_ref};
+		%exons = %{$exon_ref};
+		%strand = %{$strand};
 	} else {
 		if(substr($chr[$entry_id - $shift], 0, 3) ne "chr") {
 			$chr[$entry_id - $shift] = "chr" . $chr[$entry_id - $shift];
@@ -150,7 +156,7 @@ for(my $entry_id = 0; $entry_id < @list; $entry_id++) {
 	}
 	$seqs = ();
 	if(-e "tmp") { `rm tmp`; }
-	($seqs, $longest_seq, $filter_no_mut) = analysis::get_seq_for_peaks("tmp", \%peaks, \@strains, $data, $allele, $exon, 0, 0, \%tree, \%lookup_strain, \%last_strain);
+	($seqs, $longest_seq, $filter_no_mut) = analysis::get_seq_for_peaks("tmp", \%peaks, \@strains, $data, $allele, $exon, 0, 0, \%tree, \%lookup_strain, \%last_strain, \%strand);
 	if($method eq "gene" || $method eq "genomic") {
 		&assemble_gene(1);
 	} elsif($method eq "protein" || $method eq "genomic_protein") {
@@ -491,131 +497,6 @@ sub assemble_gene{
 
 }
 
-sub get_refseq_for_gene{
-	open FH, "<$gene_file";
-	$transcript = "";
-	$gene_found = 0;
-	foreach my $line (<FH>) {
-		chomp $line;
-		@split = split('\t', $line);
-		for(my $i = 0; $i < @split; $i++) {
-			if(uc($split[$i]) eq uc($gene)) {
-				$gene_found = 1;
-			}
-			if(substr($split[$i], 0, 2) eq "NM") {
-				$refseq_NM = $split[$i];
-			}
-		}
-		if($gene_found == 1) {
-			$transcript = $refseq_NM;
-			close FH;
-			last;
-		}
-	}
-	close FH;
-}
-
-sub save_transcript {
-	my $id = $_[0];
-	my $stop;
-	open FH, "<$refseq_file";
-	foreach my $line (<FH>) {
-		chomp $line;
-		@split = split('\t', $line);
-		if($split[0] eq $transcript) {
-			$chr = $split[1];
-			$strand = $split[4]; 
-			@introns = split(",", $split[5]);
-			if($split[4] eq "-") {
-				for(my $i = @introns - 1; $i > 0; $i--) {
-					@parts = split(":", $introns[$i]);
-					if(length($parts[0]) > 4) {
-						next;
-					}
-					if(substr($parts[0], 0, 1) eq "E") {
-						$start = $parts[1] - 1;
-						$i--;
-						@parts = split(":", $introns[$i]);
-						if(length($parts[0]) < 6 && substr($parts[0], 0, 1) eq "I") {
-							print STDERR "Weird annotation!\n";
-						}
-						$stop = $parts[1] - 1;
-						$peaks{substr($split[1], 3)}{$start} = $stop;
-						$exons{$start . "_" . $stop} = $exon;
-						$exon++;
-					}
-				}
-			} else {
-				for(my $i = 0; $i < @introns; $i++) {
-					@parts = split(':', $introns[$i]);
-					if(length($parts[0]) > 4) {
-						next;
-					}
-					if(substr($parts[0], 0, 1) eq "E") {
-						$start = $parts[1] - 1;
-						$i++;
-						if(@introns > $i) {
-							@parts = split(':', $introns[$i]);
-							if(length($parts[0]) < 4 && substr($parts[0], 0, 1) ne "I") {
-								print STDERR "Weird pos strand\n";
-							}
-							$stop = $parts[1] - 1;
-						} else {
-							$stop = $split[3];
-						}
-						$peaks{substr($split[1], 3)}{$start} = $stop;
-						$exons{$start . "_" . $stop} = $exon;
-						$exon++;
-					}
-				}
-			}
-		}
-	}
-	return ($strand, $chr);
-}
-
-sub check_homer_files{
-	if($refseq_file eq "" && exists $config->{'homer_path'} && $config->{'homer_path'} ne "") {
-		#Homer exists now check if the genome and the annotation files exist
-		$path = $config->{'homer_path'} . "/data/genomes/" . $genome . "/" . $genome . ".rna";
-		if(!(-e $path)) {
-			print STDERR "File $path is missing!\n";
-			exit;
-		}
-		$refseq_file = $path;
-		if(@gene > 0) {
-			#First find out which species this genome belongs to - homer config
-			$path = $config->{'homer_path'} . "/config.txt";
-			open FH, "<$path" or die "Can not find $path!\n";
-			foreach my $line (<FH>) {
-				chomp $line;
-				@split = split('\t', $line);
-				if($split[0] eq $genome) {
-					my @a = split(",", $split[-1]);
-					$species = $a[0];
-				}
-			}
-			if($species eq "") {
-				print STDERR "Could not figure out which species this genome belongs to - please specify it!\n";
-				exit;
-			}
-			$path = $config->{'homer_path'} . "/data/accession/" . lc($species) . "2gene.tsv";
-			if(!(-e $path)) {
-				print STDERR "File $path is missing!\n";
-				exit;
-			}
-			$gene_file = $path;
-		}
-	}
-	if($refseq_file eq "") {
-		print STDERR "No RefSeq file specified and RefSeq File could not be found!\n";
-		exit;
-	}
-	if(@gene > 0 && $gene_file eq "") {
-		print STDERR "No gene file specified and Gene file cound not be found!\n";
-		exit;
-	}
-}
 
 sub read_file_line {
         my $fh = shift;

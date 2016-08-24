@@ -73,7 +73,5 @@ foreach my $g_file (@genome_files) {
 	chomp $g_file;
 	@file = split("/", $g_file);
 	$chr = substr($file[-1], 3, length($file[-1]) - 6);
-	for(my $i = 1; $i <= $allele; $i++) {
-		processing::create_genome($chr, \%strains, $data, $output, $g_file, $allele);
-	}
+	processing::create_genome($chr, \%strains, $data, $output, $g_file, $allele);
 }
