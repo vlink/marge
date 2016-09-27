@@ -10,7 +10,7 @@ use Set::IntervalTree;
 use threads;
 
 $_ = "" for my($snp, $indel, @chr, $current_chr, $data, $filename, $out, $genome, $merge_line, $genome_dir, $ref_name);
-$_ = 0 for my($filter, $same, $help, $hetero, $force, $lines_f1, $lines_f2, $lines_all, $line_count, $num_strains, $outfile_open, $last_h, $none_number_chromosome, $core);
+$_ = 0 for my($filter, $same, $help, $hetero, $add, $force, $lines_f1, $lines_f2, $lines_all, $line_count, $num_strains, $outfile_open, $last_h, $none_number_chromosome, $core, $no_genome);
 $_ = () for my($lines, @merge_line, $header, @split, $snps, $indels, $f1, $f2, %strains_to_use, @mut_files, @header, @strains_to_use, @s, @i, %lookup_no_number, %lookup_number, @last, @allele, @all, @test_spaces);
 
 $none_number_chromosome = 1000;
@@ -22,6 +22,7 @@ sub printCMD{
 	print STDERR "\t-hetero: Assumes phenotype is heterozygous - default: homozygous\n";
 	print STDERR "\t-dir: output directory for mutation files for strains folders - default: folder specified in config file\n";
 	print STDERR "\t-genome: path to fastq files per chromosome: input directory of the reference genome per chromosome in fastq file format\n";
+	print STDERR "\t-no-genome: Does not create strains specific genomes (default: off)\n";
 	print STDERR "\t-genome_dir: output directory for fastq genome file per strain - default: folder specified in config file\n";
 	print STDERR "\t-strains <list of strains>: comma separated list of strains to include - when empty every strain in vcf file is considered\n";
 	print STDERR "\t-ref <name>: Software generates a reference genome folder with all necessary files for further analysis - Folder is called REFERENCE, if nothing is specified here\n";
@@ -31,6 +32,7 @@ sub printCMD{
 	print STDERR "\t-same - Filters out all mutations that are homozyous\n";
 	print STDERR "\tif position is homozygous and -same is not defined the first allele is taken without any further evaluation\n";
 	print STDERR "\t-force: Overwrites existing folder\n";
+	print STDERR "\t-add: Adds data to existing folder - if file exists it is overwritten\n";
 	print STDERR "\n\n";
 	print STDERR "\t-h | --help: shows help\n";
 	print STDERR "\t-core <number of cores>: default 1\n";
@@ -41,7 +43,7 @@ if(@ARGV < 1) {
 	&printCMD();
 }
 
-my %mandatory = ('-files' => 1, '-strains' => 1);
+my %mandatory = ('-files' => 1, '-strains' => 1, '-genome' => 1);
 my %convert = map { $_ => 1 } @ARGV;
 config::check_parameters(\%mandatory, \%convert);
 
@@ -49,6 +51,7 @@ config::check_parameters(\%mandatory, \%convert);
 GetOptions(	"files=s{,}" => \@mut_files,
 		"dir=s" => \$data,
 		"genome_dir=s" => \$genome_dir,
+		"no-genome" => \$no_genome,
 		"strains=s{,}" => \@strains_to_use,
 		"ref=s" => \$ref_name,
 		"filter" => \$filter,
@@ -56,6 +59,7 @@ GetOptions(	"files=s{,}" => \@mut_files,
 		"hetero" => \$hetero,
 		"h" => \$help,
 		"force" => \$force,
+		"add" => \$add,
 		"genome=s" => \$genome,
 		"core=s" => \$core,
 		"help" => \$help)
@@ -267,21 +271,21 @@ print STDERR "Processing data successfully finished!\n";
 &touch_last_shift(\%strains_to_use, uc($ref_name));
 
 #Generate genomes if varibale is set
-if($genome ne "") {
+if($no_genome == 0) {
 	print STDERR "Generating genomes per strain\n";
 	print STDERR $genome . "\n";
-	my @genome_files = `ls $genome`;
+	my @genome_files = `ls $genome/*fa`;
 	$_ = () for my(@tmp, $chr, $mut_file, $command);
 	foreach my $g_file (@genome_files) {
 		chomp $g_file;
-		@tmp = split /[_\.]+/, $g_file;
-		$chr = substr($tmp[0], 3);
+		@tmp = split('/', $g_file);
+		$chr = substr($tmp[-1], 3, -3);
 		if(exists $lookup_number{$chr}) {
 			$chr = $lookup_number{$chr};
 		}
 		for(my $i = 0; $i < $a; $i++) {
 			#Copy fastq file to reference genome for downstream analysis
-			$command = "cp " . $genome . "/" . $g_file . " " . $genome_dir . "/" . uc($ref_name) . "/chr" . $chr . "_allele_" . ($i + 1) . ".fa";
+			$command = "cp " . $g_file . " " . $genome_dir . "/" . uc($ref_name) . "/chr" . $chr . "_allele_" . ($i + 1) . ".fa";
 			`$command`;
 		}
 		#Generate genome
@@ -395,6 +399,16 @@ sub check_file_existance{
 			}
 			print STDERR "\n";
 			`rm -rf $data/$header/*`;
+		} elsif($add == 1) {
+			print STDERR "Folder exists, but data will be added\n";
+			print STDERR "If data already exists in this folder it will be overwritten!\n";
+			print STDERR "\nWaiting for 3 seconds\n";
+			print STDERR "Press Ctrl + C to interrupt\n";
+			for(my $j = 0; $j < 3; $j++) {
+				print STDERR ".";
+				sleep(1);
+			}
+			print STDERR "\n";
 		} else {
 			print STDERR "If you want to overwrite this folder use -force!\n";
 			exit;
@@ -441,12 +455,35 @@ sub merge{
 	#Save reference and position
 	my $pos = $current[1];
 	my $ref = $current[3];
-	my $var;
-	my $max;
+	$_ = () for my($var, $max, $copy, $pos_save);
+	my $seq_before = "";
 	$current[4] =~ s/\.//g;
 	my @variants = split(',', $current[4]);
+	#The human VCF files contain more sophisticated annotations <CN>, <INS>
+	#Just keep CN at the moment, filter out the other annotations
+	#If CN is 0 add one basepair to the left, shift position one down, so the mutation that would be empty gets one basepair
+	for(my $i = 0; $i < @variants; $i++) {
+		if(substr($variants[$i], 0, 3) eq "<CN") {
+			$copy = substr($variants[$i], 3, -1);
+			if($copy == 0) {
+				$seq_before = processing::get_reference_position($genome . "/chr" . $current[0] . ".fa", $current[0], $pos - 1);
+			}
+			$variants[$i] = ($ref) x $copy;
+		} elsif(substr($variants[$i], 0, 1) eq "<") {
+			last;
+		}
+	}
+	#Add the base before the actual mutation, because CN is 0
+	if($seq_before ne "") {
+		$pos--;
+		$ref = $seq_before . $ref;
+		for(my $i = 0; $i < @variants; $i++) {
+			$variants[$i] = $seq_before . $variants[$i];
+		}
+	}
+	$pos_save = $pos;
 	#Add reference variance at the beginning of the variants array (if strain has reference it is annotated as 0)
-	unshift @variants, $current[3];
+	unshift @variants, $ref;
 	if($filter == 1 && $current[6] ne "PASS") {
 		return 1;
 	}
@@ -455,7 +492,7 @@ sub merge{
 		if($num_strains > 0 && !exists $strains_to_use{$header[$i]}) {
 			next;
 		}
-		@all = split('/', (split(":", $current[$i]))[0]);
+		@all = split /[\/,\|]+/, ((split(":", $current[$i]))[0]);
 		#No mutation can also be annotated as . - reference allele is in variants[0] s0 change , to 0
 		if($all[0] eq ".") {
 			$all[0] = 0;
@@ -481,8 +518,8 @@ sub merge{
 		#Run though variance annotation for the number of alleles we are looking at 
 		for(my $h = 0; $h < @all; $h++) {
 			$var = $variants[$all[$h]];
-			$ref = $current[3];
-			$pos = $current[1];
+			$ref = $variants[0];
+			$pos = $pos_save;
 			#Check if reference and mutations are different
 			if($ref ne $var) {
 				if(length($ref) > 1 && length($var) > 1) {
@@ -528,3 +565,5 @@ sub read_file_line {
 	}
 	return;
 }
+
+

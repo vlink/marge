@@ -3,6 +3,31 @@
 package processing;
 use Data::Dumper;
 
+sub get_reference_position {
+	my $reference_chr = $_[0];
+	my $chr_number = $_[1];
+	my $pos = $_[2];
+	my $end;
+	my $seq;
+	my $general_offset = 5 + length($chr_number);
+	if(@_ > 3) {
+		$end = $_[3];
+	} else {
+		$end = $pos + 1;
+	}
+	$_ = 0 for my($newlines, $length);
+	open my $f, "<", $reference_chr or die "Can't open: " . $reference_chr . "\n";
+	$length = $end - $pos;
+	$newlines = int($pos/50);
+	$byte_offset = $pos + $general_offset  + $newlines;
+	seek($f, $byte_offset, 0);
+	read $f, $seq, $length;	
+	$seq =~ s/\n//g;
+	$seq = uc($seq);
+	close $f;
+	return $seq;
+}
+
 #Method to generate the strain genome out of the mutation files
 sub create_genome {
 	my $chr = $_[0];
@@ -11,12 +36,13 @@ sub create_genome {
 	my $output_dir = $_[3];
 	my $reference_chr = $_[4];
 	my $allele = $_[5];
-	print STDERR "Generating chromosome " . $chr . " for allele " . $allele . "\n";
 	open FH, "<$reference_chr" or die "Can't open: " . $reference_chr . "\n";
 	#First save the genome in an array
 	$_ = () for my (@cache, @save_cache, @split, @split_mut);
 	my $strain_seq;
 	#Read in the reference genome in an array so every position of the reference genome can be changed
+	print STDERR "Save sequence into array\n";
+	print STDERR "Generating chromosome " . $chr . "\n";
 	foreach my $line (<FH>) {
 		chomp $line;
 		if(substr($line, 0, 1) eq ">") {
@@ -27,47 +53,54 @@ sub create_genome {
 			push(@cache, $s);
 		}
 	}
+	print STDERR "Done\n";
 	#Save reference genome array, so when there are several strains we can reset the genome for every strain
 	@save_cache = @cache;
-	foreach my $strains (keys %strains) {
-		#Read in strain mutation files and create strain chromsome file
-		$mutation_file = $input . "/" . $strains . "/chr" . $chr . "_allele_" . $allele . ".mut";
-		$output = $output_dir . "/" . $strains . "/chr" . $chr . "_allele_" . $allele . ".fa";
-		if(!(-e $output_dir . "/" . $strains)) {
-			`mkdir -p $output_dir/$strains`;
-		}
-		#Now open the mutation file and change the mutated sequences
-		if(-e $mutation_file) {
-			open FH, "<$mutation_file" or die "Can't open $mutation_file\n";
-			#Add SNPs and InDels into reference genome array
-			foreach my $line (<FH>) {
-				chomp $line;
-				@split_mut = split('\t', $line);
-				if($split_mut[0] > @cache) { last; }
-				if(length($split_mut[1]) > 1) {
-					for(my $i = 1; $i < length($split_mut[1]); $i++) {
-						$cache[$split_mut[0] + $i - 1] = "";
-					}
-				} else {
-					$cache[$split_mut[0] - 1] = $split_mut[2];
-				}
+	my $number_strains = (scalar keys %strains) * $allele;
+	my $count = 0;
+	for(my $i = 1; $i <= $allele; $i++) {
+		foreach my $strains (keys %strains) {
+			#Read in strain mutation files and create strain chromsome file
+			$mutation_file = $input . "/" . $strains . "/chr" . $chr . "_allele_" . $i . ".mut";
+			$output = $output_dir . "/" . $strains . "/chr" . $chr . "_allele_" . $i . ".fa";
+			if(!(-e $output_dir . "/" . $strains)) {
+				`mkdir -p $output_dir/$strains`;
 			}
-			close FH;
-		} else {
-			print STDERR $mutation_file . " does not exist - go to next strain\n";
+			#Now open the mutation file and change the mutated sequences
+			if(-e $mutation_file) {
+				open FH, "<$mutation_file" or die "Can't open $mutation_file\n";
+				#Add SNPs and InDels into reference genome array
+			#	print STDERR "Add mutations into array\n";
+				foreach my $line (<FH>) {
+					chomp $line;
+					@split_mut = split('\t', $line);
+					if($split_mut[0] > @cache) { last; }
+					if(length($split_mut[1]) > 1) {
+						for(my $i = 1; $i < length($split_mut[1]); $i++) {
+							$cache[$split_mut[0] + $i - 1] = "";
+						}
+					} else {
+						$cache[$split_mut[0] - 1] = $split_mut[2];
+					}
+				}
+				close FH;
+			} else {
+				print STDERR $mutation_file . " does not exist - go to next strain\n";
+			}
+			#Write strain genome output - use 50bp per line (default HOMER uses and needed for grabbing sequenes with byte offsets later on)
+			print STDERR "\t\t" . $strains . " allele " . $i . "\n";
+			$strain_seq = join("", @cache);
+			open OUT, ">$output" or die "Can't open $output\n";
+			print OUT ">chr" . $chr . "\n";
+			$strain_seq =~ s/(.{1,50})/$1\n/gs;
+			print OUT $strain_seq;
+			print OUT $strain_seq . "\n";
+			close OUT;
+			$count++;
+			if($count < $number_strains) {
+				@cache = @save_cache;
+			}
 		}
-		#Write strain genome output - use 50bg per line (default HOMER uses and needed for grabbing sequenes with byte offsets later on)
-		print STDERR "\t\t" . $strains . "\n";
-		$strain_seq = join("", @cache);
-		open OUT, ">$output" or die "Can't open $output\n";
-		print OUT ">chr" . $chr . "\n";
-		while(length($strain_seq) > 50) {
-			print OUT substr($strain_seq, 0, 50) . "\n";
-			$strain_seq =~ s/^.{50}//s; 
-		}
-		print OUT $strain_seq . "\n";
-		close OUT;
-		@cache = @save_cache;
 	}
 }
 
@@ -194,7 +227,7 @@ sub save_transcript {
 		$transcript = $_[1];
 	}
         $_ = "" for my ($stop, $chr, $strand);
-	$_ = () for my (@introns, @parts, %peaks, %exons, %save_all_exons);
+	$_ = () for my (@introns, @parts, %peaks, %exons, %save_all_exons, %strand);
 	$_ = 0 for my ($start, $exon);
         open FH, "<$refseq_file";
         foreach my $line (<FH>) {
@@ -219,6 +252,7 @@ sub save_transcript {
                                                 $stop = $parts[1] - 1;
                                                 $peaks{substr($split[1], 3)}{$start} = $stop;
                                                 $exons{$start . "_" . $stop} = $exon;
+                                                $strand{substr($split[1], 3)} = $strand;
                                                 $exon++;
                                         }
                                 }
@@ -238,6 +272,7 @@ sub save_transcript {
                                                         $stop = $split[3];
                                                 }
                                                 $peaks{substr($split[1], 3)}{$start} = $stop;
+                                                $strand{substr($split[1], 3)} = $strand;
                                                 $exons{$start . "_" . $stop} = $exon;
                                                 $exon++;
                                         }
@@ -251,7 +286,7 @@ sub save_transcript {
 	if($transcript eq "") {
 		return (\%save_all_exons);
 	} else {
-        	return ($strand, $chr, \%peaks, \%exons);
+        	return (\%strand, $chr, \%peaks, \%exons);
 	}
 	return 0;
 }
