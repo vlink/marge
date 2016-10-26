@@ -3,7 +3,7 @@ use strict;
 use Getopt::Long;
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
 use config;
-$_ = () for my(@files, @names);
+$_ = () for my(@files, @names, %delete);
 $_ = 0 for my($sig, $threshold);
 $_ = "" for my ($output, $method, $main);
 
@@ -66,6 +66,7 @@ $_ = "" for my($strain1, $strain2, $tmnt, $AB, $current_motif, $print_line, $pri
 $_ = 0 for my($length_one, $length_two, $first);
 
 open R, ">tmp.R";
+$delete{"tmp.R"} = 1;
 if($method eq "pairwise") {
 	for(my $i = 0; $i < @files; $i++) {
 		$f = $files[$i];
@@ -96,6 +97,7 @@ if($method eq "pairwise") {
 	}
 
 	`Rscript tmp.R > tmp_output_rfile.txt`;
+	$delete{"tmp_output_rfile.txt"} = 1;
 	open FH, "<tmp_output_rfile.txt";
 	foreach my $line (<FH>) {
 		chomp $line;
@@ -163,3 +165,6 @@ print OUT "dev.off()\n";
 close OUT;
 `Rscript $output`;
 
+foreach my $key (keys %delete) {
+	`rm -rf $key`;
+}
