@@ -5,6 +5,11 @@ use strict;
 use config;
 use Statistics::Basic qw(:all);
 use Statistics::Distributions;
+use Statistics::RankCorrelation;;
+#use Statistics::TTest;
+use Data::Dumper;
+use Storable;
+use Statistics::R;
 
 $_ = () for my(@split, %PWM, @tmp_split, %comp);
 $comp{'A'} = 'T';
@@ -480,7 +485,6 @@ sub analyze_motif_pos{
 		for(my $i = 0; $i < @strains; $i++) {
 			if($chr_num !~ /\d+/ && !exists $lookup->{$strains[$i]}->{$chr_num}) {
 				print STDERR "Skip analysis of chromosome " . $chr_num . "in analyze_motifs_pos\n";
-				print STDERR $chr_num . "\t" . $strains[$i] . "\n";
 			}
 			if(exists $lookup->{$strains[$i]}->{$chr_num}) {
 				$chr_num = $lookup->{$strains[$i]}->{$chr_num};
@@ -800,7 +804,10 @@ sub get_seq_for_peaks {
 	my $tree = $_[8];
 	my $lookup = $_[9];
 	my $last = $_[10];
-	my %strand = %{$_[11]};
+	my %strand;
+	if(@_ > 11) {
+		%strand = %{$_[11]};
+	}
 	$line_number = $line_number * @strains;
 	for(my $i = 0; $i < @strains; $i++) {
 		foreach my $chr (keys %peaks) {
@@ -879,7 +886,7 @@ sub get_seq_for_peaks {
 					$longest_seq = length($seq);
 				}
 				$seq = uc($seq);
-				if($strand{$chr}{$start_pos} == 1 || $strand{$chr}{$start_pos} eq "-") {
+				if(exists $strand{$chr} && ($strand{$chr}{$start_pos} && $strand{$chr}{$start_pos} =~ /^[0-9,.E]+$/ && $strand{$chr}{$start_pos} == 1) || ($strand{$chr}{$start_pos} && $strand{$chr}{$start_pos} eq "-")) {
 					$seq = &rev_comp($seq);
 				}
 				$current_pos{$strains[$i]} = $seq;
@@ -926,60 +933,237 @@ sub get_seq_for_peaks {
 	return(\%seq, $longest_seq, $filter_no_mut);
 }
 
-#Compare the all vs all comparison hash
+
 sub all_vs_all_comparison{
 	my $block = $_[0];
 	my $recenter_conversion = $_[1];
 	my $tag_counts = $_[2];
 	my @strains = @{$_[3]};
-	$_ = () for my(%correlation, @sum, @tag_sum, $vector_motifs, $vector_tagcounts, @split, $chr, %pvalue, $p, $stddev_m, $stddev_t, $cor, $t);
-	my($con_pos, $r, $r2);
-	foreach my $pos (keys %{$block}) {
+	my $method = $_[4];
+	my $same = 0;
+	my $value = 0;
+	my $all = keys %{$block};
+	my $count = 0;
+	$_ = () for my(%correlation, @sum, @tag_sum, $vector_motifs, $vector_tagcounts, @split, $chr, $stddev_m, $stddev_t, $cor, $t, $rank, %without_motif, %with_motif, @no_motif, @motif, $ttest, $max, $max_motif, $min_motif, $max_no_motif, $min_no_motif, @all_motifs, @all_tags, %save_motifs, %save_tags, %save_no_motif, %save_motif, @all_motif, @all_no_motif, %group_with, %group_without, $R);
+	my($con_pos, $r, $r2, $distance, $h_tag, $h_sum, $information, $max);
+	if($method eq "group" || $method eq "group_all" || $method eq "group_all_scale") {
+#		$ttest = new Statistics::TTest;  
+#		$ttest->set_significance(90);
+		$R = Statistics::R->new();
+	}
+	foreach my $pos (sort {$a cmp $b} keys %{$block}) {
+		print STDERR "Processing: " .  ($count/$all)*100 . "\r";
+		$count++;
 		@split = split("_", $pos);
 		$chr = substr($split[0], 3);
  		$con_pos = $split[1];
 		if(exists $recenter_conversion->{$chr}->{$con_pos}) {
 			$con_pos = $recenter_conversion->{$chr}->{$con_pos}->{'start'};
 		}
-		foreach my $motif (keys %{$block->{$pos}}) {
+		@tag_sum = split('\s+', $tag_counts->{$chr}->{$con_pos});
+		foreach my $motif (sort {$a cmp $b} keys %{$block->{$pos}}) {
+			@motif = ();
+			@no_motif = ();
+			%without_motif = ();
+			my %tmp_save;
 			@sum = ();
 			#Sum over motif score for this strain and this peak when there are multiple motifs of the same TF
-			foreach my $motif_pos (keys %{$block->{$pos}->{$motif}}) {
+			foreach my $motif_pos (sort {$a <=> $b} keys %{$block->{$pos}->{$motif}}) {
 				for(my $i = 0; $i < @strains; $i++) {
 					$sum[$i] += $block->{$pos}->{$motif}->{$motif_pos}->{$strains[$i]};
+					$tmp_save{$strains[$i]} = $tag_sum[$i];
+					if($block->{$pos}->{$motif}->{$motif_pos}->{$strains[$i]} < 5) {
+						$without_motif{$strains[$i]} = 1;
+					}
 				}
 			}
+			if($method eq "group_all_scale") {
+				$max = 0;
+				for(my $i = 0; $i < @strains; $i++) {
+					if($max < $tmp_save{$strains[$i]}) { $max = $tmp_save{$strains[$i]}; }
+				}
+				for(my $i = 0; $i < @strains; $i++) {
+					$tmp_save{$strains[$i]} = $tmp_save{$strains[$i]}/$max;
+				}
+				
+			}		
+
+			if($method eq "group_all" || $method eq "group_all_scale") {
+				for(my $i = 0; $i < @strains; $i++) {
+					if(exists $without_motif{$strains[$i]}) {
+						$group_without{$motif}{$tmp_save{$strains[$i]}}++;
+					} else {
+						$group_with{$motif}{$tmp_save{$strains[$i]}}++;
+					}
+				}
+			}
+			$value = $sum[0];
+			$same = 0;
+			for(my $i = 1; $i < @sum; $i++) {
+				if($value != $sum[$i]) {
+					$same = 1;
+					last;
+				}
+			}
+			if($same == 0) { next; }
 			#Convert into a vector - vector of motif scores per strain
 			$vector_motifs = vector(@sum);
 			#Convert tag counts into a vector - vector of tag counts per strain
-			@tag_sum = split('\s+', $tag_counts->{$chr}->{$con_pos});
 			$vector_tagcounts = vector(@tag_sum);
-			#Calculate standard deviation for motifs and tag counts
-			$stddev_m = stddev( $vector_motifs) * 1;
-			$stddev_t = stddev( $vector_tagcounts) * 1;
-			#Set SD to 0 if very small
-			if($stddev_m < 0.00001) { $stddev_m = 0; }
-			if($stddev_t < 0.00001) { $stddev_t = 0; }
-			#Calcualte pearson correlation between motif vector and tag count vector
-			$cor = correlation( $vector_motifs, $vector_tagcounts );
-			#If correlation is na - save it
-			#If correalation is na either the motif score vector or the tag count vector consisted of identical values so there was no information in it
-			if($cor ne "n/a" && $stddev_m > 0 && $stddev_t > 0) {
+			if($method eq "pearson_all" || $method eq "spearman_all" || $method eq "pearson_all_scale" || $method eq "spearman_all_scale") {
+				if(!exists $save_motifs{$motif}) {
+					@{$save_motifs{$motif}} = ();
+					@{$save_tags{$motif}} = ();
+				}
+				@all_motifs = @{$save_motifs{$motif}};
+				@all_tags = @{$save_tags{$motif}};
+				if($method eq "pearson_all_scale") {
+					$max = 0;
+					for(my $i = 0; $i < @tag_sum; $i++) {
+						if($max < $tag_sum[$i]) { $max = $tag_sum[$i]; }
+					}
+					for(my $i = 0; $i < @tag_sum; $i++) {
+						$tag_sum[$i] = $tag_sum[$i]/$max;
+					}
+				}
+				push @all_tags, @tag_sum;
+				push @all_motifs, @sum;
+				@{$save_tags{$motif}} = @all_tags;
+				@{$save_motifs{$motif}} = @all_motifs;
+			} elsif($method eq "spearman") {
+				$rank = Statistics::RankCorrelation->new(\@sum, \@tag_sum);
+				$cor = $rank->spearman;
 				$correlation{$motif}{$cor}++;
-				#Try p-value: 
-			#	if(@strains >= 6) {
-			#		$r = $cor;
-			#		$r2 = $cor * $cor;
-			#		if((1-$r2) < 0 || sqrt((1-$r2)/(@strains - 2)) == 0) {
-			#			$t = 1;
-			#		} else {
-			#			$t = $r/sqrt((1-$r2)/(@strains - 2));
-			#		}
-			#		$p = Statistics::Distributions::tprob(@strains - 1,$t);
-			#		$pvalue{$motif}{$p}++;
-			#	}
+			} elsif($method eq "pearson") {
+				#Calculate standard deviation for motifs and tag counts
+				$stddev_m = stddev( $vector_motifs) * 1;
+				$stddev_t = stddev( $vector_tagcounts) * 1;
+				#Set SD to 0 if very small
+				if($stddev_m < 0.00001) { $stddev_m = 0; }
+				if($stddev_t < 0.00001) { $stddev_t = 0; }
+				#Calcualte pearson correlation between motif vector and tag count vector
+				$cor = correlation( $vector_motifs, $vector_tagcounts );
+				#If correlation is na - save it
+				#If correalation is na either the motif score vector or the tag count vector consisted of identical values so there was no information in it
+				if($cor ne "n/a" && $stddev_m > 0 && $stddev_t > 0) {
+					$correlation{$motif}{$cor}++;
+				}
+			} elsif($method eq "group") {
+				$max_motif = 0;
+				$min_motif = 10000;
+				$max_no_motif = 0;
+				$min_no_motif = 10000;
+				for(my $i = 0; $i < @strains; $i++) {
+					if(exists $without_motif{$strains[$i]}) {
+						push @no_motif, $tag_sum[$i];
+						if($tag_sum[$i] > $max_no_motif) { $max_no_motif = $tag_sum[$i]; }
+						if($tag_sum[$i] < $min_no_motif) { $min_no_motif = $tag_sum[$i]; }
+					} else {
+						push @motif, $tag_sum[$i];
+						if($tag_sum[$i] > $max_motif) { $max_motif = $tag_sum[$i]; }
+						if($tag_sum[$i] < $min_motif) { $min_motif = $tag_sum[$i]; }
+					}
+				}
+				if(@motif > 0 && @no_motif > 0) {
+					if(@motif < 2 || @no_motif < 2) {
+						$max = @motif;
+						for(my $i = 0; $i < $max; $i++) {
+							push @motif, $motif[$i] + rand($motif[$i] * 0.1);
+						}
+						$max = @no_motif;
+						for(my $i = 0; $i < $max; $i++) {
+							push @no_motif, $no_motif[$i] + rand($no_motif[$i] * 0.1);
+						}
+					} else {
+						if($max_motif == $min_motif || $max_no_motif == $min_no_motif) {
+							for(my $i = 0; $i < @motif; $i++) {
+								$motif[$i] = $motif[$i] + rand($motif[$i] * 0.1);
+							}
+							for(my $i = 0; $i < @no_motif; $i++) {
+								$no_motif[$i] = $no_motif[$i] + rand($no_motif[$i] * 0.1);
+							}
+						}
+					}
+					$R->set( 'x', \@motif );
+					$R->set( 'y', \@no_motif);
+					$R->run( q`res = t.test(x,y)` );
+					$ttest = $R->get('res');
+					$correlation{$motif}{$ttest->[16]}++;
+				}
+			} elsif($method eq "group_all" || $method eq "group_all_scale" || $method eq "pearson_all" || $method eq "pearson_all_scale" || $method eq "spearman_all" || $method eq "spearman_all_scale") {
+			} elsif($method eq "mutual") {
+				#Calculate euclidean distance between vectors
+				my $distance = &euclidean_distance(\@tag_sum, \@sum);
+				my $h_tag = &shannon_entropy(\@tag_sum);
+				my $h_sum = &shannon_entropy(\@sum);
+				#Calculate mutual information
+				my $information = ($h_tag + $h_sum - $distance)/2;
+				$correlation{$motif}{$information}++;
+			} else {
+				print STDERR "Wrong method!\n";
+				exit;
 			}
 		}
 	}
-	return (\%correlation, \%pvalue);
+	if($method eq "pearson_all" || $method eq "pearson_all_scale") {
+		foreach my $motif ( keys %save_tags) {
+			$vector_motifs = vector @{$save_motifs{$motif}};
+			$vector_tagcounts = vector @{$save_tags{$motif}};
+			$cor = correlation( $vector_motifs, $vector_tagcounts );
+			$correlation{$motif}{$cor} = 1;
+		}	
+	}
+	if($method eq "spearman_all" || $method eq "spearman_all_scale") {
+		foreach my $motif(keys %save_tags) {
+			$rank = Statistics::RankCorrelation->new(\@{$save_motifs{$motif}}, \@{$save_tags{$motif}});
+			$cor = $rank->spearman;
+			$correlation{$motif}{$cor}++;
+		}
+	}
+	if($method eq "group_all" || $method eq "group_all_scale") {
+		foreach my $motif (sort {$a cmp $b } keys %group_with) {
+			@motif = ();
+			@no_motif = ();
+			foreach my $v (sort {$a <=> $b} keys %{$group_with{$motif}}) {
+				if($v eq "") { next; }
+				push @motif, $v foreach (1..$group_with{$motif}{$v});
+			}
+			foreach my $v (sort {$a <=> $b} keys %{$group_without{$motif}}) {
+				if($v eq "") { next; }
+				push @no_motif, $v foreach (1..$group_without{$motif}{$v});
+			}
+			if(@motif < 1 || @no_motif < 5) { next; }
+			$R->set( 'x', \@motif);
+			$R->set( 'y', \@no_motif);
+			$R->run( q`res = t.test(x, y)` );
+			$ttest = $R->get('res');
+			$correlation{$motif}{$ttest->[16]}++;
+		}
+	}
+	return (\%correlation);
 }
+
+sub shannon_entropy{
+	my $vector = $_[0];
+	my $all = scalar @{$vector};
+	my $px = 0;
+	my $H = 0;
+	for(my $i = 0; $i < @{$vector}; $i++) {
+		$px = (($vector->[$i]+1)/$all);
+		$H -= $px * (log($px)/log(2));
+	}
+	return $H;
+	
+}
+
+sub euclidean_distance{
+	my $vector1 = $_[0];
+	my $vector2 = $_[1];
+	my $distance = 0;
+	for(my $i = 0; $i < @{$vector1}; $i++) {
+		$distance += ($vector1->[$i] - $vector2->[$i])**2;
+	}
+	$distance = sqrt($distance);
+	return $distance;
+}
+

@@ -11,7 +11,7 @@ use general;
 use analysis_tree;
 use Set::IntervalTree;
 
-$_ = "" for my($genome, $file, $tf, $filename, $output, $ab, $plots, $overlap, $tmp_out, $data, $tmp_center, $genome_dir, $center_dist);
+$_ = "" for my($genome, $file, $tf, $filename, $output, $ab, $plots, $overlap, $tmp_out, $data, $tmp_center, $genome_dir, $center_dist, $method_all_vs_all);
 $_ = () for my(@strains, %peaks, @split, @split_one, @split_two, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, %block, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %lookup_strain, %last_strain, %tree, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, @shuffle_array, $pvalue, %wrong_direction, %right_direction, %middle_direction, %tf_for_direction, %num_of_peaks, @tf_dir, $seq);
 $_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $shuffle_k, $shuffle_between, $shuffle_within, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $filter_out);
 my $line_number = 1;
@@ -55,6 +55,8 @@ sub printCMD {
 	print STDERR "\t-dist_plot: Plots distance relationships between TF and motif candidates\n";
 	print STDERR "\t\t-effect: Just plots distance relationship for peaks that are affected\n";
 	print STDERR "Script needs R package seqinr\n";
+	print STDERR "\n\nAll vs all comparison\n";
+	print STDERR "\t-method <pearson|spearman|mutual|group> (Default: pearson)\n";
         exit;
 }
 
@@ -98,6 +100,7 @@ GetOptions(     "genome=s" => \$genome,
 		"-shuffle=s" => \$shuffle_k,
 		"-shuffle_within" => \$shuffle_within,
 		"-shuffle_between" => \$shuffle_between,
+		"-method=s" => \$method_all_vs_all,
 		"-mut_only" => \$mut_only, 
 		"-mut_pos" => \$mut_pos, 
 		"-overlap=s" => \$overlap,
@@ -120,6 +123,13 @@ if($genome_dir eq "" && $data eq "") {
 if($genome_dir eq "") {
 	$genome_dir = $data;
 }
+
+#if($method_all_vs_all ne "pearson" && $method_all_vs_all ne "spearman" && $method_all_vs_all ne "mutual" && $method_all_vs_all ne "group") {
+#	print STDERR "Unknown method for all vs all comparison\n";
+#	print STDERR "Set to default comparison pearson correlation\n";
+#	$method_all_vs_all = "pearson";
+#}
+
 if($data eq "") {
 	$data = config::read_config()->{'data_folder'};
 }
@@ -160,6 +170,19 @@ if($tf eq "") {
 	$tf = config::read_config()->{'motif_file'}; 
 #	$tf = "/home/vlink/mouse_strains/motifs/jenhan_merged_motifs_5.txt";
 }
+#Check if strains were just separated by space
+if(@strains == 1) {
+	my @tmp = split(' ', $strains[0]);
+	if(@tmp > @strains) {
+		@strains = @tmp;
+	} else {
+		@tmp = split(",", $strains[0]);
+		if(@tmp > @strains) {
+			@strains = @tmp;
+		}
+	}
+}
+
 for(my $i = 0; $i < @strains; $i++) {
 	$strains[$i] =~ s/,//g;
 	$strains[$i] = uc($strains[$i]);
@@ -360,7 +383,21 @@ sub screen_and_plot{
 	}
 
 	if(@strains > 2) {
-		($correlation, $pvalue) = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains);
+		if($method_all_vs_all eq "") {
+			$method_all_vs_all = "pearson";
+		}
+#		if($method_all_vs_all eq "pearson") {
+			($correlation) = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains, $method_all_vs_all);
+#		} elsif($method_all_vs_all eq "spearman") {
+#			($correlation) = analysis::all_vs_all_spearman(\%block, \%recenter_conversion, \%tag_counts, \@strains);
+#		} elsif($method_all_vs_all eq "mutual") {
+#			($correlation) = analysis::all_vs_all_mutual(\%block, \%recenter_conversion, \%tag_counts, \@strains);
+#		} elsif($method_all_vs_all eq "group") {
+#			($correlation) = analysis::all_vs_all_manual_group(\%block, \%recenter_conversion, \%tag_counts, \@strains);
+#		} else {
+#			print STDERR "Unknown comparison method\n";
+#			exit;
+#		}		
 		if($shuffle_between == 1) {
 			print STDERR "Shuffle relationship between motif score vector and tag count vector\n";
 		} else {
@@ -409,10 +446,23 @@ sub screen_and_plot{
 				}
 			}
 			#Call all vs all comparison method for randomized vectors to get a background distribution
-			my($shuffle_correlation, $pvalue_shuffle) = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%shuffle_tag_counts, \@strains);
+			my($shuffle_correlation, $pvalue_shuffle) = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%shuffle_tag_counts, \@strains, $method_all_vs_all);
 			$shuffle_array[$k] = $shuffle_correlation;
 			print STDERR "round : " . ($k + 1) . " out of " . $shuffle_k . "\n";
 		}
+	#	foreach my $m (keys %{$correlation}) {
+	#		print STDERR $m . "\n";
+	#		foreach my $cor (keys %{$correlation->{$m}}) {
+	#			print "\treal data:\t" . $cor . "\n";
+	#		}
+	#		for(my $i = 0; $i < @shuffle_array; $i++) {
+	#			print "\titer: " . $i . ":\t";
+	#			foreach my $cor (keys %{$shuffle_array[$i]->{$m}}) {
+	#				print $cor . "\n";
+	#			}
+	#		}
+	#	}
+	#	exit;
 		#Generate R output files
 		&generate_all_vs_all_R_files($plots . ".R", $output, $correlation, \@shuffle_array, $pvalue);
 	#Pairwise comparison instead of all vs all - there is no shuffling needed, because t-test is used for statistics
@@ -661,7 +711,7 @@ sub generate_mut_pos_analysis_file{
 	$col{'C'} = "blue";
 	$col{'G'} = "orange";
 	$col{'T'} = "red";
-	foreach my $motif (keys %mut_pos_analysis) {
+	foreach my $motif (sort {$a cmp $b } keys %mut_pos_analysis) {
 		$max = 0;
 		#Define the max to set y axis
 		foreach my $pos (keys %{$mut_pos_analysis{$motif}}) {
@@ -718,6 +768,7 @@ sub generate_mut_pos_analysis_file{
 		$step = (1/(keys %{$PWM{$motif}}));
 		#Generate the vectors with the number of mutations per position - do it seperately for mutations that change TF binding vs. do not change TF binding
 		foreach my $base (keys %col) {
+			$count = 0;
 			$mut_freq_sig = "mut_freq_sig_" . $base . " <- c(";
 			$mut_freq_unsig = "mut_freq_unsig_" . $base . " <- c(";
 			$y_sig = "y_sig <- c(";
@@ -1218,6 +1269,10 @@ sub generate_all_vs_all_R_files{
 	my $correlation = $_[2];
 	my $correlation_shuffle = $_[3];
 	my $pvalue = $_[4];
+	my $positive = "";
+	my $negative = "";
+	my $positive_count = "";
+	my $negative_count = "";
 	$_ = "" for my ($x, $y, $ks, $max);
 	open OUT, ">", $plots;
 	print STDERR "open $plots\n";
@@ -1225,14 +1280,25 @@ sub generate_all_vs_all_R_files{
 	print OUT "plot(0, 0, xlim=c(0,0), ylim=c(0,0), main=\"" . $commandline . "\", bty=\'n\', xaxt=\"n\", yaxt=\"n\", col=\"white\", xlab=\"\", ylab=\"\")\n";
 	print OUT "breaks <- seq(-1, 1, by=0.1)\n";
 	print OUT "par(oma=c(0,0,0,0))\n";
-	foreach my $motif (keys %{$correlation}) {
+	foreach my $motif (sort {$a cmp $b} keys %{$correlation}) {
 		$ks = "ks <- c(";
 		$x = "x <- c(";
 		$y = "y <- c(";
+		$positive = "";
+		$negative = "";
 		$max = "max <- max(";
 		#Generate vector to calculate a p-value with KS test
 		foreach my $pos (sort {$a <=> $b} keys %{$correlation->{$motif}}) {
 			$x .= $pos . ",";
+			if($pos < 0) {
+				for(my $i = 0; $i < $correlation->{$motif}->{$pos}; $i++) {
+					$negative .= $pos . ",";
+				}
+			} elsif($pos > 0) {
+				for(my $i = 0; $i < $correlation->{$motif}->{$pos}; $i++) {
+					$positive .= $pos . ",";
+				}
+			}
 			$y .= $correlation->{$motif}->{$pos} . ",";
 			for(my $i = 0; $i < $correlation->{$motif}->{$pos}; $i++) {
 				$ks .= $pos . ",";
@@ -1245,22 +1311,49 @@ sub generate_all_vs_all_R_files{
 		if(length($y) > 10) {
 			chop $y;
 		}
+		print OUT "print(\"motif: " . $motif . "\")\n";
+		chop $positive;
+		chop $negative;
+		print OUT "pos <- c(" . $positive . ")\n";
+		print OUT "neg <- c(" . $negative . ")\n";
 		$max .= "y,";
 		print OUT $x . ")\n";
 		print OUT $ks . ")\n";
 		print OUT $y . ")\n";
+		print OUT "neg_abs <- abs(neg)\n";
+		print OUT "ks_test_comp <- ks.test(pos, neg_abs)\n";
+		print OUT "print(ks_test_comp\$p.value)\n";
 		#Calculate pvalue for every iteration of shuffling
 		for(my $k = 0; $k < $shuffle_k; $k++) {
 			my $x_shuffle = "x_shuffle_" . $k . " <- c(";
 			my $y_shuffle = "y_shuffle_" . $k . " <- c(";
 			my $ks_shuffle = "ks_shuffle_" . $k . " <- c(";
+			$positive = "";
+			$negative = "";
 			foreach my $pos (sort {$a <=> $b} keys %{$correlation_shuffle->[$k]->{$motif}}) {
 				$x_shuffle .= $pos . ",";
 				$y_shuffle .= $correlation_shuffle->[$k]->{$motif}->{$pos} . ",";
 				for(my $i = 0; $i < $correlation_shuffle->[$k]->{$motif}->{$pos}; $i++) {
 					$ks_shuffle .= $pos . ",";
 				}
+				if($pos < 0) {
+					for(my $i = 0; $i < $correlation_shuffle->[$k]->{$motif}->{$pos}; $i++) {
+						$negative .= $pos . ",";
+					}
+				} elsif($pos > 0) {
+					for(my $i = 0; $i < $correlation_shuffle->[$k]->{$motif}->{$pos}; $i++) {
+						$positive .= $pos . ",";
+					}
+				}
 			}
+			chop $positive;
+			chop $negative;
+			print OUT "pos_shuffle_" . $k . " <- c(" . $positive . ")\n";
+			print OUT "neg_shuffle_" . $k . " <- c(" . $negative . ")\n";
+			print OUT "neg_abs_shuffle_" . $k . " <- abs(neg)\n";
+			print OUT "ks_test_comp <- ks.test(pos_shuffle_" . $k . ", neg_abs_shuffle_" . $k . ")\n";
+			print OUT "print(\"motif: " . $motif . " - shuffle " . $k . "\")\n";
+			print OUT "print(ks_test_comp\$p.value)\n";
 			if(length($x_shuffle) > 10) {
 				chop $x_shuffle;
 				chop $ks_shuffle;
@@ -1283,6 +1376,7 @@ sub generate_all_vs_all_R_files{
 		print OUT ")\n";
 		print OUT $max . ")\n";
 		print OUT "print(paste(\"Motif: \", \"" . $motif . "\", \"   p value: \", p_value_avg, sep=\"\"))\n";
+		print OUT "write(paste(\"Motif: \", \"" . $motif . "\", \"   p value: \", p_value_avg, sep=\"\"), file=\"pvalue_summary_" . $plots . "\")\n";
 		print OUT "plot(x, y, ylim=c(0, max), main=paste(\"" . $motif . "\\nP-value: \", p_value_avg, sep=\"\"), type=\"l\", xlab=\"Pearson Correlation\", ylab=\"Frequency\")\n";
 		for(my $k = 0; $k < $shuffle_k; $k++) {
 			print OUT "lines(x_shuffle_" . $k . ", y_shuffle_" . $k . ", col=\"lightgrey\", lty=3)\n";
