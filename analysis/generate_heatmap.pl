@@ -118,7 +118,7 @@ if($method eq "pairwise") {
 }
 open OUT, ">matrix_" . $output;
 $first = 0;
-foreach my $motif (keys %save) {
+foreach my $motif (sort {$a cmp $b} keys %save) {
 	if($first == 0) {
 		print OUT "TF";
 		for(my $i = 0; $i < @names; $i++) {
