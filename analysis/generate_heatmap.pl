@@ -72,7 +72,7 @@ if($method eq "pairwise") {
 		chomp $f;
 		@file_name = split("/", $f);
 		@split = split("_", $file_name[-1]);
-		open FH, "<$f";
+		open FH, "<$f" or die "Can not open file: $f\n";
 		foreach my $line (<FH>) {
 			chomp $line;
 			if(substr($line, 0, 4) eq "plot") {
