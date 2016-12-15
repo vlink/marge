@@ -10,10 +10,11 @@ use config;
 use general;
 use analysis_tree;
 use Set::IntervalTree;
+use Data::Dumper;
 
-$_ = "" for my($genome, $file, $tf, $filename, $output, $ab, $plots, $overlap, $tmp_out, $data, $tmp_center, $genome_dir, $center_dist, $method_all_vs_all);
+$_ = "" for my($genome, $file, $tf, $filename, $output, $ab, $plots, $overlap, $tmp_out, $data, $tmp_center, $genome_dir, $center_dist, $method_all_vs_all, $tf_dir_name);
 $_ = () for my(@strains, %peaks, @split, @split_one, @split_two, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, %block, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %lookup_strain, %last_strain, %tree, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, @shuffle_array, $pvalue, %wrong_direction, %right_direction, %middle_direction, %tf_for_direction, %num_of_peaks, @tf_dir, $seq);
-$_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $shuffle_k, $shuffle_between, $shuffle_within, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $filter_out);
+$_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $shuffle_k, $shuffle_between, $shuffle_within, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $filter_out, $print_block);
 my $line_number = 1;
 
 sub printCMD {
@@ -37,6 +38,7 @@ sub printCMD {
 	print STDERR "\t-shuffle: <number of repeats for generating bg distribution (default: 10)\n";
 	print STDERR "\n\nAdditional options:\n";
 	print STDERR "\t-tf_direction <list with TF>: (comma seperated list) for each of these transcription factor 3 output files are printed (all peaks where mutation and loss of binding are in the same direction (same_direction_<TF>.txt), all peaks with mutations that are between significant foldchange (direction_between_foldchanges_<TF>.txt) and all peaks where mutation and loss of binding are in the opposite direction (opposite_direction_<TF>.txt) - all: all motifs\n";
+	print STDERR "\t-tf_dir_name <prefix>: Prefix for the naming of the files created by tf_direction option\n";
 	print STDERR "\t-plots: Output name of the plots\n";
 	print STDERR "\t-keep: keep temporary files\n";
 	print STDERR "\t-data_dir <folder to data directory>: default defined in config\n";
@@ -54,6 +56,7 @@ sub printCMD {
 	print STDERR "\t-mut_pos: Also analyzes the position of the motif that is mutated\n";
 	print STDERR "\t-dist_plot: Plots distance relationships between TF and motif candidates\n";
 	print STDERR "\t\t-effect: Just plots distance relationship for peaks that are affected\n";
+	print STDERR "\t-print_block: Prints the merged block and ends there\n";
 	print STDERR "Script needs R package seqinr\n";
 	print STDERR "\n\nAll vs all comparison\n";
 	print STDERR "\t-method <pearson|spearman|mutual|group> (Default: pearson)\n";
@@ -92,6 +95,7 @@ GetOptions(     "genome=s" => \$genome,
 		"-plots=s" => \$plots,
 		"-AB=s" => \$ab,
 		"-tf_direction=s{,}" => \@tf_dir,
+		"-tf_dir_name=s" => \$tf_dir_name,
 		"-keep" => \$keep, 
 		"-data_dir=s" => \$data,
 		"-genome_dir=s" => \$genome_dir,
@@ -111,6 +115,7 @@ GetOptions(     "genome=s" => \$genome,
 		"-center_dist=s" => \$center_dist,
 		"-motif" => \$analyze_motif,
 		"-no_motif" => \$analyze_no_motif,
+		"-print_block" => \$print_block,
 		"-far_motif" => \$analyze_far_motif)
         or die("Error in command line options!\n");
 #First step: Get the sequences for the peaks
@@ -377,11 +382,14 @@ sub screen_and_plot{
 	#Merge the hash (when overlap is set, merge the overlapping motifs, calculate motif score if motif was not found)
 	$block_ref = analysis::merge_block(\%block, $overlap, \@strains, $seq, \%tree, \%lookup_strain, \%last_strain);
 	%block = %$block_ref;
+	if($print_block == 1) {
+		print Dumper %block;
+		exit; 
+	}
 	analysis::output_motifs(\%block, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, \%fc, \%recenter_conversion, $motif_diff, $motif_diff_percentage);
 	for(my $i = 0; $i < @fileHandlesMotif; $i++) {
 		close $fileHandlesMotif[$i];
 	}
-
 	if(@strains > 2) {
 		if($method_all_vs_all eq "") {
 			$method_all_vs_all = "pearson";
@@ -899,10 +907,12 @@ sub generate_R_files {
 					$fac = &fakrek(@strains - 1); 
 					$start_pos = (2 + (@strains * 2) + $fac);
 					#Save all peaks that have mutation in strain one or strain two
-					if($split[$start_pos + $i] > 0) {
+				#	if(($split[$start_pos + $i] > 0 && $split[$start_pos + $j] == 0) {
+					if($split[$start_pos + $i] > 0 && ($split[$start_pos + $j] != $split[$start_pos + $i])) {
 						$mut_one{$strains[$i] . "_" . $strains[$j]}{$split[1]} = 1;
 					}
-					if($split[$start_pos + $j] > 0) {
+				#	if($split[$start_pos + $j] > 0 && $split[$start_pos + $i] == 0) {
+					if($split[$start_pos + $j] > 0 && ($split[$start_pos + $i] != $split[$start_pos + $j])) {
 						$mut_two{$strains[$i] . "_" . $strains[$j]}{$split[1]} = 1;
 					}
 					$start_pos = (2 + @strains + $fac);
@@ -917,7 +927,6 @@ sub generate_R_files {
 				}
 			}
 		}
-	
 		for(my $i = 0; $i < @strains - 1; $i++) {
 			for(my $j = $i + 1; $j < @strains; $j++) {
 				$dist_one = "one <- c(";
@@ -1073,38 +1082,43 @@ sub generate_R_files {
 		}
 	}
 	foreach my $motif (keys %tf_for_direction) {
-		my $f = "same_direction_" . $output . "_" . $motif . ".txt";
+		my $f = $tf_dir_name . "same_direction_" . $output . "_" . $motif . ".txt";
 		if(-e $f) { `rm $f`; }
-		$f = "direction_between_foldchange_" . $output . "_" . $motif . ".txt";
+		$f = $tf_dir_name . "direction_between_foldchange_" . $output . "_" . $motif . ".txt";
 		if(-e $f) { `rm $f`; }
-		$f = "opposite_direction_" . $output . "_"  . $motif . ".txt";
+		$f = $tf_dir_name . "opposite_direction_" . $output . "_"  . $motif . ".txt";
 		if(-e $f) { `rm $f`; }
 	}
-
+	my $count = 1;
 	foreach my $motif (keys %right_direction) {
-		my $f_name = "same_direction_" . $output . "_" . $motif . ".txt";
+		my $f_name = $tf_dir_name . "same_direction_" . $output . "_" . $motif . ".txt";
 		open OUT, ">$f_name" or die "Can't open $f: $!";
 		foreach my $pos (keys %{$right_direction{$motif}}) {
 			$pos =~ s/_/\t/g;
-			print OUT $pos . "\n";
+			print OUT "pos_" . $count . "\t" . $pos . "\t+\n";
+			$count++;
 		}
 		close OUT;
 	}
+	$count = 1;
 	foreach my $motif (keys %middle_direction) {
-		my $f_name = "direction_between_foldchange_" . $output . "_" . $motif . ".txt";
+		my $f_name = $tf_dir_name . "direction_between_foldchange_" . $output . "_" . $motif . ".txt";
 		open OUT, ">$f_name" or die "Can't open $f: $!";
 		foreach my $pos (keys %{$middle_direction{$motif}}) {
 			$pos =~ s/_/\t/g;
-			print OUT $pos . "\n";
+			print OUT "pos_" . $count . "\t" . $pos . "\t+\n";
+			$count++;
 		}
 		close OUT;
 	}
+	$count = 1;
 	foreach my $motif (keys %wrong_direction) {
-		my $f_name = "opposite_direction_" . $output . "_"  . $motif . ".txt";
+		my $f_name = $tf_dir_name . "opposite_direction_" . $output . "_"  . $motif . ".txt";
 		open OUT, ">$f_name" or die "Can't open $f: $!";
 		foreach my $pos (keys %{$wrong_direction{$motif}}) {
 			$pos =~ s/_/\t/g;
-			print OUT $pos . "\n";
+			print OUT "pos_" . $count . "\t" . $pos . "\t+\n";
+			$count++;
 		}
 	}
 	print R "dev.off()\n";
