@@ -94,6 +94,7 @@ sub analyze_motifs{
 		#Check if there is a interval tree for this strain and chromosome
 		if(defined $tree->{$header[3]}->{$chr_num}) {
 			#Get shifting vector for the beginning of the sequence that was used to scan for the motif
+		#	$tree_tmp = $tree->{$header[3]}->{$chr_num}->fetch($pos_beginning, $pos_beginning + 1);
 			$tree_tmp = $tree->{$header[3]}->{$chr_num}->fetch($pos_beginning, $pos_beginning + 1);
 			if(!exists $tree_tmp->[0]->{'shift'}) {
 				$shift_beginning = $last->{$header[3]}->{$header[0]}->{$allele}->{'shift'};
@@ -198,9 +199,9 @@ sub merge_block {
 						#Then pull this sequence from the sequence hash and calculate the motif score
 						if(defined $tree->{$strains[$i]}->{$chr_num}) {
 							$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
-							$current_shift = $tree_tmp->[$i]->{'shift'};
+							$current_shift = $tree_tmp->[0]->{'shift'};
 							$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->fetch($current_pos, $current_pos + 1);
-							$prev_shift = $tree_tmp->[$i]->{'shift'};
+							$prev_shift = $tree_tmp->[0]->{'shift'};
 							$shift_vector = $current_shift - $prev_shift;	
 						}
 						$block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} = &calculate_motif_score($motif, substr($seq->{$chr_pos . "_" . $strains[$i]}, $motif_pos + $shift_vector, $block{$chr_pos}{$motif}{$motif_pos}{'length'}), $block{$chr_pos}{$motif}{$motif_pos}{'orientation'});
@@ -250,7 +251,8 @@ sub output_motifs{
 				for(my $i = 0; $i < @strains; $i++) {
 					#Filter by motif existance - either motif is not there at all (default) or diff_motif is set
 					if(!exists $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} || ($motif_diff == 0 && $motif_diff_percentage == 0 && $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} == 0)) {
-						$existance{$strains[$i]} = 1;
+						$existance{$strains[$i]}++;
+					#	$existance{$strains[$i]} = 1;
 					}
 					if($block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} > $max_motif) {
 						$max_motif = $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]};
@@ -261,7 +263,8 @@ sub output_motifs{
 				if($motif_diff != 0) {
 					for(my $i = 0; $i < @strains; $i++) {
 						if($max_motif - $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} > $motif_diff) {
-							$existance{$strains[$i]} = 1;
+							$existance{$strains[$i]}++;
+						#	$existance{$strains[$i]} = 1;
 						}
 					}
 				}
@@ -269,7 +272,8 @@ sub output_motifs{
 				if($motif_diff_percentage != 0) {
 					for(my $i = 0; $i < @strains; $i++) {
 						if($max_motif - $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]} > ($max_motif * $motif_diff_percentage)) {
-							$existance{$strains[$i]} = 1;
+						#	$existance{$strains[$i]} = 1;
+							$existance{$strains[$i]}++;
 						}
 					}
 				}
@@ -718,6 +722,7 @@ sub get_motif_name{
 		@clean2 = split/[\(,\/]+/, $name;
 		$name = $clean2[0];
 	}
+	$name =~ s/-/_/g;
 	return $name;
 }
 
@@ -945,12 +950,72 @@ sub all_vs_all_comparison{
 	my $all = keys %{$block};
 	my $count = 0;
 	$_ = () for my(%correlation, @sum, @tag_sum, $vector_motifs, $vector_tagcounts, @split, $chr, $stddev_m, $stddev_t, $cor, $t, $rank, %without_motif, %with_motif, @no_motif, @motif, $ttest, $max, $max_motif, $min_motif, $max_no_motif, $min_no_motif, @all_motifs, @all_tags, %save_motifs, %save_tags, %save_no_motif, %save_motif, @all_motif, @all_no_motif, %group_with, %group_without, $R);
-	my($con_pos, $r, $r2, $distance, $h_tag, $h_sum, $information, $max);
-	if($method eq "group" || $method eq "group_all" || $method eq "group_all_scale") {
+	my($con_pos, $r, $r2, $distance, $h_tag, $h_sum, $information);
+	if($method eq "group" || $method eq "group_all" || $method eq "group_all_scale" || $method eq "pearson_all") {
 #		$ttest = new Statistics::TTest;  
 #		$ttest->set_significance(90);
 		$R = Statistics::R->new();
 	}
+	my %motif_matrix;
+	my %motif_matrix_number;
+	my %tag_matrix;
+	my @a;
+	use Data::Dumper;
+	foreach my $pos (sort {$a cmp $b} keys %{$block}) {
+		@a = split("_", $pos);
+		@tag_sum = split('\s+', $tag_counts->{substr($a[0], 3)}->{$a[1]});
+		for(my $i = 0; $i < @strains; $i++) {
+			$tag_matrix{$pos}{$strains[$i]} = $tag_sum[$i];
+		}
+		foreach my $motif (sort {$a cmp $b} keys %{$block->{$pos}}) {
+			foreach my $motif_pos (sort {$a <=> $b} keys %{$block->{$pos}->{$motif}}) {
+				for(my $i = 0; $i < @strains; $i++) {
+					if(!exists $motif_matrix{$motif}{$pos}{$strains[$i]}) {
+						$motif_matrix{$motif}{$pos}{$strains[$i]} = 0;
+						$motif_matrix_number{$motif}{$pos}{$strains[$i]} = 0;
+					}
+					if($block->{$pos}->{$motif}->{$motif_pos}->{$strains[$i]} > 5) {
+						$motif_matrix{$motif}{$pos}{$strains[$i]}++;
+					}
+					$motif_matrix_number{$motif}{$pos}{$strains[$i]} += $block->{$pos}->{$motif}->{$motif_pos}->{$strains[$i]};
+				}
+			}
+		}
+	}
+	foreach my $motif (keys %motif_matrix) {
+		open OUT, ">matrix_$motif.txt";
+		print OUT "Strain\tLocus\tMotif\tMotif_score\tbinding\n";
+	#	foreach my $pos (sort {$a <=> $b} keys %{$motif_matrix{$motif}}) {
+		foreach my $pos (sort {$a <=> $b} keys %tag_matrix) {
+			for(my $i = 0; $i < @strains; $i++) {
+				print OUT $strains[$i] . "\t" . $pos . "\t";
+				if(!exists $motif_matrix{$motif}{$pos}) {
+					print OUT "0\t0";
+				} else {
+					print OUT $motif_matrix{$motif}{$pos}{$strains[$i]} . "\t" . $motif_matrix_number{$motif}{$pos}{$strains[$i]};
+				}	
+				print OUT "\t" . $tag_matrix{$pos}{$strains[$i]} . "\n";
+			}
+		}
+		close OUT;
+	}
+	return(0);
+	exit;
+	open OUT, ">matrix_tag.txt";
+	print OUT "Locus";
+	for(my $i = 0; $i < @strains; $i++) {
+		print OUT "\t" . $strains[$i];
+	}
+	print OUT "\n";
+	foreach my $pos (sort {$a <=> $b} keys %tag_matrix) {
+		print OUT $pos;
+		for(my $i = 0; $i < @strains; $i++) {
+			print OUT "\t" . $tag_matrix{$pos}{$strains[$i]};
+		}
+		print OUT "\n";
+	}
+	close OUT;
+	exit;
 	foreach my $pos (sort {$a cmp $b} keys %{$block}) {
 		print STDERR "Processing: " .  ($count/$all)*100 . "\r";
 		$count++;
@@ -1111,6 +1176,14 @@ sub all_vs_all_comparison{
 			$vector_tagcounts = vector @{$save_tags{$motif}};
 			$cor = correlation( $vector_motifs, $vector_tagcounts );
 			$correlation{$motif}{$cor} = 1;
+	#		$R->set( 'x', \@{$save_motifs{$motif}});
+	#		$R->set( 'y', \@{$save_tags{$motif}});
+	#		$R->run( q`pearson = cor(x, y)` );
+	#		my $correlation_with_r = $R->get('pearson');
+	#		$R->run( q`pvalue_pearson = cor.test(x,y)` );
+	#		my $pvalue = $R->get('pvalue_pearson');
+	#		print "correlation wiht r: " . $correlation_with_r . "\n";
+	#		print "pvalue: " . $pvalue  . "\n";
 		}	
 	}
 	if($method eq "spearman_all" || $method eq "spearman_all_scale") {

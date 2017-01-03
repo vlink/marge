@@ -286,13 +286,13 @@ if($filter_out > 0) {
 	print STDERR "Continue with " . $line_number . " peaks\n\n";
 }
 print STDERR "Loading shift vectors\n";
+
 for(my $i = 0; $i < @strains; $i++) {
 	my($tree_ref, $last, $lookup) = general::read_strains_data($strains[$i], $data, $allele, "ref_to_strain");
 	$tree{$strains[$i]} = $tree_ref;
 	$lookup_strain{$strains[$i]} = $lookup;
 	$last_strain{$strains[$i]} = $last;
 }
-
 #Get all sequences from file and save them in hash
 &get_files_from_seq();
 
@@ -391,11 +391,12 @@ sub screen_and_plot{
 		close $fileHandlesMotif[$i];
 	}
 	if(@strains > 2) {
-		if($method_all_vs_all eq "") {
-			$method_all_vs_all = "pearson";
-		}
+#		if($method_all_vs_all eq "") {
+#			$method_all_vs_all = "pearson";
+#		}
+		analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains, $method_all_vs_all);
 #		if($method_all_vs_all eq "pearson") {
-			($correlation) = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains, $method_all_vs_all);
+		#	($correlation) = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains, $method_all_vs_all);
 #		} elsif($method_all_vs_all eq "spearman") {
 #			($correlation) = analysis::all_vs_all_spearman(\%block, \%recenter_conversion, \%tag_counts, \@strains);
 #		} elsif($method_all_vs_all eq "mutual") {
@@ -406,58 +407,103 @@ sub screen_and_plot{
 #			print STDERR "Unknown comparison method\n";
 #			exit;
 #		}		
-		if($shuffle_between == 1) {
-			print STDERR "Shuffle relationship between motif score vector and tag count vector\n";
-		} else {
-			print STDERR "Shuffle tag count vector for each motif score vector\n";
+		open OUT, ">GLMM_script.R";
+		$delete{"GLMM_script.R"} = 1;
+		print OUT "library(lme4)\n";
+		my $print_motif;
+		foreach my $motif (keys %index_motifs) {
+			print OUT $motif . " <- read.delim(\"matrix_" . $motif . ".txt\", header=T)\n";
+			$delete{"matrix_" . $motif. ".txt"} = 1;
+			print OUT "write(\"Calculating model for " . $motif . "\", stderr())\n";
+			print OUT "mod_" . $motif . " <- lmer(binding ~ Motif + (1 | Locus) + (1| Strain), data=" . $motif . ")\n";
+			print OUT "pvalue_" . $motif . " <- drop1(mod_" . $motif . ",test=\"Chisq\")\n";
+			print OUT "print(\"" . $motif . "\")\n";
+			print OUT "pvalue_" . $motif . "\n";
 		}
-		for(my $k = 0; $k < $shuffle_k; $k++) {
-			#Randomize relationship between motif scores and tag counts
-			my @shuffle;
-			my $shuffle;
-			my %shuffle_tag_counts;
-			my $random;
-			my @vector;
-			#Randomize relationship between tag count vector and motif score vector by shuffeling the order of the tag counts
-			if($shuffle_between == 1) {
-				my $run_index = 0;
-				#Save the tag counts in an shuffle array
-				foreach my $chr (keys %tag_counts) {
-					foreach my $pos (keys %{$tag_counts{$chr}}) {
-						$shuffle[$run_index] = $tag_counts{$chr}{$pos};
-						$run_index++;
-					}
-				}
-				#Randomly assign the tag counts to chromosome and position
-				foreach my $chr (keys %tag_counts) {
-					foreach my $pos (keys %{$tag_counts{$chr}}) {
-						$random = int(rand(@shuffle));
-						$shuffle_tag_counts{$chr}{$pos} = $shuffle[$random];
-						splice(@shuffle, $random, 1);
-					}
-				}
-			#Randomize relationship within tag count vector
-			} else {
-				foreach my $chr (keys %tag_counts) {
-					#Randomize the order of the tag counts within the vector
-					foreach my $pos (keys %{$tag_counts{$chr}}) {
-						@vector = split('\t', $tag_counts{$chr}{$pos});
-						$shuffle = "";
-						while(@vector > 0) {
-							$random = int(rand(@vector));
-							$shuffle .= $vector[$random] . "\t";
-							splice(@vector, $random, 1);
-						}
-						chop $shuffle;
-						$shuffle_tag_counts{$chr}{$pos} = $shuffle; 
-					}
+		close OUT;	
+		`Rscript GLMM_script.R > output_GLMM_script.txt`;
+		$delete{"output_GLMM_script.txt"} = 1;
+		#Now analyze the output file
+		print "Motif\tp-value\n";
+		open FH, "<output_GLMM_script.txt";
+		my %save_pvalues;
+		my $m_name;
+		foreach my $line (<FH>) {
+			chomp $line;
+			if(substr($line, 0, 3) eq "[1]") {
+			#	print substr($line, 5, length($line) - 6) . "\t";
+				$m_name = substr($line, 5, length($line) - 6);
+				next;
+			}
+			@split = split('\s+', $line);
+			if($split[0] eq "Motif") {
+				if($split[4] eq "<") {
+				#	print $split[5] . "\n";
+					$save_pvalues{$split[5]}{$m_name} = 1;
+				} else {
+					$save_pvalues{$split[4]}{$m_name} = 1;
+				#	print $split[4] . "\n";
 				}
 			}
-			#Call all vs all comparison method for randomized vectors to get a background distribution
-			my($shuffle_correlation, $pvalue_shuffle) = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%shuffle_tag_counts, \@strains, $method_all_vs_all);
-			$shuffle_array[$k] = $shuffle_correlation;
-			print STDERR "round : " . ($k + 1) . " out of " . $shuffle_k . "\n";
 		}
+		close FH;
+		foreach my $pvalue ( sort {$a <=> $b } keys %save_pvalues ) {
+			foreach my $motif_name (keys %{$save_pvalues{$pvalue}}) {
+				print $motif_name . "\t" . $pvalue . "\n";
+			}
+		}
+#		if($shuffle_between == 1) {
+#			print STDERR "Shuffle relationship between motif score vector and tag count vector\n";
+#		} else {
+#			print STDERR "Shuffle tag count vector for each motif score vector\n";
+#		}
+#		for(my $k = 0; $k < $shuffle_k; $k++) {
+#			#Randomize relationship between motif scores and tag counts
+#			my @shuffle;
+#			my $shuffle;
+#			my %shuffle_tag_counts;
+#			my $random;
+#			my @vector;
+#			#Randomize relationship between tag count vector and motif score vector by shuffeling the order of the tag counts
+#			if($shuffle_between == 1) {
+#				my $run_index = 0;
+#				#Save the tag counts in an shuffle array
+#				foreach my $chr (keys %tag_counts) {
+#					foreach my $pos (keys %{$tag_counts{$chr}}) {
+#						$shuffle[$run_index] = $tag_counts{$chr}{$pos};
+#						$run_index++;
+#					}
+#				}
+#				#Randomly assign the tag counts to chromosome and position
+#				foreach my $chr (keys %tag_counts) {
+#					foreach my $pos (keys %{$tag_counts{$chr}}) {
+#						$random = int(rand(@shuffle));
+#						$shuffle_tag_counts{$chr}{$pos} = $shuffle[$random];
+#						splice(@shuffle, $random, 1);
+#					}
+#				}
+#			#Randomize relationship within tag count vector
+#			} else {
+#				foreach my $chr (keys %tag_counts) {
+#					#Randomize the order of the tag counts within the vector
+#					foreach my $pos (keys %{$tag_counts{$chr}}) {
+#						@vector = split('\t', $tag_counts{$chr}{$pos});
+#						$shuffle = "";
+#						while(@vector > 0) {
+#							$random = int(rand(@vector));
+#							$shuffle .= $vector[$random] . "\t";
+#							splice(@vector, $random, 1);
+#						}
+#						chop $shuffle;
+#						$shuffle_tag_counts{$chr}{$pos} = $shuffle; 
+#					}
+#				}
+#			}
+#			#Call all vs all comparison method for randomized vectors to get a background distribution
+#			my($shuffle_correlation, $pvalue_shuffle) = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%shuffle_tag_counts, \@strains, $method_all_vs_all);
+#			$shuffle_array[$k] = $shuffle_correlation;
+#			print STDERR "round : " . ($k + 1) . " out of " . $shuffle_k . "\n";
+#		}
 	#	foreach my $m (keys %{$correlation}) {
 	#		print STDERR $m . "\n";
 	#		foreach my $cor (keys %{$correlation->{$m}}) {
@@ -472,7 +518,7 @@ sub screen_and_plot{
 	#	}
 	#	exit;
 		#Generate R output files
-		&generate_all_vs_all_R_files($plots . ".R", $output, $correlation, \@shuffle_array, $pvalue);
+#		&generate_all_vs_all_R_files($plots . ".R", $output, $correlation, \@shuffle_array, $pvalue);
 	#Pairwise comparison instead of all vs all - there is no shuffling needed, because t-test is used for statistics
 	} else {
 		#Writes output file per motif for further analysis
