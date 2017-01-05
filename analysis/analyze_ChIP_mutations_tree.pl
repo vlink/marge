@@ -5,22 +5,23 @@ use strict;
 use Getopt::Long;
 use Storable;
 use Statistics::Basic qw(:all);
-use List::Util 'shuffle';
 use config;
 use general;
 use analysis_tree;
 use Set::IntervalTree;
 use Data::Dumper;
+use threads;
 
-$_ = "" for my($genome, $file, $tf, $filename, $output, $ab, $plots, $overlap, $tmp_out, $data, $tmp_center, $genome_dir, $center_dist, $method_all_vs_all, $tf_dir_name);
-$_ = () for my(@strains, %peaks, @split, @split_one, @split_two, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, %block, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %lookup_strain, %last_strain, %tree, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, @shuffle_array, $pvalue, %wrong_direction, %right_direction, %middle_direction, %tf_for_direction, %num_of_peaks, @tf_dir, $seq);
-$_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $shuffle_k, $shuffle_between, $shuffle_within, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $filter_out, $print_block);
+$_ = "" for my($genome, $file, $tf, $filename, $output, $ab, $plots, $overlap, $tmp_out, $data, $tmp_center, $genome_dir, $center_dist, $tf_dir_name);
+$_ = () for my(@strains, %peaks, @split, @split_one, @split_two, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, %block, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %lookup_strain, %last_strain, %tree, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, $pvalue, %wrong_direction, %right_direction, %middle_direction, %tf_for_direction, %num_of_peaks, @tf_dir, $seq);
+$_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $filter_out, $print_block, $core);
 my $line_number = 1;
 
 sub printCMD {
         print STDERR "Usage:\n";
         print STDERR "\t-genome: Genome (Used for distribution plots to generate the background distributions)\n";
         print STDERR "\t-strains <strains>: Comma-separated list of strains - Order must overlay with order in annotated peak file\n";
+	print STDERR "\t-core <number of cores for model calculation> (default 4): Is only used when more than 2 strains are defined\n";
         print STDERR "\t-file <file>: annotated peak file (including tag counts)\n";
 	print STDERR "\t-AB: Antibody that was used for this ChIP (to exclude mutations in this motif from analysis)\n";
 	print STDERR "\t-center: centers peaks on TF specified in -AB (automatically analyzes sequences with motif in center - set -far_motif and/or -no_motif for analysis of these sequences)\n";
@@ -35,7 +36,6 @@ sub printCMD {
 	print STDERR "\t-motif: analyzes sequences with TF motif (only works with -center - without centering on TF it is not possible to group the sequences in with motif/ far motif/ no mitf)\n";
 	print STDERR "\t-no_motif: analyzes sequences without TF motif\n";
 	print STDERR "\t-far_motif: analyzes sequences with TF motif that are more that n bp away from peak center (default: 25 - different value can be defined in -center_dist)\n";
-	print STDERR "\t-shuffle: <number of repeats for generating bg distribution (default: 10)\n";
 	print STDERR "\n\nAdditional options:\n";
 	print STDERR "\t-tf_direction <list with TF>: (comma seperated list) for each of these transcription factor 3 output files are printed (all peaks where mutation and loss of binding are in the same direction (same_direction_<TF>.txt), all peaks with mutations that are between significant foldchange (direction_between_foldchanges_<TF>.txt) and all peaks where mutation and loss of binding are in the opposite direction (opposite_direction_<TF>.txt) - all: all motifs\n";
 	print STDERR "\t-tf_dir_name <prefix>: Prefix for the naming of the files created by tf_direction option\n";
@@ -50,8 +50,6 @@ sub printCMD {
 	print STDERR "\t-mut_only: just keeps peaks where one strains is mutated\n";
 	print STDERR "\t-fc_pos: Foldchange threshold to count peaks as strain specific vs not (Default: 2fold)\n";
 	print STDERR "\t-overlap: Count motif as not mutated if the overlap n basepairs (complete|half|#bp)\n";
-	print STDERR "\t-shuffle_within: Shuffles tag counts per motif to calculate significance all vs all\n";
-	print STDERR "\t-shuffle_between: Shuffles tag count vectors and motif vectors to calcualte significane (default)\n";
 	print STDERR "\n\nPlot options:\n";
 	print STDERR "\t-mut_pos: Also analyzes the position of the motif that is mutated\n";
 	print STDERR "\t-dist_plot: Plots distance relationships between TF and motif candidates\n";
@@ -85,6 +83,7 @@ $commandline .= $commandline_tmp;
 GetOptions(     "genome=s" => \$genome,
                 "file=s" => \$file,
                 "strains=s{,}" => \@strains,
+		"core=s" => \$core,
                 "hetero" => \$hetero, 
 		"-TF=s" => \$tf, 
 		"-region=s" => \$region,
@@ -101,10 +100,6 @@ GetOptions(     "genome=s" => \$genome,
 		"-genome_dir=s" => \$genome_dir,
 		"-motif_diff=s" => \$motif_diff,
 		"-tg=s" => \$tg,
-		"-shuffle=s" => \$shuffle_k,
-		"-shuffle_within" => \$shuffle_within,
-		"-shuffle_between" => \$shuffle_between,
-		"-method=s" => \$method_all_vs_all,
 		"-mut_only" => \$mut_only, 
 		"-mut_pos" => \$mut_pos, 
 		"-overlap=s" => \$overlap,
@@ -129,18 +124,9 @@ if($genome_dir eq "") {
 	$genome_dir = $data;
 }
 
-#if($method_all_vs_all ne "pearson" && $method_all_vs_all ne "spearman" && $method_all_vs_all ne "mutual" && $method_all_vs_all ne "group") {
-#	print STDERR "Unknown method for all vs all comparison\n";
-#	print STDERR "Set to default comparison pearson correlation\n";
-#	$method_all_vs_all = "pearson";
-#}
 
 if($data eq "") {
 	$data = config::read_config()->{'data_folder'};
-}
-if($shuffle_k == 0) { $shuffle_k = 10; }
-if($shuffle_between == 0 && $shuffle_within == 0) {
-	$shuffle_between = 1;
 }
 if($delta_tag == 1 && $delta_threshold == 0) {
 	$delta_threshold = 100;
@@ -191,6 +177,10 @@ if(@strains == 1) {
 for(my $i = 0; $i < @strains; $i++) {
 	$strains[$i] =~ s/,//g;
 	$strains[$i] = uc($strains[$i]);
+}
+
+if(@strains > 2 && $core == 0) {
+	$core = 4;
 }
 
 #Save motif files
@@ -391,134 +381,82 @@ sub screen_and_plot{
 		close $fileHandlesMotif[$i];
 	}
 	if(@strains > 2) {
-#		if($method_all_vs_all eq "") {
-#			$method_all_vs_all = "pearson";
-#		}
 		analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains, $method_all_vs_all);
-#		if($method_all_vs_all eq "pearson") {
-		#	($correlation) = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains, $method_all_vs_all);
-#		} elsif($method_all_vs_all eq "spearman") {
-#			($correlation) = analysis::all_vs_all_spearman(\%block, \%recenter_conversion, \%tag_counts, \@strains);
-#		} elsif($method_all_vs_all eq "mutual") {
-#			($correlation) = analysis::all_vs_all_mutual(\%block, \%recenter_conversion, \%tag_counts, \@strains);
-#		} elsif($method_all_vs_all eq "group") {
-#			($correlation) = analysis::all_vs_all_manual_group(\%block, \%recenter_conversion, \%tag_counts, \@strains);
-#		} else {
-#			print STDERR "Unknown comparison method\n";
-#			exit;
-#		}		
-		open OUT, ">GLMM_script.R";
-		$delete{"GLMM_script.R"} = 1;
-		print OUT "library(lme4)\n";
-		my $print_motif;
+		#Write GLMM scripts per core that will be used
+		my @motif_array;
 		foreach my $motif (keys %index_motifs) {
-			print OUT $motif . " <- read.delim(\"matrix_" . $motif . ".txt\", header=T)\n";
-			$delete{"matrix_" . $motif. ".txt"} = 1;
-			print OUT "write(\"Calculating model for " . $motif . "\", stderr())\n";
-			print OUT "mod_" . $motif . " <- lmer(binding ~ Motif + (1 | Locus) + (1| Strain), data=" . $motif . ")\n";
-			print OUT "pvalue_" . $motif . " <- drop1(mod_" . $motif . ",test=\"Chisq\")\n";
-			print OUT "print(\"" . $motif . "\")\n";
-			print OUT "pvalue_" . $motif . "\n";
+			push @motif_array, $motif;
 		}
-		close OUT;	
-		`Rscript GLMM_script.R > output_GLMM_script.txt`;
-		$delete{"output_GLMM_script.txt"} = 1;
-		#Now analyze the output file
-		print "Motif\tp-value\n";
-		open FH, "<output_GLMM_script.txt";
+		my $part = int((@motif_array)/$core) + 1;
+		my $end_index;
+		my %data_for_threading;
+		for(my $i = 0; $i < $core; $i++) {
+			open OUT, ">GLMM_script_" . ($i + 1) . ".R";
+			$delete{"GLMM_script_" . ($i + 1) . ".R"} = 1;
+			$data_for_threading{$i} = "GLMM_script_" . ($i + 1) . ".R";
+			print OUT "library(lme4)\n";
+			if($part * ($i + 1) > @motif_array) {
+				$end_index = @motif_array;
+			} else {
+				$end_index = $part * ($i + 1);
+			}
+			for(my $j = $i * $part; $j < $end_index; $j++) {
+				print OUT $motif_array[$j] . " <- read.delim(\"matrix_" . $motif_array[$j] . ".txt\", header=T)\n";
+				$delete{"matrix_" . $motif_array[$j]. ".txt"} = 1;
+				print OUT "write(\"Calculating model for " . $motif_array[$j] . "\", stderr())\n";
+				print OUT "mod_" . $motif_array[$j] . " <- lmer(binding ~ Motif + (1 | Locus) + (1| Strain), data=" . $motif_array[$j] . ")\n";
+				print OUT "pvalue_" . $motif_array[$j] . " <- drop1(mod_" . $motif_array[$j] . ",test=\"Chisq\")\n";
+				print OUT "print(\"" . $motif_array[$j] . "\")\n";
+				print OUT "pvalue_" . $motif_array[$j] . "\n";
+			}
+			close OUT;
+		}
+		my $count_fork = 0;
+		for(1 .. $core) {
+			my $pid = fork;
+			if(not $pid) {
+				my $file_thread = $data_for_threading{$count_fork};
+				my $command = "Rscript " . $file_thread . " > output_" . substr($file_thread, 0, length($file_thread) - 2) . ".txt";
+				print $command . "\n";
+				`$command`;
+				exit;
+			}
+			$count_fork++;
+		}
+		for (1 .. $core) {
+			wait();
+		}
+		print "Done with waiting for forks\n";
+		open GLMM, ">GLMM_results.txt";
+		print GLMM "Motif\tp-value\n";
 		my %save_pvalues;
 		my $m_name;
-		foreach my $line (<FH>) {
-			chomp $line;
-			if(substr($line, 0, 3) eq "[1]") {
-			#	print substr($line, 5, length($line) - 6) . "\t";
-				$m_name = substr($line, 5, length($line) - 6);
-				next;
-			}
-			@split = split('\s+', $line);
-			if($split[0] eq "Motif") {
-				if($split[4] eq "<") {
-				#	print $split[5] . "\n";
-					$save_pvalues{$split[5]}{$m_name} = 1;
-				} else {
-					$save_pvalues{$split[4]}{$m_name} = 1;
-				#	print $split[4] . "\n";
+		for(my $i = 0; $i < $core; $i++) {
+			my $output_file = "output_" . substr($data_for_threading{$i}, 0, length($data_for_threading{$i}) - 2) . ".txt";
+			open FH, "<$output_file";
+			foreach my $line (<FH>) {
+				chomp $line;
+				if(substr($line, 0, 3) eq "[1]") {
+					$m_name = substr($line, 5, length($line) - 6);
+					next;
+				}
+				@split = split('\s+', $line);
+				if($split[0] eq "Motif") {
+					if($split[4] eq "<") {
+						$save_pvalues{$split[5]}{$m_name} = 1;
+					} else {
+						$save_pvalues{$split[4]}{$m_name} = 1;
+					}
 				}
 			}
+			close FH;
 		}
-		close FH;
 		foreach my $pvalue ( sort {$a <=> $b } keys %save_pvalues ) {
 			foreach my $motif_name (keys %{$save_pvalues{$pvalue}}) {
-				print $motif_name . "\t" . $pvalue . "\n";
+				print GLMM $motif_name . "\t" . $pvalue . "\n";
 			}
 		}
-#		if($shuffle_between == 1) {
-#			print STDERR "Shuffle relationship between motif score vector and tag count vector\n";
-#		} else {
-#			print STDERR "Shuffle tag count vector for each motif score vector\n";
-#		}
-#		for(my $k = 0; $k < $shuffle_k; $k++) {
-#			#Randomize relationship between motif scores and tag counts
-#			my @shuffle;
-#			my $shuffle;
-#			my %shuffle_tag_counts;
-#			my $random;
-#			my @vector;
-#			#Randomize relationship between tag count vector and motif score vector by shuffeling the order of the tag counts
-#			if($shuffle_between == 1) {
-#				my $run_index = 0;
-#				#Save the tag counts in an shuffle array
-#				foreach my $chr (keys %tag_counts) {
-#					foreach my $pos (keys %{$tag_counts{$chr}}) {
-#						$shuffle[$run_index] = $tag_counts{$chr}{$pos};
-#						$run_index++;
-#					}
-#				}
-#				#Randomly assign the tag counts to chromosome and position
-#				foreach my $chr (keys %tag_counts) {
-#					foreach my $pos (keys %{$tag_counts{$chr}}) {
-#						$random = int(rand(@shuffle));
-#						$shuffle_tag_counts{$chr}{$pos} = $shuffle[$random];
-#						splice(@shuffle, $random, 1);
-#					}
-#				}
-#			#Randomize relationship within tag count vector
-#			} else {
-#				foreach my $chr (keys %tag_counts) {
-#					#Randomize the order of the tag counts within the vector
-#					foreach my $pos (keys %{$tag_counts{$chr}}) {
-#						@vector = split('\t', $tag_counts{$chr}{$pos});
-#						$shuffle = "";
-#						while(@vector > 0) {
-#							$random = int(rand(@vector));
-#							$shuffle .= $vector[$random] . "\t";
-#							splice(@vector, $random, 1);
-#						}
-#						chop $shuffle;
-#						$shuffle_tag_counts{$chr}{$pos} = $shuffle; 
-#					}
-#				}
-#			}
-#			#Call all vs all comparison method for randomized vectors to get a background distribution
-#			my($shuffle_correlation, $pvalue_shuffle) = analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%shuffle_tag_counts, \@strains, $method_all_vs_all);
-#			$shuffle_array[$k] = $shuffle_correlation;
-#			print STDERR "round : " . ($k + 1) . " out of " . $shuffle_k . "\n";
-#		}
-	#	foreach my $m (keys %{$correlation}) {
-	#		print STDERR $m . "\n";
-	#		foreach my $cor (keys %{$correlation->{$m}}) {
-	#			print "\treal data:\t" . $cor . "\n";
-	#		}
-	#		for(my $i = 0; $i < @shuffle_array; $i++) {
-	#			print "\titer: " . $i . ":\t";
-	#			foreach my $cor (keys %{$shuffle_array[$i]->{$m}}) {
-	#				print $cor . "\n";
-	#			}
-	#		}
-	#	}
-	#	exit;
-		#Generate R output files
-#		&generate_all_vs_all_R_files($plots . ".R", $output, $correlation, \@shuffle_array, $pvalue);
+		close GLMM;
 	#Pairwise comparison instead of all vs all - there is no shuffling needed, because t-test is used for statistics
 	} else {
 		#Writes output file per motif for further analysis
@@ -530,6 +468,7 @@ sub screen_and_plot{
 			&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs.R");
 		}
 	}
+	print "We reached the end\n";
 	if($dist_plot == 1) {
 		#Check background distribution
 		my ($dist_plot_ref) = analysis::distance_plot(\%block, \@strains, \%fc, $fc_significant, $effect, $longest_seq, $seq, $delta_tag, $delta_threshold);
@@ -1322,132 +1261,6 @@ sub center_peaks{
 	close OUT;
 }
 
-#Generate R script for the all vs all comparison
-sub generate_all_vs_all_R_files{
-	my $plots = $_[0];
-	my $output = $_[1] . "_all_vs_all.pdf";
-	my $correlation = $_[2];
-	my $correlation_shuffle = $_[3];
-	my $pvalue = $_[4];
-	my $positive = "";
-	my $negative = "";
-	my $positive_count = "";
-	my $negative_count = "";
-	$_ = "" for my ($x, $y, $ks, $max);
-	open OUT, ">", $plots;
-	print STDERR "open $plots\n";
-	print OUT "pdf(\"" . $output . "\", width=10, height=5)\n";
-	print OUT "plot(0, 0, xlim=c(0,0), ylim=c(0,0), main=\"" . $commandline . "\", bty=\'n\', xaxt=\"n\", yaxt=\"n\", col=\"white\", xlab=\"\", ylab=\"\")\n";
-	print OUT "breaks <- seq(-1, 1, by=0.1)\n";
-	print OUT "par(oma=c(0,0,0,0))\n";
-	foreach my $motif (sort {$a cmp $b} keys %{$correlation}) {
-		$ks = "ks <- c(";
-		$x = "x <- c(";
-		$y = "y <- c(";
-		$positive = "";
-		$negative = "";
-		$max = "max <- max(";
-		#Generate vector to calculate a p-value with KS test
-		foreach my $pos (sort {$a <=> $b} keys %{$correlation->{$motif}}) {
-			$x .= $pos . ",";
-			if($pos < 0) {
-				for(my $i = 0; $i < $correlation->{$motif}->{$pos}; $i++) {
-					$negative .= $pos . ",";
-				}
-			} elsif($pos > 0) {
-				for(my $i = 0; $i < $correlation->{$motif}->{$pos}; $i++) {
-					$positive .= $pos . ",";
-				}
-			}
-			$y .= $correlation->{$motif}->{$pos} . ",";
-			for(my $i = 0; $i < $correlation->{$motif}->{$pos}; $i++) {
-				$ks .= $pos . ",";
-			}
-		}
-		if(length($x) > 10) {
-			chop $x;
-			chop $ks;
-		}
-		if(length($y) > 10) {
-			chop $y;
-		}
-		print OUT "print(\"motif: " . $motif . "\")\n";
-		chop $positive;
-		chop $negative;
-		print OUT "pos <- c(" . $positive . ")\n";
-		print OUT "neg <- c(" . $negative . ")\n";
-		$max .= "y,";
-		print OUT $x . ")\n";
-		print OUT $ks . ")\n";
-		print OUT $y . ")\n";
-		print OUT "neg_abs <- abs(neg)\n";
-		print OUT "ks_test_comp <- ks.test(pos, neg_abs)\n";
-		print OUT "print(ks_test_comp\$p.value)\n";
-		#Calculate pvalue for every iteration of shuffling
-		for(my $k = 0; $k < $shuffle_k; $k++) {
-			my $x_shuffle = "x_shuffle_" . $k . " <- c(";
-			my $y_shuffle = "y_shuffle_" . $k . " <- c(";
-			my $ks_shuffle = "ks_shuffle_" . $k . " <- c(";
-			$positive = "";
-			$negative = "";
-			foreach my $pos (sort {$a <=> $b} keys %{$correlation_shuffle->[$k]->{$motif}}) {
-				$x_shuffle .= $pos . ",";
-				$y_shuffle .= $correlation_shuffle->[$k]->{$motif}->{$pos} . ",";
-				for(my $i = 0; $i < $correlation_shuffle->[$k]->{$motif}->{$pos}; $i++) {
-					$ks_shuffle .= $pos . ",";
-				}
-				if($pos < 0) {
-					for(my $i = 0; $i < $correlation_shuffle->[$k]->{$motif}->{$pos}; $i++) {
-						$negative .= $pos . ",";
-					}
-				} elsif($pos > 0) {
-					for(my $i = 0; $i < $correlation_shuffle->[$k]->{$motif}->{$pos}; $i++) {
-						$positive .= $pos . ",";
-					}
-				}
-			}
-			chop $positive;
-			chop $negative;
-			print OUT "pos_shuffle_" . $k . " <- c(" . $positive . ")\n";
-			print OUT "neg_shuffle_" . $k . " <- c(" . $negative . ")\n";
-			print OUT "neg_abs_shuffle_" . $k . " <- abs(neg)\n";
-			print OUT "ks_test_comp <- ks.test(pos_shuffle_" . $k . ", neg_abs_shuffle_" . $k . ")\n";
-			print OUT "print(\"motif: " . $motif . " - shuffle " . $k . "\")\n";
-			print OUT "print(ks_test_comp\$p.value)\n";
-			if(length($x_shuffle) > 10) {
-				chop $x_shuffle;
-				chop $ks_shuffle;
-			}	
-			if(length($y_shuffle) > 10) {
-				chop $y_shuffle;
-			}
-			print OUT $x_shuffle . ")\n";
-			print OUT $y_shuffle . ")\n";
-			print OUT $ks_shuffle . ")\n";
-			print OUT "ks_test_" . $k . " <- ks.test(ks, ks_shuffle_" . $k . ")\n";
-			$max .= "y_shuffle_" . $k . ",";
-		}	
-		#Average over all the p-values (there might be a better method - should be implemented at some point)
-		print OUT "p_value_avg <- mean(ks_test_0\$p.value";
-		for(my $k = 1; $k < $shuffle_k; $k++) {
-			print OUT ", ks_test_" . $k . "\$p.value";
-		}
-		chop $max;
-		print OUT ")\n";
-		print OUT $max . ")\n";
-		print OUT "print(paste(\"Motif: \", \"" . $motif . "\", \"   p value: \", p_value_avg, sep=\"\"))\n";
-		print OUT "write(paste(\"Motif: \", \"" . $motif . "\", \"   p value: \", p_value_avg, sep=\"\"), file=\"pvalue_summary_" . $plots . "\")\n";
-		print OUT "plot(x, y, ylim=c(0, max), main=paste(\"" . $motif . "\\nP-value: \", p_value_avg, sep=\"\"), type=\"l\", xlab=\"Pearson Correlation\", ylab=\"Frequency\")\n";
-		for(my $k = 0; $k < $shuffle_k; $k++) {
-			print OUT "lines(x_shuffle_" . $k . ", y_shuffle_" . $k . ", col=\"lightgrey\", lty=3)\n";
-		}
-		print OUT "lines(x, y, lwd=2, col=\"black\")\n";
-	}
-	print OUT "dev.off()\n";
-	close OUT;
-	`Rscript $plots 2> /dev/null`;
-}
-
 #calculates factorial of number
 sub fakrek{
         my $number = shift;
@@ -1463,4 +1276,10 @@ sub motif_name{
 	$local_seq =~ s/\+//g;
 	$local_seq =~ s/://g;
 	return $local_seq;
+}
+
+sub thread_routine{
+	my $file_thread = $_[0];
+	my $command = "Rscript " . $file_thread . " > output_" . substr($file_thread, 0, length($file_thread) - 2) . ".txt";
+	`$command`;
 }
