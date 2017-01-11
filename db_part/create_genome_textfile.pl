@@ -18,7 +18,7 @@ sub printCMD{
 	print STDERR "\t-data <path to folder with strains mutations> (default defined in config)\n";
 	print STDERR "\t-out <name of the output directory>: Script automatically creates a directory for each strain (default in config)\n";
 	print STDERR "\t-ref <name for reference>: creates folder for reference genome (if nothing is specified folder is called REFERENCE\n";
-	print STDERR "\t-hetero: Genome is heterozygous\n";
+	print STDERR "\t-hetero: Genome is heterozygous (Default: homozygouse)\n";
 	exit;	
 }
 

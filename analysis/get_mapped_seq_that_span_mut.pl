@@ -8,10 +8,11 @@ use Set::IntervalTree;
 use config;
 use general;
 use analysis_tree;
+use Data::Dumper;
 
-$_ = "" for my($output, $data_dir, $genome_dir, $strain);
-$_ = () for my(%peaks, %strand, @split, %tree, %lookup_strain, %last_strain, @tmp_split, %save_id, $tree, @files, $tree_tmp, @strains, %last, $last);
-$_ = 0 for my($hetero, $allele, $line_number, $id);
+$_ = "" for my($output, $data_dir, $genome_dir, $strain, $allele, $chr);
+$_ = () for my(%peaks, %strand, @split, %tree, %lookup_strain, %last_strain, @tmp_split, %save_id, $tree, @files, $tree_tmp, @strains, %last, $last, @chr_split);
+$_ = 0 for my($hetero, $line_number, $id);
 
 sub printCMD {
         print STDERR "Usage:\n";
@@ -43,11 +44,6 @@ GetOptions(   	"files=s{,}" => \@files,
 #First step: Get the sequences for the peaks
 
 #Set variables
-if($hetero == 1) {
-	$allele = 2;
-} else {
-	$allele = 1;
-}
 if($data_dir eq "") {
 	$data_dir = config::read_config()->{'data_folder'};
 }
@@ -78,14 +74,15 @@ if(@strains == 1) {
 for(my $i = 0; $i < @files; $i++) {
 	$files[$i] =~ s/,//g;
 }
-
 print STDERR "Read in mutations\n";
 if(@strains < 1) {
-	($tree, $last) = general::read_strains_mut($strain, $data_dir, $allele);
+	($tree, $last) = general::read_strains_mut($strain, $data_dir);
 } else {
-	($tree, $last) = general::read_mutations_from_two_strains($strains[0], $strains[1], $data_dir, $allele);
+	($tree, $last) = general::read_mutations_from_two_strains($strains[0], $strains[1], $data_dir);
 }
-
+#print Dumper $tree;
+#print Dumper $last;
+#exit;
 my $next = 0;
 my $no_mut = 0;
 my $all_lines = 0;
@@ -110,8 +107,15 @@ foreach my $file (@files) {
 			print OUT $line . "\n";
 		} else {
 			@split = split('\t', $line);
-			if($split[3] + length($split[9]) > $last->{substr($split[2], 3)}->{$allele}->{'pos'}) { $next++; next; }
-			$tree_tmp = $tree->{substr($split[2], 3)}->fetch($split[3], $split[3] + length($split[9]));	
+			@chr_split = split("_", $split[2]);
+			$chr = substr($chr_split[0], 3);
+			if(@chr_split < 2) {
+				$allele = 1;
+			} else {
+				$allele = $chr_split[2];
+			}
+			if($split[3] + length($split[9]) > $last->{$chr}->{$allele}->{'pos'}) { $next++; next; }
+			$tree_tmp = $tree->{$chr}->{$allele}->fetch($split[3], $split[3] + length($split[9]));	
 			if(exists $tree_tmp->[0]->{'mut'}) {
 				print OUT $line . "\n";
 				$printed_lines++;

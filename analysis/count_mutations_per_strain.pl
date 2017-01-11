@@ -1,15 +1,13 @@
 #!/usr/bin/perl
-
-
+BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'};
 use strict;
 use Getopt::Long;
-
-BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'};
 use config;
-#use analysis;
-$_ = () for my(%peaks, @split, @strains, %save, @name, @filename);
+
+$_ = () for my(@split, @strains, %save, @name, @filename);
 $_ = 0 for my($snps, $indels);
 $_ = "" for my ($data, $path);
+
 sub printCMD {
         print STDERR "Usage:\n";
         print STDERR "\t-strains <strains>: Comma separated list to count mutations\n";
@@ -21,33 +19,37 @@ if(@ARGV < 1) {
         &printCMD();
 }
 
-my $param = config::read_config();
+
+my %mandatory = ('-strains' => 1);
+my %convert = map { $_ => 1 } @ARGV;
+config::check_parameters(\%mandatory, \%convert);
+
 
 GetOptions(	"strains=s{,}" => \@strains, 
 		"data=s" => \$data)
-        or die("Error in command line options!\n");
+        or die(&printCMD());
 
+#Set variables
 if($data eq "") {
 	$data = config::read_config()->{'data_folder'};
 }
-
-
 for(my $i = 0; $i < @strains; $i++) {
 	$strains[$i] =~ s/,//g;
 	$strains[$i] = uc($strains[$i]);
 }
 
+#Save mutations per strain
 foreach my $strains (@strains) {
 	if(!-e $data . "/" . uc($strains)) {
+		print STDERR "No mutation data found for " . $strains . "\n";
 		next;
 	}
 	$path = $data . "/" . uc($strains) . "/*mut";
 	my @files = `ls $path 2> /dev/null`;
-	$snps = 0;
-	$indels = 0;
 	print STDERR "Reading in mutations for " . $strains . "\n";
 	foreach my $f (@files) {
-		if(-e $f) {
+		chomp $f;
+		if(!-e $f) {
 			print STDERR "Could not find $f\n";
 			exit;
 		}
@@ -67,21 +69,24 @@ foreach my $strains (@strains) {
 		}
 	}
 }
-
+#Run all pairwise comparisons
 print "Strain comparison\t#SNPs\t#InDels\n";
 for(my $i = 0; $i < @strains - 1; $i++) {
 	for(my $j = $i +1 ; $j < @strains; $j++) {
 		$snps = 0;
 		$indels = 0;
+		#Run through all mutations in strain 1 and see if they exist in strain 2
 		if(exists $save{$strains[$i]}) {
 			foreach my $chr (keys %{$save{$strains[$i]}}) {
 				foreach my $pos (keys %{$save{$strains[$i]}{$chr}}) {
+					#Mutation does not exist - check length and count indel/snp up
 					if(!exists $save{$strains[$j]}{$chr}{$pos}) {
 						if(length($save{$strains[$i]}{$chr}{$pos}) > 1) {
 							$indels++;
 						} else {
 							$snps++;
 						}
+					#Mutation does exist - do string comparison to see if different - check length and count indel/snp up
 					} else {
 						if($save{$strains[$j]}{$chr}{$pos} ne $save{$strains[$i]}{$chr}{$pos}) {
 							if(length($save{$strains[$i]}{$chr}{$pos}) == length($save{$strains[$j]}{$chr}{$pos})) {
@@ -94,9 +99,11 @@ for(my $i = 0; $i < @strains - 1; $i++) {
 				}
 			}
 		}
+		#Check if mutation exists in second strain
 		if(exists $save{$strains[$j]}) {
 			foreach my $chr (keys %{$save{$strains[$j]}}) {
 				foreach my $pos (keys %{$save{$strains[$j]}{$chr}}) {
+					#Just count up if mutation does not exist in first strain - if it exists in both strains it was already counted up in the loop for strain 1
 					if(!exists $save{$strains[$i]}{$chr}{$pos}) {
 						if(length($save{$strains[$j]}{$chr}{$pos}) > 1) {
 							$indels++;
@@ -107,6 +114,7 @@ for(my $i = 0; $i < @strains - 1; $i++) {
 				}
 			}
 		}
+		#Add comma seperators for 1000 pos
 		$snps =~ s/(\d)(?=(\d{3})+(\D|$))/$1\,/g;
 		$indels =~ s/(\d)(?=(\d{3})+(\D|$))/$1\,/g;
 		print "" . $strains[$i] . " vs " . $strains[$j] . "\t" . $snps . "\t" . $indels . "\n";

@@ -6,6 +6,7 @@ use Getopt::Long;
 use config;
 use processing;
 my $config = config::read_config();
+use Data::Dumper;
 
 $_ = "" for my($genome, $file, $output, $start, $filename, $gene_file, $refseq_file, $exon_ref, $header, $data, $line);
 $_ = 0 for my($chr, $exons, $hetero, $allele);
@@ -24,7 +25,7 @@ sub printCMD{
 	print STDERR "\t-refseq_file: File with RefSeq IDs (default in HOMER path defined in config)\n";
 	print STDERR "\t-gene_file: File with Gene IDs (default in HOMER path defined in config)\n";
 	print STDERR "\t-hetero: Strains are heterozygous\n";
-	print STDERR "\t-data: path to mutation data (default specified in config)\n";
+	print STDERR "\t-data_dir: path to mutation data (default specified in config)\n";
         exit;
 }
 
@@ -44,7 +45,7 @@ GetOptions(     "genome=s" => \$genome,
                 "strains=s{,}" => \@strains,
 		"exons" => \$exons,
 		"hetero" => \$hetero,
-		"data=s" => \$data)
+		"data_dir=s" => \$data)
         or die (&printCMD());
 
 #Set variables
@@ -105,16 +106,18 @@ foreach my $chr (sort {$a cmp $b } keys %peaks) {
 			if(!-e $filename) {
 				print STDERR "\t\tCan't open $filename\n";
 				foreach my $start (keys %{$peaks{$chr}}) {
-					$peaks{$chr}{$start}{$strains[$i]} = "";
+					for(my $al = 1; $al <= $allele; $al++) {
+						$peaks{$chr}{$start}{$strains[$i]}{$al} = "";
+					}
 				}
 				next;
 			}
 	                open my $fh_mut, "<", "$filename" or die "Can't open $filename\n";
 			$line = read_file_line($fh_mut);
 			@split = split('\t', $line);
-			#Iverate over every mutation - sorted so we don't have to jump around in the mutation file
+			#Iterate over every mutation - sorted so we don't have to jump around in the mutation file
 			foreach my $start (sort {$a <=> $b} keys %{$peaks{$chr}}) {
-				$peaks{$chr}{$start}{$strains[$i]} = "";
+				$peaks{$chr}{$start}{$strains[$i]}{$al} = "";
 				%exons = ();
 				#Add exons to hash
 				if($exons == 1) {
@@ -134,7 +137,7 @@ foreach my $chr (sort {$a cmp $b } keys %peaks) {
 					}
 					#Run through mutation file till current mutation is greater than end position of exon and save all of these mutations
 					while($line and $split[0] < $exon_split[1]) {
-						$peaks{$chr}{$start}{$strains[$i]} .= $split[0] . "(" . $al . "):" . $split[1] . "->" . $split[2] . ",";
+						$peaks{$chr}{$start}{$strains[$i]}{$al} .= $split[0] . ":" . $split[1] . "->" . $split[2] . ",";
 						$line = read_file_line($fh_mut);
 						if($line) {
 							@split = split('\t', $line); 
@@ -151,19 +154,34 @@ foreach my $chr (sort {$a cmp $b } keys %peaks) {
 open OUT, ">$output";
 print OUT $header;
 for(my $i = 0; $i < @strains; $i++) {
-	print OUT "\t" . $strains[$i];
+	for(my $al = 1; $al <= $allele; $al++) {
+		print OUT "\t" . $strains[$i] . " - " . $al;
+	}
 }
 print OUT "\n";
 foreach my $chr (keys %peaks) {
 	foreach my $start (keys %{$peaks{$chr}}) {
 		print OUT $peaks{$chr}{$start}{'line'};
 		for(my $i = 0; $i < @strains; $i++) {
-			if(length($peaks{$chr}{$start}{$strains[$i]}) > 1) {
-				chop $peaks{$chr}{$start}{$strains[$i]};
+			for(my $al = 1; $al <= $allele; $al++) {
+				if(length($peaks{$chr}{$start}{$strains[$i]}{$al}) > 1) {
+					chop $peaks{$chr}{$start}{$strains[$i]}{$al};
+				}
+				print OUT "\t" . $peaks{$chr}{$start}{$strains[$i]}{$al};
 			}
-			print OUT "\t" . $peaks{$chr}{$start}{$strains[$i]};
 		}
 		print OUT "\n";
 	}
 }
 close OUT;
+
+
+#Read in file line by line
+sub read_file_line {
+        my $fh = shift;
+        if ($fh and my $line = <$fh>) {
+                chomp $line;
+                return $line;
+        }
+        return;
+}

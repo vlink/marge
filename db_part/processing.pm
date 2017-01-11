@@ -3,30 +3,30 @@
 package processing;
 use Data::Dumper;
 
-sub get_reference_position {
-	my $reference_chr = $_[0];
-	my $chr_number = $_[1];
-	my $pos = $_[2];
-	my $end;
-	my $seq;
-	my $general_offset = 5 + length($chr_number);
-	if(@_ > 3) {
-		$end = $_[3];
-	} else {
-		$end = $pos + 1;
-	}
-	$_ = 0 for my($newlines, $length);
-	open my $f, "<", $reference_chr or die "Can't open: " . $reference_chr . "\n";
-	$length = $end - $pos;
-	$newlines = int($pos/50);
-	$byte_offset = $pos + $general_offset  + $newlines;
-	seek($f, $byte_offset, 0);
-	read $f, $seq, $length;	
-	$seq =~ s/\n//g;
-	$seq = uc($seq);
-	close $f;
-	return $seq;
-}
+#sub get_reference_position {
+#	my $reference_chr = $_[0];
+#	my $chr_number = $_[1];
+#	my $pos = $_[2];
+#	my $end;
+#	my $seq;
+#	my $general_offset = 5 + length($chr_number);
+#	if(@_ > 3) {
+#		$end = $_[3];
+#	} else {
+#		$end = $pos + 1;
+#	}
+#	$_ = 0 for my($newlines, $length);
+#	open my $f, "<", $reference_chr or die "Can't open: " . $reference_chr . "\n";
+#	$length = $end - $pos;
+#	$newlines = int($pos/50);
+#	$byte_offset = $pos + $general_offset  + $newlines;
+#	seek($f, $byte_offset, 0);
+#	read $f, $seq, $length;	
+#	$seq =~ s/\n//g;
+#	$seq = uc($seq);
+#	close $f;
+#	return $seq;
+#}
 
 #Method to generate the strain genome out of the mutation files
 sub create_genome {
@@ -62,6 +62,7 @@ sub create_genome {
 		foreach my $strains (keys %strains) {
 			#Read in strain mutation files and create strain chromsome file
 			$mutation_file = $input . "/" . $strains . "/chr" . $chr . "_allele_" . $i . ".mut";
+			print STDERR $mutation_file . "\n";
 			$output = $output_dir . "/" . $strains . "/chr" . $chr . "_allele_" . $i . ".fa";
 			if(!(-e $output_dir . "/" . $strains)) {
 				`mkdir -p $output_dir/$strains`;
@@ -70,7 +71,6 @@ sub create_genome {
 			if(-e $mutation_file) {
 				open FH, "<$mutation_file" or die "Can't open $mutation_file\n";
 				#Add SNPs and InDels into reference genome array
-			#	print STDERR "Add mutations into array\n";
 				foreach my $line (<FH>) {
 					chomp $line;
 					@split_mut = split('\t', $line);
@@ -91,10 +91,13 @@ sub create_genome {
 			print STDERR "\t\t" . $strains . " allele " . $i . "\n";
 			$strain_seq = join("", @cache);
 			open OUT, ">$output" or die "Can't open $output\n";
-			print OUT ">chr" . $chr . "\n";
+#			if($hetero == 0) {
+#				print OUT ">chr" . $chr . "\n";
+#			} else {
+				print OUT ">chr" . $chr . "_allele_" . $i . "\n";
+#			}
 			$strain_seq =~ s/(.{1,50})/$1\n/gs;
 			print OUT $strain_seq;
-			print OUT $strain_seq . "\n";
 			close OUT;
 			$count++;
 			if($count < $number_strains) {
@@ -234,7 +237,6 @@ sub save_transcript {
                 chomp $line;
                 @split = split('\t', $line);
                 if($transcript eq "" || $split[0] eq $transcript) {
-			my %exons = ();
                         $chr = $split[1];
                         $strand = $split[4];
 			$exon = 0;
@@ -252,7 +254,7 @@ sub save_transcript {
                                                 $stop = $parts[1] - 1;
                                                 $peaks{substr($split[1], 3)}{$start} = $stop;
                                                 $exons{$start . "_" . $stop} = $exon;
-                                                $strand{substr($split[1], 3)} = $strand;
+                                                $strand{substr($split[1], 3)}{$split[2]} = $strand;
                                                 $exon++;
                                         }
                                 }
@@ -272,7 +274,7 @@ sub save_transcript {
                                                         $stop = $split[3];
                                                 }
                                                 $peaks{substr($split[1], 3)}{$start} = $stop;
-                                                $strand{substr($split[1], 3)} = $strand;
+                                                $strand{substr($split[1], 3)}{$start} = $strand;
                                                 $exons{$start . "_" . $stop} = $exon;
                                                 $exon++;
                                         }

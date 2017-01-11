@@ -8,6 +8,7 @@ use Set::IntervalTree;
 use config;
 use general;
 use analysis_tree;
+use Data::Dumper; 
 
 $_ = "" for my($file, $output, $data_dir, $genome_dir);
 $_ = () for my(@strains, %peaks, %strand, @split, %tree, %lookup_strain, %last_strain, @tmp_split, %save_id);
@@ -84,21 +85,22 @@ foreach my $line (<FH>) {
 }
 close FH;
 
-for(my $a = 1; $a <= $allele; $a++) {
+#for(my $a = 1; $a <= $allele; $a++) {
 	#Read in strains data
 	print STDERR "Loading shift vectors\n";
 	for(my $i = 0; $i < @strains; $i++) {
-		my($tree_ref, $last, $lookup) = general::read_strains_data($strains[$i], $data_dir, $allele, "ref_to_strain");
+		my($tree_ref, $last, $lookup) = general::read_strains_data($strains[$i], $data_dir, "ref_to_strain");
 		$tree{$strains[$i]} = $tree_ref;
 		$lookup_strain{$strains[$i]} = $lookup;
 		$last_strain{$strains[$i]} = $last;
 	}
-	#Get sequnecs for every peak
+	print "ID: " . $id . "\n";
+	#Get sequences for every peak
 	if($id == 0) {
-		analysis::get_seq_for_peaks($output, \%peaks, \@strains, $genome_dir, $a, $line_number, 0, 0, \%tree, \%lookup_strain, \%last_strain, \%strand);
+		analysis::get_seq_for_peaks($output, \%peaks, \@strains, $genome_dir, $allele, $line_number, 0, 0, \%tree, \%lookup_strain, \%last_strain, \%strand);
 	} else {
 		my $tmp = "tmp_" . rand(10) . ".txt";
-		my ($seq, $long, $mut) = analysis::get_seq_for_peaks($tmp, \%peaks, \@strains, $genome_dir, $a, $line_number, 0, 0, \%tree, \%lookup_strain, \%last_strain, \%strand);
+		my ($seq, $long, $mut) = analysis::get_seq_for_peaks($tmp, \%peaks, \@strains, $genome_dir, $allele, $line_number, 0, 0, \%tree, \%lookup_strain, \%last_strain, \%strand);
 		`rm $tmp`;
 		open OUT, ">$output";
 		foreach my $header (keys %{$seq}) {
@@ -107,4 +109,4 @@ for(my $a = 1; $a <= $allele; $a++) {
 		}
 		close OUT;
 	}
-}
+#}

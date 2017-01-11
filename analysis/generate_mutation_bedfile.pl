@@ -6,14 +6,13 @@ use config;
 use general;
 
 $_ = "" for my($path, $output, $chr, $data);
-$_ = () for my(@strains, @iles, @split, @files);
-$_ = 0 for my($hetero, $allele, $exists);
+$_ = () for my(@strains, @split, @files);
+$_ = 0 for my($exists);
 
 sub printCMD {
         print STDERR "Usage:\n";
         print STDERR "\t-strains <strains>: Comma-separated list of strains\n";
 	print STDERR "\t-data <data folder>: Default specified in config\n";
-	print STDERR "\t-hetero: strain is heterozygous\n";
         exit;
 }
 
@@ -27,17 +26,11 @@ my %convert = map { $_ => 1 } @ARGV;
 config::check_parameters(\%mandatory, \%convert);
 
 GetOptions(     "data=s" => \$data,
-		"hetero" => \$hetero,
                 "strains=s{,}" => \@strains)
         or die("Error in command line options!\n");
 
 if($data eq "") {
 	$data = config::read_config()->{'data_folder'};
-}
-if($hetero == 1) {
-	$allele = 2;
-} else {
-	$allele = 1;
 }
 
 for(my $i = 0; $i < @strains; $i++) {
