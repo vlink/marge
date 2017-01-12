@@ -1181,7 +1181,6 @@ sub center_peaks{
 		close TMP_MOTIF;
 	}
 	my $command = "homer2 find -i " . $tmp_out . " -m tmp_scan_motif_" . $ab . ".txt -offset 0 > output_tmp.txt";
-	print $command . "\n";
 	`$command`;
 	open FH, "<output_tmp.txt";
 	#Summarize and merge the peaks between the strains, so we know their exact position within the peak
@@ -1198,7 +1197,7 @@ sub center_peaks{
 			foreach my $pos (keys %{$block{$position}{$motif}}) {		
 				for(my $i = 0; $i < @strains; $i++) {
 					for(my $al = 1; $al <= $allele; $al++) {
-						$dist_to_center = int(length($seq->{$position . "_" . $strains[$i]} . "_" . $al)/2 - ($pos + ($block{$position}{$motif}{$pos}{'length'}/2)));
+						$dist_to_center = int(length($seq->{$position . "_" . $strains[$i] . "_" . $al})/2 - ($pos + ($block{$position}{$motif}{$pos}{'length'}/2)));
 						if(abs($dist_to_center) < abs($peak_center)) {
 							$peak_center = $dist_to_center;
 							$closest_motif = $pos;

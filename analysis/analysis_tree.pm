@@ -96,12 +96,11 @@ sub analyze_motifs{
 		@tmp_split = split("_", $header[0]);
 		$chr_num = substr($tmp_split[0], 3);
 		$allele_num = $header[4];
-		if($chr_num !~ /\d+/ && !exists $lookup->{$header[3]}->{$chr_num}->{$allele_num}) {
+		if($chr_num !~ /\d+/ && !exists $lookup->{$header[3]}->{$chr_num}) {
 			print STDERR "Skip analysis of chromosome " . $chr_num . " allele " . $allele_num . " in analyze_motifs\n";
-			print STDERR $chr_num . "\t" . $header[3] . "\t" . $allele_num . "\n";
 		}
-		if(exists $lookup->{$header[3]}->{$chr_num}->{$allele_num}) {
-			$chr_num = $lookup->{$header[3]}->{$chr_num}->{$allele_num};
+		if(exists $lookup->{$header[3]}->{$chr_num}) {
+			$chr_num = $lookup->{$header[3]}->{$chr_num};
 		}
 		#Check if there is a interval tree for this strain and chromosome
 		if(defined $tree->{$header[3]}->{$chr_num}->{$allele_num}) {
@@ -172,12 +171,12 @@ sub merge_block {
 					for(my $al = 1; $al <= $allele; $al++) {
 						$shift_vector = 0;
 						$chr_num = substr((split('_', $chr_pos))[0], 3);
-						if($chr_num !~ /\d+/ && !exists $lookup->{$strains[$i]}->{$chr_num}->{$al}) {
+						if($chr_num !~ /\d+/ && !exists $lookup->{$strains[$i]}->{$chr_num}) {
 							print STDERR "Skip analysis of chromosome " . $chr_num . " allele " . $al . " in merge_block\n";
 							next;
 						}
-						if(exists $lookup->{$strains[$i]}->{$chr_num}->{$al}) {
-							$chr_num = $lookup->{$strains[$i]}->{$chr_num}->{$al};
+						if(exists $lookup->{$strains[$i]}->{$chr_num}) {
+							$chr_num = $lookup->{$strains[$i]}->{$chr_num};
 						}
 						if(!exists $diff{$strains[$i]}->{$al}) {
 							$diff{$strains[$i]}->{$al} = 0;
@@ -352,7 +351,7 @@ sub distance_plot{
 			next;
 		}
 		#Define the offset, because sequences are differently long but so the center of the sequence is different - the longest sequence is used so all sequences will be able to fit
-		$offset = int(($longest_seq - length($seq->{$last_line . "_" . $strains[0]}))/2);
+		$offset = int(($longest_seq - length($seq->{$last_line . "_" . $strains[0] . "_1"}))/2);
 		foreach my $motif (keys %{$block{$last_line}}) {
 			foreach my $pos (keys %{$block{$last_line}{$motif}}) {
 				for(my $i = 0; $i < @strains; $i++) {
@@ -519,7 +518,7 @@ sub analyze_motif_pos{
 		$current_pos = $header[1];
 		for(my $i = 0; $i < @strains; $i++) {
 			for(my $al = 1; $al <= $allele; $al++) {
-				if($chr_num !~ /\d+/ && !exists $lookup->{$strains[$i]}->{$chr_num}->{$al}) {
+				if($chr_num !~ /\d+/ && !exists $lookup->{$strains[$i]}->{$chr_num}) {
 					print STDERR "Skip analysis of chromosome " . $chr_num . " allele " . $al . " in analyze_motifs_pos\n";
 				}
 				if(exists $lookup->{$strains[$i]}->{$chr_num}) {
@@ -776,7 +775,6 @@ sub open_filehandles{
 		$del{$filename} = 1;
 	#	my $fh = cacheout ">", $filename or die "Can'topen $filename: $!\n"; 
 		open my $fh, ">", $filename or die "Can't open $filename: $!\n";
-		print $filename . "\n";
 		$fileHandlesMotif[$motifs{$motif}] = $fh;
 	}
 	return (\@fileHandlesMotif, \%del);
