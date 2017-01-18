@@ -313,6 +313,7 @@ sub output_motifs{
 		#	$fileHandlesMotif[$index_motifs{$motif}]->print($tag_counts{$curr_chr}{$curr_pos});
 			print OUT $motif . "\t" . $chr_pos . "\t";
 			print OUT $tag_counts{$curr_chr}{$curr_pos};
+			print $chr_pos . "\t" . $motif . "\n";
 			foreach my $motif_pos (keys %{$block{$chr_pos}{$motif}}) {
 				for(my $i = 0; $i < @strains; $i++) {
 					for(my $al = 1; $al <= $allele; $al++) {
@@ -361,6 +362,7 @@ sub output_motifs{
 					print OUT $diff{$strains[$i]}{$al} . "\t";
 				}
 			}
+			print Dumper %existance;
 			#output number of mutations in peak for this motif
 			for(my $i = 0; $i < @strains; $i++) {
 				for(my $al = 1; $al <= $allele; $al++) {
@@ -915,6 +917,7 @@ sub get_seq_for_peaks {
 	if(@_ > 11) {
 		%strand = %{$_[11]};
 	}
+	my $first_line;
 	$line_number = $line_number * @strains;
 	for(my $i = 0; $i < @strains; $i++) {
 		foreach my $chr (keys %peaks) {
@@ -923,20 +926,6 @@ sub get_seq_for_peaks {
 				$allele_num = $al;
 				$no_shift = 0;
 				#Start with offset for first line
-				$general_offset = 5 + length($chr);
-				if(exists $lookup->{$strains[$i]}->{$chr_num}) {
-					$chr_num = $lookup->{$strains[0]}->{$chr};
-				}
-				if($chr !~ /\d+/ && !exists $lookup->{$strains[$i]}->{$chr}) {
-				#	print STDERR "Skip peaks for chromosome " . $chr . " in get_seq_for_peaks\n";
-					print STDERR "Skip peaks for chromosome " . $chr . " allele " . $allele_num . " in get_seq_for_peaks\n";
-					next;
-				}
-			#	$current_tree = $tree->{$strains[$i]}->{$chr_num};
-				$current_tree = $tree->{$strains[$i]}->{$chr_num}->{$allele_num};
-				if(!defined $current_tree) {
-					$no_shift = 1;
-				}
 			#	$filename = $data . "/" . uc($strains[$i]) . "/chr" . $chr . "_allele_1.fa";
 				$filename = $data . "/" . uc($strains[$i]) . "/chr" . $chr . "_allele_" . $allele_num . ".fa";
 				if(!-e $filename) {
@@ -956,6 +945,22 @@ sub get_seq_for_peaks {
 					}
 					next;	
 				}	
+				$first_line = `head -n1 $filename`;
+			#	$general_offset = 5 + length($chr);
+				$general_offset = length($first_line);
+				if(exists $lookup->{$strains[$i]}->{$chr_num}) {
+					$chr_num = $lookup->{$strains[0]}->{$chr};
+				}
+				if($chr !~ /\d+/ && !exists $lookup->{$strains[$i]}->{$chr}) {
+				#	print STDERR "Skip peaks for chromosome " . $chr . " in get_seq_for_peaks\n";
+					print STDERR "Skip peaks for chromosome " . $chr . " allele " . $allele_num . " in get_seq_for_peaks\n";
+					next;
+				}
+			#	$current_tree = $tree->{$strains[$i]}->{$chr_num};
+				$current_tree = $tree->{$strains[$i]}->{$chr_num}->{$allele_num};
+				if(!defined $current_tree) {
+					$no_shift = 1;
+				}
 				open my $fh, "<", $filename or die "Can't open $filename: $!\n";
 				#Save file in filehandle to access it via byteOffsets
 				$fileHandles[0] = $fh;
@@ -1060,6 +1065,7 @@ sub all_vs_all_comparison {
 	my $tag_counts = $_[2];
 	my @strains = @{$_[3]};
 	my $allele = $_[4];
+	my $score = $_[5];
 	my $same = 0;
 	my $value = 0;
 	my $all = keys %{$block};
@@ -1081,7 +1087,8 @@ sub all_vs_all_comparison {
 							$motif_matrix{$motif}{$pos}{$strains[$i]}{$al} = 0;
 							$motif_matrix_number{$motif}{$pos}{$strains[$i]}{$al} = 0;
 						}
-						if($block->{$pos}->{$motif}->{$motif_pos}->{$strains[$i]}->{$al} > 5) {
+						if($block->{$pos}->{$motif}->{$motif_pos}->{$strains[$i]}->{$al} > $score->{$motif}) {
+					#	if($block->{$pos}->{$motif}->{$motif_pos}->{$strains[$i]}->{$al} > 5) {
 							$motif_matrix{$motif}{$pos}{$strains[$i]}{$al}++;
 						}
 						$motif_matrix_number{$motif}{$pos}{$strains[$i]}{$al} += $block->{$pos}->{$motif}->{$motif_pos}->{$strains[$i]}->{$al};
