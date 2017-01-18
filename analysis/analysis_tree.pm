@@ -10,6 +10,7 @@ use Statistics::RankCorrelation;;
 use Data::Dumper;
 use Storable;
 use Statistics::R;
+use Memory::Usage;
 
 $_ = () for my(@split, %PWM, @tmp_split, %comp);
 $comp{'A'} = 'T';
@@ -20,48 +21,92 @@ $comp{'-'} = '-';
 $comp{'N'} = 'N';
 
 #Write header for mutation distribution plots
+#sub write_header{
+#	my @fileHandlesMotif = @{$_[0]};
+#	my @strains = @{$_[1]};
+#	my $fc = $_[2];
+#	my $delta = $_[3];
+#	my $allele = $_[4];
+#	for(my $files = 0; $files < @fileHandlesMotif; $files++) {
+#		$fileHandlesMotif[$files]->print("motif\tpos\t");
+#		for(my $i = 0; $i < @strains; $i++) {
+#			for(my $al = 1; $al <= $allele; $al++) {
+#				$fileHandlesMotif[$files]->print("tg " . $strains[$i] . " - " . $al . "\t");
+#			}
+#		}
+#		#Check if foldchange is set 
+#		if($fc == 0) {
+#			for(my $i = 0; $i < @strains - 1; $i++) {
+#				for(my $j = $i + 1; $j < @strains; $j++) {
+#					for(my $a1 = 1; $a1 <= $allele; $a1++) {
+#						for(my $a2 = 1; $a2 <= $allele; $a2++) {
+#							if($delta == 1) {
+#								$fileHandlesMotif[$files]->print("delta of tg" . $strains[$i] . "-" . $a1 . " vs " . $strains[$j] . "-" . $a2 . "\t");
+#							} else {
+#								$fileHandlesMotif[$files]->print("log2 fc ". $strains[$i] . "-" . $a1 . " vs " . $strains[$j] . "-" . $a2 . "\t");
+#							}
+#						}
+#					}
+#				}
+#			}
+#		}
+#		for(my $i = 0; $i < @strains; $i++) {
+#			for(my $al = 1; $al <= $allele; $al++) {
+#				$fileHandlesMotif[$files]->print("motif_score " . $strains[$i] . "-" . $al . "\t");
+#			}
+#		}
+#		for(my $i = 0; $i < @strains; $i++) {
+#			for(my $al = 1; $al <= $allele; $al++) {
+#				$fileHandlesMotif[$files]->print("exist " . $strains[$i] . "-" . $al . "\t");
+#			}
+#		}
+#		$fileHandlesMotif[$files]->print("#motifs\n");
+#	}
+#}
+
 sub write_header{
-	my @fileHandlesMotif = @{$_[0]};
+	my $filehandle = $_[0];
 	my @strains = @{$_[1]};
 	my $fc = $_[2];
 	my $delta = $_[3];
 	my $allele = $_[4];
-	for(my $files = 0; $files < @fileHandlesMotif; $files++) {
-		$fileHandlesMotif[$files]->print("motif\tpos\t");
-		for(my $i = 0; $i < @strains; $i++) {
-			for(my $al = 1; $al <= $allele; $al++) {
-				$fileHandlesMotif[$files]->print("tg " . $strains[$i] . " - " . $al . "\t");
-			}
+	print $filehandle "motif\tpos\t";
+	for(my $i = 0; $i < @strains; $i++) {
+		for(my $al = 1; $al <= $allele; $al++) {
+			print $filehandle "tg " . $strains[$i] . " - " . $al . "\t";
 		}
-		#Check if foldchange is set 
-		if($fc == 0) {
-			for(my $i = 0; $i < @strains - 1; $i++) {
-				for(my $j = $i + 1; $j < @strains; $j++) {
-					for(my $a1 = 1; $a1 <= $allele; $a1++) {
-						for(my $a2 = 1; $a2 <= $allele; $a2++) {
-							if($delta == 1) {
-								$fileHandlesMotif[$files]->print("delta of tg" . $strains[$i] . "-" . $a1 . " vs " . $strains[$j] . "-" . $a2 . "\t");
-							} else {
-								$fileHandlesMotif[$files]->print("log2 fc ". $strains[$i] . "-" . $a1 . " vs " . $strains[$j] . "-" . $a2 . "\t");
-							}
+	}
+	#Check if foldchange is set 
+	if($fc == 0) {
+		for(my $i = 0; $i < @strains - 1; $i++) {
+			for(my $j = $i + 1; $j < @strains; $j++) {
+				for(my $a1 = 1; $a1 <= $allele; $a1++) {
+					for(my $a2 = 1; $a2 <= $allele; $a2++) {
+						if($delta == 1) {
+							print $filehandle "delta of tg" . $strains[$i] . "-" . $a1 . " vs " . $strains[$j] . "-" . $a2 . "\t";
+						} else {
+							print $filehandle "log2 fc ". $strains[$i] . "-" . $a1 . " vs " . $strains[$j] . "-" . $a2 . "\t";
 						}
 					}
 				}
 			}
 		}
-		for(my $i = 0; $i < @strains; $i++) {
-			for(my $al = 1; $al <= $allele; $al++) {
-				$fileHandlesMotif[$files]->print("motif_score " . $strains[$i] . "-" . $al . "\t");
-			}
-		}
-		for(my $i = 0; $i < @strains; $i++) {
-			for(my $al = 1; $al <= $allele; $al++) {
-				$fileHandlesMotif[$files]->print("exist " . $strains[$i] . "-" . $al . "\t");
-			}
-		}
-		$fileHandlesMotif[$files]->print("#motifs\n");
 	}
+	for(my $i = 0; $i < @strains; $i++) {
+		for(my $al = 1; $al <= $allele; $al++) {
+			print $filehandle "motif_score " . $strains[$i] . "-" . $al . "\t";
+		}
+	}
+	for(my $i = 0; $i < @strains; $i++) {
+		for(my $al = 1; $al <= $allele; $al++) {
+			print $filehandle "exist " . $strains[$i] . "-" . $al . "\t";
+		}
+	}
+	print $filehandle "#motifs\n";
 }
+
+
+
 
 #This method summarizes the output of HOMER's motif scan for every peak. It generates a hash that contains all motifs for all strains per peak
 #The method reports the motif positions from the beginning of the sequence and takes care of shifting through indels within this sequence
@@ -239,7 +284,8 @@ sub output_motifs{
 	$_ = () for my($curr_chr, $curr_pos, %diff, %existance);
 	my $block_ref = $_[0];
 	my %block = %$block_ref;
-	my @fileHandlesMotif = @{$_[1]};
+	my $output_file = $_[1];
+#	my @fileHandlesMotif = @{$_[1]};
 	my %tag_counts = %{$_[2]};
 	my @strains = @{$_[3]};
 	my %index_motifs = %{$_[4]};
@@ -251,6 +297,7 @@ sub output_motifs{
 	my $motif_diff = $_[7];
 	my $motif_diff_percentage = $_[8];
 	my $allele = $_[9];
+	open OUT, ">$output_file";
         #Now run through all motifs and see if they are in all the other strains
 	foreach my $chr_pos (keys %block) {
 		@split = split("_", $chr_pos);
@@ -262,8 +309,10 @@ sub output_motifs{
 		foreach my $motif (keys %{$block{$chr_pos}}) {
 			%diff = 0;
 			%existance = ();
-			$fileHandlesMotif[$index_motifs{$motif}]->print($motif . "\t" . $chr_pos . "\t");
-			$fileHandlesMotif[$index_motifs{$motif}]->print($tag_counts{$curr_chr}{$curr_pos});
+		#	$fileHandlesMotif[$index_motifs{$motif}]->print($motif . "\t" . $chr_pos . "\t");
+		#	$fileHandlesMotif[$index_motifs{$motif}]->print($tag_counts{$curr_chr}{$curr_pos});
+			print OUT $motif . "\t" . $chr_pos . "\t";
+			print OUT $tag_counts{$curr_chr}{$curr_pos};
 			foreach my $motif_pos (keys %{$block{$chr_pos}{$motif}}) {
 				for(my $i = 0; $i < @strains; $i++) {
 					for(my $al = 1; $al <= $allele; $al++) {
@@ -303,26 +352,32 @@ sub output_motifs{
 				$max_motif = 0;
 			}
 			if($fc_exists == 1) {
-				$fileHandlesMotif[$index_motifs{$motif}]->print($fc{$curr_chr}{$curr_pos});
+			#	$fileHandlesMotif[$index_motifs{$motif}]->print($fc{$curr_chr}{$curr_pos});
+				print OUT $fc{$curr_chr}{$curr_pos};
 			}
 			for(my $i = 0; $i < @strains; $i++) {
 				for(my $al = 1; $al <= $allele; $al++) {
-					$fileHandlesMotif[$index_motifs{$motif}]->print($diff{$strains[$i]}{$al} . "\t");
+				#	$fileHandlesMotif[$index_motifs{$motif}]->print($diff{$strains[$i]}{$al} . "\t");
+					print OUT $diff{$strains[$i]}{$al} . "\t";
 				}
 			}
 			#output number of mutations in peak for this motif
 			for(my $i = 0; $i < @strains; $i++) {
 				for(my $al = 1; $al <= $allele; $al++) {
 					if(exists $existance{$strains[$i]}{$al}) {
-						$fileHandlesMotif[$index_motifs{$motif}]->print("1\t");
+					#	$fileHandlesMotif[$index_motifs{$motif}]->print("1\t");
+						print OUT "1\t";
 					} else {
-						$fileHandlesMotif[$index_motifs{$motif}]->print("0\t");
+					#	$fileHandlesMotif[$index_motifs{$motif}]->print("0\t");
+						print OUT "0\t";
 					}
 				}
 			}
-			$fileHandlesMotif[$index_motifs{$motif}]->print("" . (keys %{$block{$chr_pos}{$motif}}) . "\n");
+		#	$fileHandlesMotif[$index_motifs{$motif}]->print("" . (keys %{$block{$chr_pos}{$motif}}) . "\n");
+			print OUT "" . (keys %{$block{$chr_pos}{$motif}}) . "\n";
 		}
 	}
+	close OUT;
 }
 
 
@@ -737,7 +792,7 @@ sub get_motif_name{
 		@clean1 = split("BestGuess:", $name);
 		#Get rid of best guess
 		#Get rif of everything in paraenthesis 
-		@clean2 = split/[\(,\/]+/, $clean1[-1];
+		@clean2 = split/[\(,\/,\:]+/, $clean1[-1];
 		$name = $clean2[0];
 		@underscore = split('_', $clean2[0]);
 		for(my $i = @underscore - 1; $i > 0; $i--) {
@@ -750,16 +805,26 @@ sub get_motif_name{
 		@paren = split('\(', $name);
 		$name = $paren[0];
 	} else {
-		@clean1 = split(',', $name);
+		@clean1 = split(':', $name);
 		if(@clean1 > 1) {
-			$name = $clean1[1];
-		} else {
 			$name = $clean1[0];
+		} else {
+			@clean1 = split/[\,,\:]+/, $name;
+			if(@clean1 > 1) {
+				$name = $clean1[1];
+			} else {
+				$name = $clean1[0];
+			}
+			@clean2 = split/[\(,\/,\:]+/, $name;
+			$name = $clean2[0];
 		}
-		@clean2 = split/[\(,\/]+/, $name;
-		$name = $clean2[0];
 	}
 	$name =~ s/-/_/g;
+	$name =~ s/ //g;
+	$name =~ s/://g;
+	$name =~ s/\)//g;
+	$name =~ s/\(//g;
+	$name =~ s/\|/_/g;
 	return $name;
 }
 
@@ -876,7 +941,6 @@ sub get_seq_for_peaks {
 				$filename = $data . "/" . uc($strains[$i]) . "/chr" . $chr . "_allele_" . $allele_num . ".fa";
 				if(!-e $filename) {
 					print STDERR "Can't open $filename\n";
-				#	print STDERR "Exclude chromosome $chr from analysis\n";
 					print STDERR "Exclude chromosome $chr allele $allele_num from analysis\n";
 					delete $peaks{$chr};
 					#Also remove it from sequence 
@@ -904,14 +968,14 @@ sub get_seq_for_peaks {
 					if($no_shift == 0) {
 						$ref_start = $current_tree->fetch($working_start, $working_start + 1);
 						if(!exists $ref_start->[0]->{'shift'}) {
-							$shift_vector = $last->{$strains[$i]}->{$chr}->{$allele}->{'shift'};
+							$shift_vector = $last->{$strains[$i]}->{$chr}->{$allele_num}->{'shift'};
 						} else {
 							$shift_vector = $ref_start->[0]->{'shift'};
 						}
 						$working_start = $working_start + $shift_vector;
 						$ref_start = $current_tree->fetch($working_stop, $working_stop + 1);
 						if(!exists $ref_start->[0]->{'shift'}) {
-							$shift_vector = $last->{$strains[$i]}->{$chr}->{$allele}->{'shift'};
+							$shift_vector = $last->{$strains[$i]}->{$chr}->{$allele_num}->{'shift'};
 						} else {
 							$shift_vector = $ref_start->[0]->{'shift'};
 						}
@@ -928,6 +992,8 @@ sub get_seq_for_peaks {
 					$newlines = int(($working_start)/50);
 					#Calculate offset - general offset is first line
 					$byte_offset = $working_start + $general_offset + $newlines;
+					#When we are looking at a sequences that is totally gone in the current strain then length can be negative
+					if($length < 0) { $length = 1;} 
 					seek($fileHandles[0], $byte_offset, 0);
 					read $fileHandles[0], $seq, $length;
 					$seq =~ s/\n//g;
@@ -1042,4 +1108,28 @@ sub all_vs_all_comparison {
 		}
 		close OUT;
 	}
+}
+
+sub split_into_single_files{
+	my $file = $_[0];
+	open (my $fh, "<$file");
+	my $current_motif = "";
+	my $short_name;
+	my $open = 0;
+	while (my $line = <$fh>) {
+		chomp $line;
+		@split = split('\t', $line);
+		$short_name = &get_motif_name($split[3]);		
+		if($short_name ne $current_motif) {
+			if($open == 1) {
+				close OUT;
+			}
+			open OUT, ">" . $file . "_" . $short_name;
+			$current_motif = $short_name;
+			$open = 1;
+		}
+		print OUT $line . "\n";
+	}
+	close OUT;
+	close($fh);
 }

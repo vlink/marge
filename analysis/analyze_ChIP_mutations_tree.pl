@@ -11,6 +11,7 @@ use analysis_tree;
 use Set::IntervalTree;
 use Data::Dumper;
 use threads;
+use Memory::Usage;
 
 $_ = "" for my($genome, $file, $tf, $filename, $output, $ab, $plots, $overlap, $tmp_out, $data, $tmp_center, $genome_dir, $center_dist, $tf_dir_name);
 $_ = () for my(@strains, %peaks, @split, @split_one, @split_two, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, %block, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %lookup_strain, %last_strain, %tree, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, $pvalue, %wrong_direction, %right_direction, %middle_direction, %tf_for_direction, %num_of_peaks, @tf_dir, $seq);
@@ -60,6 +61,9 @@ sub printCMD {
 	print STDERR "\t-method <pearson|spearman|mutual|group> (Default: pearson)\n";
         exit;
 }
+
+#my $mu = Memory::Usage->new();
+#my $start_mu = $mu->record('starting work');
 
 if(@ARGV < 1) {
         &printCMD();
@@ -188,6 +192,9 @@ my ($index_motif_ref, $PWM_ref, $score_ref) = analysis::read_motifs($tf);
 %index_motifs = %$index_motif_ref;
 %motif_scan_scores = %$score_ref;
 
+print STDERR "Save index file\n";
+#$mu->record('read_motifs');
+
 #Add motifs to direction hash
 if(@tf_dir == 1 && $tf_dir[0] eq "all") {
 	foreach my $motif (keys %index_motifs) {
@@ -268,6 +275,7 @@ foreach my $line (<FH>) {
 }
 close FH;
 
+#$mu->record('after save peaks');
 if($line_number == 1) {
 	print STDERR "File was empty!\n";
 	print STDERR "No peaks are saved!\n";
@@ -287,8 +295,11 @@ for(my $i = 0; $i < @strains; $i++) {
 	$lookup_strain{$strains[$i]} = $lookup;
 	$last_strain{$strains[$i]} = $last;
 }
+#$mu->record('saved strains data');
+
 #Get all sequences from file and save them in hash
 &get_files_from_seq();
+#$mu->record('got sequencing files');
 
 #Center peaks - if not set save seq in seq_recentered for downstream analysis
 if($center == 1) {
@@ -337,6 +348,7 @@ if($keep == 0) {
 	}
 }
 
+#$mu->dump();
 sub get_files_from_seq{
         $tmp_out = "tmp" . rand(15);
         $delete{$tmp_out} = 1;
@@ -361,29 +373,45 @@ sub screen_and_plot{
 	if(@_ > 7) {
 		$no_motif = 1;
 	}
-	my ($fileHandlesMotif_ref, $delete_ref) = analysis::open_filehandles(\%index_motifs, \%delete, $output);
-	@fileHandlesMotif = @$fileHandlesMotif_ref;
-	%delete = %$delete_ref;
+#	my ($fileHandlesMotif_ref, $delete_ref) = analysis::open_filehandles(\%index_motifs, \%delete, $output);
+#	@fileHandlesMotif = @$fileHandlesMotif_ref;
+#	%delete = %$delete_ref;
 	#Scan sequences with HOMER scanMotifGenome
 	analysis::scan_motif_with_homer($tmp_out, $tmp_out_main_motif, $tf);
 	$delete{$tmp_out_main_motif} = 1;
 	#Write header files for motif summary
-	analysis::write_header(\@fileHandlesMotif, \@strains, 0, $delta_tag, $allele);
+#	analysis::write_header(\@fileHandlesMotif, \@strains, 0, $delta_tag, $allele);
 	print STDERR "compare strain-specific motifs\n";
-	#Analyze the motifs between the different strains and save convert the output file into a hash
-	my ($block_ref) = analysis::analyze_motifs($tmp_out_main_motif, \@strains, \%tree, \%lookup_strain, \%last_strain, $allele, $region);
-	my %block = %$block_ref;
-	#Merge the hash (when overlap is set, merge the overlapping motifs, calculate motif score if motif was not found)
-	$block_ref = analysis::merge_block(\%block, $overlap, \@strains, $seq, \%tree, \%lookup_strain, \%last_strain, $allele);
-	%block = %$block_ref;
-	if($print_block == 1) {
-		print Dumper %block;
-		exit; 
+	my $total_motifs = keys %index_motifs;
+	my $count_motifs = 1;
+	#For memory purposes - split the file into the different motifs
+	analysis::split_into_single_files($tmp_out_main_motif);
+	foreach my $motifs (keys %index_motifs) {
+		print STDERR "\tProcessing " . $count_motifs . " of " . $total_motifs . "(" . ($count_motifs/$total_motifs)*100 . "%)\r";
+		$count_motifs++;
+		my $tmp_file = $tmp_out_main_motif . "_" . $motifs;
+		$delete{$tmp_file} = 1;
+		#Analyze the motifs between the different strains and save convert the output file into a hash
+		my ($block_ref) = analysis::analyze_motifs($tmp_file, \@strains, \%tree, \%lookup_strain, \%last_strain, $allele, $region);
+		my %block = %$block_ref;
+#		$mu->record('saved all motifs');
+		#Merge the hash (when overlap is set, merge the overlapping motifs, calculate motif score if motif was not found)
+		$block_ref = analysis::merge_block(\%block, $overlap, \@strains, $seq, \%tree, \%lookup_strain, \%last_strain, $allele);
+		%block = %$block_ref;
+#		$mu->record('merged all motifs in block');
+		if($print_block == 1) {
+			print Dumper %block;
+			exit; 
+		}
+		analysis::output_motifs(\%block, $output . "_" . $motifs . ".txt", \%tag_counts, \@strains, \%index_motifs, \%fc, \%recenter_conversion, $motif_diff, $motif_diff_percentage, $allele);
+		$delete{$output . "_" . $motifs. ".txt"} = 1;
+	#	analysis::output_motifs(\%block, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, \%fc, \%recenter_conversion, $motif_diff, $motif_diff_percentage, $allele);
 	}
-	analysis::output_motifs(\%block, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, \%fc, \%recenter_conversion, $motif_diff, $motif_diff_percentage, $allele);
-	for(my $i = 0; $i < @fileHandlesMotif; $i++) {
-		close $fileHandlesMotif[$i];
-	}
+	print STDERR "\n\n";
+#	for(my $i = 0; $i < @fileHandlesMotif; $i++) {
+#		close $fileHandlesMotif[$i];
+#	}
+#	$mu->record('output all motifs');
 	if(@strains > 2) {
 		analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains, $allele);
 		#Write GLMM scripts per core that will be used
@@ -471,7 +499,6 @@ sub screen_and_plot{
 			&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs.R");
 		}
 	}
-	print "We reached the end\n";
 	if($dist_plot == 1) {
 		#Check background distribution
 		my ($dist_plot_ref) = analysis::distance_plot(\%block, \@strains, \%fc, $fc_significant, $effect, $longest_seq, $seq, $delta_tag, $delta_threshold, $allele);
@@ -1283,6 +1310,8 @@ sub motif_name{
 	$local_seq =~ s/\-/_/g;
 	$local_seq =~ s/\+//g;
 	$local_seq =~ s/://g;
+	$local_seq =~ s/ //g;
+	$local_seq =~ s/\)//g;
 	return $local_seq;
 }
 
