@@ -14,7 +14,7 @@ use threads;
 use Memory::Usage;
 
 $_ = "" for my($genome, $file, $tf, $filename, $output, $ab, $plots, $overlap, $tmp_out, $data, $tmp_center, $genome_dir, $center_dist, $tf_dir_name);
-$_ = () for my(@strains, %peaks, @split, @split_one, @split_two, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, %block, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %lookup_strain, %last_strain, %tree, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, $pvalue, %wrong_direction, %right_direction, %middle_direction, %tf_for_direction, %num_of_peaks, @tf_dir, $seq);
+$_ = () for my(@strains, %peaks, @split, @split_one, @split_two, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, %block, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %lookup_strain, %last_strain, %tree, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, $pvalue, %wrong_direction, %right_direction, %middle_direction, %tf_for_direction, %num_of_peaks, @tf_dir, $seq, @strains_working);
 $_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $filter_out, $print_block, $core);
 my $line_number = 1;
 
@@ -254,19 +254,19 @@ foreach my $line (<FH>) {
 	$peaks{substr($split[1], 3)}{$split[2]} = $split[3];
 	$tag_counts{substr($split[1], 3)}{$split[2]} = "";		
 	$fc{substr($split[1], 3)}{$split[2]} = "";
-	for(my $i = @split - @strains; $i < @split; $i++) {
+	for(my $i = @split - (@strains * $allele); $i < @split; $i++) {
 		$tag_counts{substr($split[1], 3)}{$split[2]} .= $split[$i] . "\t";
 	}
 	#Save foldchange 
 	if($delta_tag == 0) {
-		for(my $i = @split - @strains; $i < @split - 1; $i++) {
+		for(my $i = @split - (@strains * $allele); $i < @split - 1; $i++) {
 			for(my $j = $i + 1; $j < @split; $j++) {
 				$fc{substr($split[1], 3)}{$split[2]} .= log(($split[$i]+1)/($split[$j]+1))/log(2) . "\t";
 			} 
 		}
 	#Save differences between tag counts not ratio
 	} else {
-		for(my $i = @split - @strains; $i < @split - 1; $i++) {
+		for(my $i = @split - (@strains * $allele); $i < @split - 1; $i++) {
 			for(my $j = $i + 1; $j < @split; $j++) {
 				$fc{substr($split[1], 3)}{$split[2]} .= ($split[$i] - $split[$j]) . "\t";
 			}
@@ -274,7 +274,6 @@ foreach my $line (<FH>) {
 	}
 }
 close FH;
-
 #$mu->record('after save peaks');
 if($line_number == 1) {
 	print STDERR "File was empty!\n";
@@ -394,7 +393,7 @@ sub screen_and_plot{
 		#Analyze the motifs between the different strains and save convert the output file into a hash
 		my ($block_ref) = analysis::analyze_motifs($tmp_file, \@strains, \%tree, \%lookup_strain, \%last_strain, $allele, $region);
 		my %block = %$block_ref;
-#		$mu->record('saved all motifs');
+		#		$mu->record('saved all motifs');
 		#Merge the hash (when overlap is set, merge the overlapping motifs, calculate motif score if motif was not found)
 		$block_ref = analysis::merge_block(\%block, $overlap, \@strains, $seq, \%tree, \%lookup_strain, \%last_strain, $allele);
 		%block = %$block_ref;
@@ -413,7 +412,7 @@ sub screen_and_plot{
 #	}
 #	$mu->record('output all motifs');
 	if(@strains > 2) {
-		analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains, $allele);
+		analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains, $allele, \%motif_scan_scores);
 		#Write GLMM scripts per core that will be used
 		my @motif_array;
 		foreach my $motif (keys %index_motifs) {
@@ -874,6 +873,15 @@ sub generate_R_files {
 	$_ = 0 for my($cal_pvalue, $count_obs_one, $count_obs_two, $count_obs_both, $f, $max, $min, $max_delta, $min_delta, $start_pos, $fac, $number_peaks, $width_boxplot, $add_additional, $num_of_muts, $x_count);
 	$_ = "" for my($dist_one, $dist_two, $dist_no_mut, $delta_one, $delta_two, $delta_no_mut, $tmp_delta, $filename, $h);
 	$_ = () for(%ranked_order, %mut_one, %mut_two);
+	if($allele == 1) {
+		@strains_working = @strains;
+	} else {
+		for(my $i = 0; $i < @strains; $i++) {
+			for(my $j = 1; $j <= $allele; $j++) {
+				push @strains_working, $strains[$i] . "_allele_" . $j;
+			}
+		}
+	}
 	my $output_R_file = $_[0];
 	my $output_R_file_den = substr($output_R_file, 0, length($output_R_file) - 2) . "_density.R";
 	my $output = $_[1];
@@ -887,7 +895,9 @@ sub generate_R_files {
 	print R_DEN "plot(0, 0, xlim=c(0,0), ylim=c(0,0), main=\"" . $commandline . "\", bty=\'n\', xaxt=\"n\", yaxt=\"n\", col=\"white\", xlab=\"\", ylab=\"\")\n";
 	foreach my $motif (sort {$index_motifs{$a} cmp $index_motifs{$b}} keys %index_motifs) {
 		$filename = $output . "_" . $motif . ".txt";
+		print $filename . "\n";
 		$num_of_muts = `wc -l $filename`;
+		print "num of muts: " . $num_of_muts . "\n";
 		@split = split('\s+', $num_of_muts);
 		if($split[0] == 1) {
 			print STDERR "No occurrences of " . $motif . " found close to " . $ab . "\n";
@@ -908,42 +918,44 @@ sub generate_R_files {
 			}
 			chomp $line;
 			@split = split('\t', $line);
-			for(my $i = 0; $i < @strains - 1; $i++) {
-				for(my $j = $i + 1; $j < @strains; $j++) {
+			for(my $i = 0; $i < @strains_working - 1; $i++) {
+				for(my $j = $i + 1; $j < @strains_working; $j++) {
 					#Save the foldchange between the strains
-					#Rank order the peaks according to bidning strenght to give the plot the sigmodial shape
-					$ranked_order{$strains[$i] . "_" . $strains[$j]}{$split[1]} = $split[1 + @strains + $i + $j]; 
-					if($split[1 + @strains + $i + $j] > $max) {
-						$max = $split[1 + @strains + $i + $j];
+					print "i: " . $i . "\tj: " . $j . "\n";
+					print $strains_working[$i] . "\t" . $strains_working[$j] . "\n";
+					#Rank order the peaks according to bindning strenght to give the plot the sigmodial shape
+					$ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$split[1]} = $split[1 + @strains_working + $i + $j]; 
+					if($split[1 + @strains_working + $i + $j] > $max) {
+						$max = $split[1 + @strains_working + $i + $j];
 					}
-					if($split[1 + @strains + $i + $j] < $min) {
-						$min = $split[1 + @strains + $i + $j];
+					if($split[1 + @strains_working + $i + $j] < $min) {
+						$min = $split[1 + @strains_working + $i + $j];
 					}
-					$fac = &fakrek(@strains - 1); 
-					$start_pos = (2 + (@strains * 2) + $fac);
+					$fac = &fakrek(@strains_working - 1); 
+					$start_pos = (2 + (@strains_working * 2) + $fac);
 					#Save all peaks that have mutation in strain one or strain two
 				#	if(($split[$start_pos + $i] > 0 && $split[$start_pos + $j] == 0) {
 					if($split[$start_pos + $i] > 0 && ($split[$start_pos + $j] != $split[$start_pos + $i])) {
-						$mut_one{$strains[$i] . "_" . $strains[$j]}{$split[1]} = 1;
+						$mut_one{$strains_working[$i] . "_" . $strains_working[$j]}{$split[1]} = 1;
 					}
 				#	if($split[$start_pos + $j] > 0 && $split[$start_pos + $i] == 0) {
 					if($split[$start_pos + $j] > 0 && ($split[$start_pos + $i] != $split[$start_pos + $j])) {
-						$mut_two{$strains[$i] . "_" . $strains[$j]}{$split[1]} = 1;
+						$mut_two{$strains_working[$i] . "_" . $strains_working[$j]}{$split[1]} = 1;
 					}
-					$start_pos = (2 + @strains + $fac);
+					$start_pos = (2 + @strains_working + $fac);
 					#Define the delte score (min/max for y axis definition)
-					$delta_score{$strains[$i] . "_" . $strains[$j]}{$split[1]} = $split[$start_pos + $i] - $split[$start_pos + $j];
-					if($delta_score{$strains[$i] . "_" . $strains[$j]}{$split[1]} > $max_delta) {
-						$max_delta = $delta_score{$strains[$i] . "_" . $strains[$j]}{$split[1]};
+					$delta_score{$strains_working[$i] . "_" . $strains_working[$j]}{$split[1]} = $split[$start_pos + $i] - $split[$start_pos + $j];
+					if($delta_score{$strains[$i] . "_" . $strains_working[$j]}{$split[1]} > $max_delta) {
+						$max_delta = $delta_score{$strains_working[$i] . "_" . $strains_working[$j]}{$split[1]};
 					}
-					if($delta_score{$strains[$i] . "_" . $strains[$j]}{$split[1]} < $min_delta) {
-						$min_delta = $delta_score{$strains[$i] . "_" . $strains[$j]}{$split[1]};
+					if($delta_score{$strains_working[$i] . "_" . $strains_working[$j]}{$split[1]} < $min_delta) {
+						$min_delta = $delta_score{$strains_working[$i] . "_" . $strains_working[$j]}{$split[1]};
 					}
 				}
 			}
 		}
-		for(my $i = 0; $i < @strains - 1; $i++) {
-			for(my $j = $i + 1; $j < @strains; $j++) {
+		for(my $i = 0; $i < @strains_working - 1; $i++) {
+			for(my $j = $i + 1; $j < @strains_working; $j++) {
 				$dist_one = "one <- c(";
 				$dist_two = "two <- c(";
 				$dist_no_mut = "no_mut <- c(";
@@ -958,11 +970,11 @@ sub generate_R_files {
 				}
 				$cal_pvalue = 0;
 				#Add some space on the right for the barplots
-				$add_additional =  ((keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) * 0.25);
+				$add_additional =  ((keys %{$ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}}) * 0.25);
 				if($add_additional < 20) { $add_additional = 20; }
 				$width_boxplot = $add_additional;
 				if($add_additional < 31) { $width_boxplot = 45; }
-				$number_peaks = (keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}});
+				$number_peaks = (keys %{$ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}});
 				#Make ticks bigger because scale is bigger
 				if($delta_tag == 1) {
 					$delta_tick = ((abs($min) + abs($max))/50);
@@ -973,24 +985,24 @@ sub generate_R_files {
 					$fc_low = (log(1/$fc_significant)/log(2));
 					$fc_high = log($fc_significant)/log(2);
 				}
-				print R "plot(c(0," . ((keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) + $add_additional) . "), c(" . $min . " - (" . $delta_tick . " * 2), " . $max . " + (" . $delta_tick . " * 2)), col=\"white\", xlab=\"rank-ordered peaks\", ylab=\"FC " . $strains[$i] . " vs " . $strains[$j] . " (log2)\", main=\"" . $strains[$i] . " vs " . $strains[$j] . "\\n$motif\")\n"; 
+				print R "plot(c(0," . ((keys %{$ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}}) + $add_additional) . "), c(" . $min . " - (" . $delta_tick . " * 2), " . $max . " + (" . $delta_tick . " * 2)), col=\"white\", xlab=\"rank-ordered peaks\", ylab=\"FC " . $strains_working[$i] . " vs " . $strains_working[$j] . " (log2)\", main=\"" . $strains_working[$i] . " vs " . $strains_working[$j] . "\\n$motif\")\n"; 
 				print R "abline(c(0,0), c(0,0))\n";
 				#Sort by fold change value between strains
-				foreach my $rank (sort {$ranked_order{$strains[$i] . "_" . $strains[$j]}{$a} <=> $ranked_order{$strains[$i] . "_" . $strains[$j]}{$b}} keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) {
+				foreach my $rank (sort {$ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$a} <=> $ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$b}} keys %{$ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}}) {
 					#Check if this peak has a mutation in strain one
-					if(exists $mut_one{$strains[$i] . "_" . $strains[$j]}{$rank}) {
-						$dist_one .= sprintf("%.2f", $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank}) . ",";
+					if(exists $mut_one{$strains_working[$i] . "_" . $strains_working[$j]}{$rank}) {
+						$dist_one .= sprintf("%.2f", $ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank}) . ",";
 						if($delta == 1) {
-							print R "points(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", pch=8, col=\"red\")\n";
-						 	print R "segments(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", x1 = " . $x_count . ", y1= " . ($ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} + $delta_score{$strains[$i] . "_" . $strains[$j]}{$rank}) . ", col=\"red\")\n";
+							print R "points(" . $x_count . ", " . $ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} . ", pch=8, col=\"red\")\n";
+						 	print R "segments(" . $x_count . ", " . $ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} . ", x1 = " . $x_count . ", y1= " . ($ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} + $delta_score{$strains_working[$i] . "_" . $strains_working[$j]}{$rank}) . ", col=\"red\")\n";
 						} else {
-							print R "segments(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . " - " . $delta_tick . ", x1 = " . $x_count . ", y1= " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . "+" . $delta_tick . ", col=\"red\")\n";
+							print R "segments(" . $x_count . ", " . $ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} . " - " . $delta_tick . ", x1 = " . $x_count . ", y1= " . $ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} . "+" . $delta_tick . ", col=\"red\")\n";
 						}
 						#Create output file for motif mutations that follow or do not follow tag counts
 						if(exists $tf_for_direction{$motif}) {
-							if($ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} < $fc_low) {
+							if($ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} < $fc_low) {
 								$right_direction{$motif}{$rank} = 1;
-							} elsif($fc_low < $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} && $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} < $fc_high) {
+							} elsif($fc_low < $ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} && $ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} < $fc_high) {
 								$middle_direction{$motif}{$rank} = 1;
 							} else {
 								$wrong_direction{$motif}{$rank} = 1;
@@ -999,19 +1011,19 @@ sub generate_R_files {
 
 					}
 					#Check if this peak has a mutation in strain two
-					if(exists $mut_two{$strains[$i] . "_" . $strains[$j]}{$rank}) {
-						$dist_two .= sprintf("%.2f", $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank}) . ",";
+					if(exists $mut_two{$strains_working[$i] . "_" . $strains_working[$j]}{$rank}) {
+						$dist_two .= sprintf("%.2f", $ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank}) . ",";
 						if($delta == 1) {
-							print R "points(" . $x_count . ", " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", pch=8, col=\"blue\")\n";
-							print R "segments(" . $x_count . " + 0.1, " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", x1 = " . $x_count . " + 0.1" . ", y1= " . ($ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} + $delta_score{$strains[$i] . "_" . $strains[$j]}{$rank}) . ", col=\"blue\")\n";
+							print R "points(" . $x_count . ", " . $ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} . ", pch=8, col=\"blue\")\n";
+							print R "segments(" . $x_count . " + 0.1, " . $ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} . ", x1 = " . $x_count . " + 0.1" . ", y1= " . ($ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} + $delta_score{$strains_working[$i] . "_" . $strains_working[$j]}{$rank}) . ", col=\"blue\")\n";
 						} else {
-							print R "segments(" . $x_count . " + 0.1, " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . ", x1 = " . $x_count . " + 0.1" . ", y1= " . $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} . "+ (2*" . $delta_tick . "), col=\"blue\")\n";
+							print R "segments(" . $x_count . " + 0.1, " . $ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} . ", x1 = " . $x_count . " + 0.1" . ", y1= " . $ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} . "+ (2*" . $delta_tick . "), col=\"blue\")\n";
 						}
 						#Create output file for motif mutations that follow or do not follow tag counts
 						if(exists $tf_for_direction{$motif}) {
-							if($ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} < $fc_low) {
+							if($ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} < $fc_low) {
 								$wrong_direction{$motif}{$rank} = 1;
-							} elsif($fc_low < $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} && $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank} < $fc_high) {
+							} elsif($fc_low < $ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} && $ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} < $fc_high) {
 								$middle_direction{$motif}{$rank} = 1;
 							} else {
 								$right_direction{$motif}{$rank} = 1;
@@ -1020,8 +1032,8 @@ sub generate_R_files {
 
 					}
 					#If this peak does not have a mutation add it to the dist_no_mut vector, which will be used to plot the background distribution
-					if(!exists $mut_one{$strains[$i] . "_" . $strains[$j]}{$rank} && !exists $mut_two{$strains[$i] . "_" . $strains[$j]}{$rank}) {
-						$dist_no_mut .= sprintf("%.2f", $ranked_order{$strains[$i] . "_" . $strains[$j]}{$rank}) . ",";
+					if(!exists $mut_one{$strains_working[$i] . "_" . $strains_working[$j]}{$rank} && !exists $mut_two{$strains_working[$i] . "_" . $strains_working[$j]}{$rank}) {
+						$dist_no_mut .= sprintf("%.2f", $ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$rank}) . ",";
 					}
 					$x_count++;	
 				}
@@ -1050,15 +1062,15 @@ sub generate_R_files {
 				print R $dist_two . "\n";
 				print R $dist_no_mut . "\n";
 				#Print the legends
-				print R "legend(\"topleft\", c(paste(\"" . $strains[$i] . ": \", length(one), \" muts\", sep=\"\"), paste(\"" . $strains[$j] . ": \", length(two), \" muts\", sep=\"\")), col=c(\"red\", \"blue\", \"white\"), pch=c(16, 16), bty=\'n\')\n";
-				print R "legend(\"bottomleft\", \"peaks: " . (keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}}) . " with " . $motif . "/" . $considered . " total (" . sprintf("%.2f", ((keys %{$ranked_order{$strains[$i] . "_" . $strains[$j]}})/$considered) * 100) . "%)\", bty=\'n\')\n";
+				print R "legend(\"topleft\", c(paste(\"" . $strains_working[$i] . ": \", length(one), \" muts\", sep=\"\"), paste(\"" . $strains_working[$j] . ": \", length(two), \" muts\", sep=\"\")), col=c(\"red\", \"blue\", \"white\"), pch=c(16, 16), bty=\'n\')\n";
+				print R "legend(\"bottomleft\", \"peaks: " . (keys %{$ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}}) . " with " . $motif . "/" . $considered . " total (" . sprintf("%.2f", ((keys %{$ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}})/$considered) * 100) . "%)\", bty=\'n\')\n";
 				#Add the barplots for the t-tests and calculate the p-values for the comparisons of the curves
 				if($cal_pvalue == 1) {
 					print R "boxplot(c(no_mut), c(one), c(two), boxwex=" . (int($width_boxplot/3) - 10) . ", add=TRUE, at=c(" . ($number_peaks + int($add_additional/3)) . "," . ($number_peaks + (int($add_additional/3) * 2)) . "," . ($number_peaks + (int($add_additional/3) * 3)) . "), col=c(\"grey\", \"red\", \"blue\"), outline=FALSE, axes=FALSE)\n";
 					print R "p_one <- t.test(no_mut, one)\$p.value\n";
 					print R "p_two <- t.test(no_mut, two)\$p.value\n";
 					print R "p_both <- t.test(one, two)\$p.value\n";
-					print R "legend(\"bottomright\", c(\"p-values: \", paste(\"" . $strains[$i] . " vs bg: \", round(p_one, digits=6), sep=\"\"), paste(\"" . $strains[$j] . " vs bg: \", round(p_two, digits=6), sep=\"\"), paste(\"" . $strains[$i] . " vs " . $strains[$j] . ": \", round(p_both, digits=6), sep=\"\")), text.col=c(\"black\", \"red\", \"blue\", \"purple\"), cex=0.8, bty=\'n\')\n"; 
+					print R "legend(\"bottomright\", c(\"p-values: \", paste(\"" . $strains_working[$i] . " vs bg: \", round(p_one, digits=6), sep=\"\"), paste(\"" . $strains_working[$j] . " vs bg: \", round(p_two, digits=6), sep=\"\"), paste(\"" . $strains_working[$i] . " vs " . $strains_working[$j] . ": \", round(p_both, digits=6), sep=\"\")), text.col=c(\"black\", \"red\", \"blue\", \"purple\"), cex=0.8, bty=\'n\')\n"; 
 				}
 				
 				#Kernel density plots
@@ -1075,11 +1087,11 @@ sub generate_R_files {
 					print R_DEN "ks_all_one <- ks.test(no_mut, one)\n";
 					print R_DEN "ks_all_two <- ks.test(no_mut, two)\n";
 					print R_DEN "ks_one_two <- ks.test(one, two)\n";
-					print R_DEN "plot(kde_all, col=\"black\", lwd=4, main=\"" . $strains[$i] . " vs " . $strains[$j] . "\\n$motif\", ylim=c(0, y_max))\n";
+					print R_DEN "plot(kde_all, col=\"black\", lwd=4, main=\"" . $strains_working[$i] . " vs " . $strains_working[$j] . "\\n$motif\", ylim=c(0, y_max))\n";
 					print R_DEN "lines(kde_one, col=\"red\", lwd=4)\n";
 					print R_DEN "lines(kde_two, col=\"blue\", lwd=4)\n";
-					print R_DEN "legend(\"topleft\", c(\"background\", \"" . $strains[$i] . "\", \"" . $strains[$j] . "\"), col=c(\"black\", \"red\", \"blue\"), lty=1, lwd=4, bty=\'n\', cex=0.8)\n";
-					print R_DEN "legend(\"topright\", c(\"p-values: \", paste(\"" . $strains[$i] . " vs bg: \", round(ks_all_one\$p.value, digits=6), sep=\"\"), paste(\"" . $strains[$j] . " vs bg: \", round(ks_all_two\$p.value, digits=6), sep=\"\"), paste(\"" . $strains[$i] . " vs " . $strains[$j] . ": \", round(ks_one_two\$p.value, digits=6), sep=\"\")), text.col=c(\"black\", \"red\", \"blue\", \"purple\"), cex=0.8, bty=\'n\')\n";
+					print R_DEN "legend(\"topleft\", c(\"background\", \"" . $strains_working[$i] . "\", \"" . $strains_working[$j] . "\"), col=c(\"black\", \"red\", \"blue\"), lty=1, lwd=4, bty=\'n\', cex=0.8)\n";
+					print R_DEN "legend(\"topright\", c(\"p-values: \", paste(\"" . $strains_working[$i] . " vs bg: \", round(ks_all_one\$p.value, digits=6), sep=\"\"), paste(\"" . $strains_working[$j] . " vs bg: \", round(ks_all_two\$p.value, digits=6), sep=\"\"), paste(\"" . $strains_working[$i] . " vs " . $strains_working[$j] . ": \", round(ks_one_two\$p.value, digits=6), sep=\"\")), text.col=c(\"black\", \"red\", \"blue\", \"purple\"), cex=0.8, bty=\'n\')\n";
 				}
 			}
 		} 
