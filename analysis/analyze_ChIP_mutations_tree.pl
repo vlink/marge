@@ -142,8 +142,8 @@ $analyze_motif = 1;
 if($center == 1 && $center_dist eq "") {
 	$center_dist = 25;
 }
-if(($ab eq "" || $genome eq "") && $dist_plot == 1) {
-	print STDERR "Distance plots not possible without anchor TF and genome\n";
+if(($ab eq "" || $genome eq "" || $center == 0) && $dist_plot == 1) {
+	print STDERR "Distance plots not possible without anchor TF, genome, and center for the motif\n";
 	print STDERR "Do not generate distance plots!\n";
 	$dist_plot = 0;
 	$effect = 0;
@@ -404,6 +404,17 @@ sub screen_and_plot{
 		}
 		analysis::output_motifs(\%block, $output . "_" . $motifs . ".txt", \%tag_counts, \@strains, \%index_motifs, \%fc, \%recenter_conversion, $motif_diff, $motif_diff_percentage, $allele);
 		$delete{$output . "_" . $motifs. ".txt"} = 1;
+		if($dist_plot == 1) {
+			#Check background distribution
+			my ($dist_plot_ref) = analysis::distance_plot(\%block, \@strains, \%fc, $fc_significant, $effect, $longest_seq, $seq, $delta_tag, $delta_threshold, $allele);
+			%{$dist_plot{$motifs}} = %{$dist_plot_ref};
+		}
+		if($delta == 1) {
+			&generate_delta_files($output, $plots . "_delta.R");
+		}
+		if(@strains > 2) {
+			analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains, $allele, \%motif_scan_scores);
+		}
 	#	analysis::output_motifs(\%block, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, \%fc, \%recenter_conversion, $motif_diff, $motif_diff_percentage, $allele);
 	}
 	print STDERR "\n\n";
@@ -412,7 +423,6 @@ sub screen_and_plot{
 #	}
 #	$mu->record('output all motifs');
 	if(@strains > 2) {
-		analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains, $allele, \%motif_scan_scores);
 		#Write GLMM scripts per core that will be used
 		my @motif_array;
 		foreach my $motif (keys %index_motifs) {
@@ -498,18 +508,12 @@ sub screen_and_plot{
 			&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs.R");
 		}
 	}
-	if($dist_plot == 1) {
-		#Check background distribution
-		my ($dist_plot_ref) = analysis::distance_plot(\%block, \@strains, \%fc, $fc_significant, $effect, $longest_seq, $seq, $delta_tag, $delta_threshold, $allele);
-		%dist_plot = %{$dist_plot_ref};
+	if($dist_plot==1) {
 		my $bg_folder = config::read_config()->{'motif_background_path'};
 		my ($delete_ref, $dist_plot_background_ref) = analysis::background_dist_plot($bg_folder, \%index_motifs, \%delete, \%motif_scan_scores, $genome, $ab, $region, $longest_seq);
 		%delete = %{$delete_ref};
 		%dist_plot_background = %{$dist_plot_background_ref};
 		&generate_dist_plot($plots . "_distance.R", $no_motif, $longest_seq);	
-	}
-	if($delta == 1) {
-		&generate_delta_files($output, $plots . "_delta.R");
 	}
 	#Run a second round where mutation main TF is excluded
 	if($ab ne "") {
@@ -583,7 +587,8 @@ sub generate_dist_plot{
 		$longest_seq++;
 	}
 	$x = "x <- c(";
-	for(my $i = 0; $i < $longest_seq + $region; $i++) {
+#	for(my $i = 0; $i < $longest_seq + $region; $i++) {
+	for(my $i = 0; $i < $longest_seq; $i++) {
 		$x .= ($i - int($longest_seq/2)) . ",";
 	}
 	if(length($x) > 8) {
@@ -620,7 +625,8 @@ sub generate_dist_plot{
 	print R $max_main . "1)\n";
 	#Add background
 	$y = $tmp_ab . "_background <- c(";
-	for(my $i = (int($longest_seq + $region)/2)* -1; $i < int($longest_seq + $region)/2; $i++) {
+#	for(my $i = (int($longest_seq + $region)/2)* -1; $i < int($longest_seq + $region)/2; $i++) {
+	for(my $i = int($longest_seq/2)* -1; $i < int($longest_seq/2); $i++) {
 		if(!exists $dist_plot_background{$ab}{$i}) {
 			$y .= "0,";
 		} else {
@@ -640,7 +646,8 @@ sub generate_dist_plot{
 		$first = 0;
 		$strain_number = 1;
 		$y = $motif_print . "_background <- c(";
-		for(my $i = int(($longest_seq + $region)/2) * -1; $i < int(($longest_seq + $region)/2); $i++) {
+	#	for(my $i = int(($longest_seq + $region)/2) * -1; $i < int(($longest_seq + $region)/2); $i++) {
+		for(my $i = int($longest_seq/2) * -1; $i < int($longest_seq/2); $i++) {
 			if(!exists $dist_plot_background{$motif}{$i}) {
 				$y .= "0,";
 			} else {
@@ -895,9 +902,7 @@ sub generate_R_files {
 	print R_DEN "plot(0, 0, xlim=c(0,0), ylim=c(0,0), main=\"" . $commandline . "\", bty=\'n\', xaxt=\"n\", yaxt=\"n\", col=\"white\", xlab=\"\", ylab=\"\")\n";
 	foreach my $motif (sort {$index_motifs{$a} cmp $index_motifs{$b}} keys %index_motifs) {
 		$filename = $output . "_" . $motif . ".txt";
-		print $filename . "\n";
 		$num_of_muts = `wc -l $filename`;
-		print "num of muts: " . $num_of_muts . "\n";
 		@split = split('\s+', $num_of_muts);
 		if($split[0] == 1) {
 			print STDERR "No occurrences of " . $motif . " found close to " . $ab . "\n";
@@ -921,8 +926,6 @@ sub generate_R_files {
 			for(my $i = 0; $i < @strains_working - 1; $i++) {
 				for(my $j = $i + 1; $j < @strains_working; $j++) {
 					#Save the foldchange between the strains
-					print "i: " . $i . "\tj: " . $j . "\n";
-					print $strains_working[$i] . "\t" . $strains_working[$j] . "\n";
 					#Rank order the peaks according to bindning strenght to give the plot the sigmodial shape
 					$ranked_order{$strains_working[$i] . "_" . $strains_working[$j]}{$split[1]} = $split[1 + @strains_working + $i + $j]; 
 					if($split[1 + @strains_working + $i + $j] > $max) {

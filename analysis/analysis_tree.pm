@@ -313,7 +313,6 @@ sub output_motifs{
 		#	$fileHandlesMotif[$index_motifs{$motif}]->print($tag_counts{$curr_chr}{$curr_pos});
 			print OUT $motif . "\t" . $chr_pos . "\t";
 			print OUT $tag_counts{$curr_chr}{$curr_pos};
-			print $chr_pos . "\t" . $motif . "\n";
 			foreach my $motif_pos (keys %{$block{$chr_pos}{$motif}}) {
 				for(my $i = 0; $i < @strains; $i++) {
 					for(my $al = 1; $al <= $allele; $al++) {
@@ -325,7 +324,8 @@ sub output_motifs{
 						if($block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}{$al} > $max_motif) {
 							$max_motif = $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}{$al};
 						}
-						$diff{$strains[$i]}{$al} = $diff{$strains[$i]} + $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}{$al};
+					#	$diff{$strains[$i]}{$al} = $diff{$strains[$i]} + $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}{$al};
+						$diff{$strains[$i]}{$al} = $diff{$strains[$i]}{$al} + $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}{$al};
 					}
 				}
 				#not binary motif existance, but difference in motif score is used to determine if there is a mutation within the peak
@@ -362,7 +362,6 @@ sub output_motifs{
 					print OUT $diff{$strains[$i]}{$al} . "\t";
 				}
 			}
-			print Dumper %existance;
 			#output number of mutations in peak for this motif
 			for(my $i = 0; $i < @strains; $i++) {
 				for(my $al = 1; $al <= $allele; $al++) {
@@ -418,7 +417,8 @@ sub distance_plot{
 						}
 						#add 1 to counter whenever there is a motif at this position in a peak
 						for(my $l = 0; $l < $block{$last_line}{$motif}{$pos}{'length'}; $l++) {
-							$dist_plot{$motif}{$strains[$i]}{($pos + $l + $offset)}++;
+							$dist_plot{$strains[$i]}{($pos + $l + $offset)}++;
+						#	$dist_plot{$motif}{$strains[$i]}{($pos + $l + $offset)}++;
 						}
 					}
 				}
