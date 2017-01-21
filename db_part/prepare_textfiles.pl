@@ -8,8 +8,9 @@ BEGIN {push @INC, '/home/vlink/mouse_strains/marge/db_part'};
 use processing;
 use Set::IntervalTree;
 use threads;
+use Data::Dumper;
 
-$_ = "" for my($snp, $indel, @chr, $current_chr, $data, $filename, $out, $genome, $merge_line, $genome_dir, $ref_name);
+$_ = "" for my($snp, $indel, @chr, $current_chr, $data, $filename, $out, $genome, $merge_line, $genome_dir, $ref_name, $sort_check);
 $_ = 0 for my($filter, $same, $help, $hetero, $add, $force, $lines_f1, $lines_f2, $lines_all, $line_count, $num_strains, $outfile_open, $last_h, $none_number_chromosome, $core, $no_genome);
 $_ = () for my($lines, @merge_line, $header, @split, $snps, $indels, $f1, $f2, %strains_to_use, @mut_files, @header, @strains_to_use, @s, @i, %lookup_no_number, %lookup_number, @last, @allele, @all, @test_spaces);
 
@@ -43,7 +44,8 @@ if(@ARGV < 1) {
 	&printCMD();
 }
 
-my %mandatory = ('-files' => 1, '-strains' => 1, '-genome' => 1);
+my %mandatory = ('-files' => 1, '-genome' => 1);
+#my %mandatory = ('-files' => 1, '-strains' => 1, '-genome' => 1);
 my %convert = map { $_ => 1 } @ARGV;
 config::check_parameters(\%mandatory, \%convert);
 
@@ -80,7 +82,8 @@ for(my $i = 0; $i < @strains_to_use; $i++) {
 
 if($ref_name eq "") {
 	$ref_name = "REFERENCE";
-}	
+}
+
 if($data eq "") {
 	$data = config::read_config()->{'data_folder'};
 }
@@ -95,6 +98,22 @@ if($genome_dir eq "") {
 if($help == 1) {
 	&printCMD();
 }
+
+#Check if files are sorted
+print STDERR "Checking if files are sorted\n";
+print STDERR "This may take a while\n";
+for(my $i = 0; $i < @mut_files; $i++) {
+	$sort_check = `sort -k1,1n -c $mut_files[$i] 2>&1`;
+	if(length($sort_check) > 1) {
+		print STDERR "Your input file " . $mut_files[$i] . " is not sorted!\n";
+		print STDERR "Please sort the file with sort -k1,1n $mut_files[$i] > <output file> and try again\n";
+		exit;
+	} else {
+		print STDERR "\t$mut_files[$i] looks good\n";
+	}
+}
+print STDERR "Files are sorted\n";
+
 #define header
 if(@mut_files > 0) {
 	@test_spaces = split('\t', $mut_files[0]);
@@ -117,7 +136,6 @@ if(@mut_files > 0) {
 	}
 
 }
-
 if($hetero == 1) {
 	$a = 2;
 } else {
@@ -289,7 +307,7 @@ if($no_genome == 0) {
 			`$command`;
 		}
 		#Generate genome
-		processing::create_genome($chr, \%strains_to_use, $data, $genome_dir, $genome . "/chr" . $chr . ".fa", $a);
+		processing::create_genome($chr, \%strains_to_use, $data, $genome_dir, $genome . "/chr" . $chr . ".fa", $a, $hetero);
 	}
 }
 
@@ -311,6 +329,7 @@ sub thread_routine {
 	print STDERR "Processing " . uc($header[$h+9]) . "\n";
 	#Run through all merged lines for strain $h
 	foreach my $l (@{$lines->[$i]->[$h]}) {
+		print "allele: " . $i . "\theader: " . $h . "\tline: " . $l . "\n";
 		@split = split('\t', $l);
 		$out = $split[1] . "\t" . $split[2] . "\t" . $split[3];
 		if($split[0] !~ /\d+/) {
@@ -360,6 +379,8 @@ sub touch_last_shift {
 	#Create empty hash that can be saved
 	my %empty = ();
 	foreach my $s (keys %strains) {
+		print STDERR $s . "\n";
+		next;
 		if(!-e $data . "/" . $s . "/last_shift_strain.txt") {
 			store \%empty, "$data/$s/last_shift_strain.txt";
 			store \%empty, "$data/$s/last_shift_ref.txt";
@@ -400,15 +421,15 @@ sub check_file_existance{
 			print STDERR "\n";
 			`rm -rf $data/$header/*`;
 		} elsif($add == 1) {
-			print STDERR "Folder exists, but data will be added\n";
-			print STDERR "If data already exists in this folder it will be overwritten!\n";
-			print STDERR "\nWaiting for 3 seconds\n";
-			print STDERR "Press Ctrl + C to interrupt\n";
-			for(my $j = 0; $j < 3; $j++) {
-				print STDERR ".";
-				sleep(1);
-			}
-			print STDERR "\n";
+		#	print STDERR "Folder exists, but data will be added\n";
+		#	print STDERR "If data already exists in this folder it will be overwritten!\n";
+		#	print STDERR "\nWaiting for 3 seconds\n";
+		#	print STDERR "Press Ctrl + C to interrupt\n";
+		#	for(my $j = 0; $j < 3; $j++) {
+		#		print STDERR ".";
+		##		sleep(1);
+		#	}
+		#	print STDERR "\n";
 		} else {
 			print STDERR "If you want to overwrite this folder use -force!\n";
 			exit;
@@ -458,9 +479,12 @@ sub merge{
 	$_ = () for my($var, $max, $copy, $pos_save);
 	my $seq_before = "";
 	$current[4] =~ s/\.//g;
-	my @variants = split(',', $current[4]);
 	#The human VCF files contain more sophisticated annotations <CN>, <INS>
 	#Just keep CN at the moment, filter out the other annotations
+	if($current[4] =~ m/[\:\<\>]/) {
+		return;
+	}
+	my @variants = split(',', $current[4]);
 	#If CN is 0 add one basepair to the left, shift position one down, so the mutation that would be empty gets one basepair
 	for(my $i = 0; $i < @variants; $i++) {
 		if(substr($variants[$i], 0, 3) eq "<CN") {
