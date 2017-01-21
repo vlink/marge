@@ -553,7 +553,7 @@ sub background_dist_plot{
 #Method that analyzes the different bases within the motif to find which bases are mutated the most and have the most impact on the TF binding
 sub analyze_motif_pos{
 	$_ = 0 for my($current_shift, $prev_shift, $shift_vector, $chr_num, $current_pos, $max_motif, $num_of_muts, $max);
-	$_ = () for my($tree_tmp, @fc_split, @char_one, @char_two, @header, %matrix_pos_muts);
+	$_ = () for my($tree_tmp, @fc_split, @char_one, @char_two, @header, %matrix_pos_muts, $last_line_ref, @last_line_split);
 	my %block = %{$_[0]};
 	my $fc = $_[1];
 	my @strains = @{$_[2]};
@@ -567,12 +567,13 @@ sub analyze_motif_pos{
 	my $delta_tag = $_[10];
 	my $delta_threshold = $_[11];
 	my $allele = $_[12];
+	my $region = $_[13];
 	foreach my $last_line (keys %block) {
 		chomp $last_line;
 		@header = split("_", $last_line);
 		$chr_num = substr($header[0], 3);
 		@fc_split = split('\t', $fc->{$chr_num}->{$header[1]});
-		$current_pos = $header[1];
+		$current_pos = $header[1] - ($region/2);
 		for(my $i = 0; $i < @strains; $i++) {
 			for(my $al = 1; $al <= $allele; $al++) {
 				if($chr_num !~ /\d+/ && !exists $lookup->{$strains[$i]}->{$chr_num}) {
@@ -585,14 +586,15 @@ sub analyze_motif_pos{
 		}
 		foreach my $motif (keys %{$block{$last_line}}) {
 			#Define indels, snps and multiple snps (N == not significant, S == significant) 
-			if(!exists $matrix_pos_muts{$motif}{'indel'}) {
-				$matrix_pos_muts{$motif}{'indel'}{'N'} = 0;
-				$matrix_pos_muts{$motif}{'indel'}{'S'} = 0;
+			if(!exists $matrix_pos_muts{'indel'}) {
+				$matrix_pos_muts{'indel'}{'N'} = 0;
+				$matrix_pos_muts{'indel'}{'S'} = 0;
 			}
-			if(!exists $matrix_pos_muts{$motif}{'multi'}) {
-				$matrix_pos_muts{$motif}{'multi'}{'N'} = 0;
-				$matrix_pos_muts{$motif}{'multi'}{'S'} = 0;
+			if(!exists $matrix_pos_muts{'multi'}) {
+				$matrix_pos_muts{'multi'}{'N'} = 0;
+				$matrix_pos_muts{'multi'}{'S'} = 0;
 			}
+
 			#Run through all the motif occurrences in the peak file
 			foreach my $motif_pos (keys %{$block{$last_line}{$motif}}) {
 				#If not binary decisions but motif score difference define significane, the strain motif with the highest score needs to be found first
@@ -640,6 +642,7 @@ sub analyze_motif_pos{
 									} else {
 										@char_one = split("", &rev_comp(substr($seq->{$last_line . "_" . $strains[$i] . "_" . $a1}, $motif_pos + $shift_vector, $block{$last_line}{$motif}{$motif_pos}{'length'})));
 									}
+
 									$shift_vector = 0;
 									#Check if there was an indel between the start of the sequence and the position of the motif in the second strain
 									if(defined $tree->{$strains[$j]}->{$chr_num}->{$a2}) {
@@ -674,32 +677,35 @@ sub analyze_motif_pos{
 										#Number of mutation is greater than 2 -> mutation is counted as indel - check FC in order to define if mutation changed the binding of TF
 										if($delta_tag == 0) {
 											if($fc_split[$i + ($a1 - 1) + $j + ($a2 - 1) - 1] > log($fc_significant)/log(2) || $fc_split[$i + ($a1 - 1) + $j + ($a2 - 1) - 1] < log(1/$fc_significant)/log(2)) {
-												$matrix_pos_muts{$motif}{'indel'}{'S'}++;
+												$matrix_pos_muts{'indel'}{'S'}++;
 											} else {
-												$matrix_pos_muts{$motif}{'indel'}{'N'}++;
+												$matrix_pos_muts{'indel'}{'N'}++;
 											}
 										} else {
 											if(abs($fc_split[$i + ($a1 - 1) + $j + ($a2 - 1) - 1]) > $delta_threshold) {
-												$matrix_pos_muts{$motif}{'indel'}{'S'}++;
+												$matrix_pos_muts{'indel'}{'S'}++;
 											} else {
-												$matrix_pos_muts{$motif}{'indel'}{'N'}++;
+												$matrix_pos_muts{'indel'}{'N'}++;
 											}
 										}
+
 									} elsif($num_of_muts > 1) {
 									#Mnumber of mutation is greather than 1 (and smaller than 2) -> count it as multiple mutations within the same motif - check FC in order to define if mutation changed the binding of TF
 										if($delta_tag == 0) {
 											if($fc_split[$i + ($a - 1) + $j + ($a2 - 1) - 1] > log($fc_significant)/log(2) || $fc_split[$i + ($a1 - 1) + $j + ($a2 - 1) - 1] < log(1/$fc_significant)/log(2)) {
-												$matrix_pos_muts{$motif}{'multi'}{'S'}++;
+												$matrix_pos_muts{'multi'}{'S'}++;
 											} else {
-												$matrix_pos_muts{$motif}{'multi'}{'N'}++;
+												$matrix_pos_muts{'multi'}{'N'}++;
 											}
 										} else {
 											if(abs($fc_split[$i] + ($a1 - 1) + $j + ($a2 - 1) - 1) > $delta_threshold) {
-												$matrix_pos_muts{$motif}{'multi'}{'S'}++;
+												$matrix_pos_muts{'multi'}{'S'}++;
 											} else {
-												$matrix_pos_muts{$motif}{'multi'}{'N'}++;
+												$matrix_pos_muts{'multi'}{'N'}++;
 											}
 										}
+
+
 									} elsif($num_of_muts == 1) {
 										#Number of mutation is exactly 1 - check the kind of subsitution and determine if it was significant or not
 										for(my $c = 0; $c < @char_one; $c++) {
@@ -708,34 +714,35 @@ sub analyze_motif_pos{
 													if($fc_split[$i + ($a1 - 1) + $j + ($a2 - 1) - 1] > log($fc_significant)/log(2) || $fc_split[$i + ($a1 - 1) + $j + ($a2 - 1) - 1] < log(1/$fc_significant)/log(2)) {
 														#S meaning significant
 														if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]}{$a1} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}{$a2}) {
-															$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'S'}++;
+															$matrix_pos_muts{$char_two[$c]}{$c}{'S'}++;
 														} else {
-															$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'S'}++;
+															$matrix_pos_muts{$char_one[$c]}{$c}{'S'}++;
 														}
 													} else {
 														if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]}{$a1} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}{$a2}) {
-															$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'N'}++;
+															$matrix_pos_muts{$char_two[$c]}{$c}{'N'}++;
 														} else {
-															$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'N'}++;
+															$matrix_pos_muts{$char_one[$c]}{$c}{'N'}++;
 														}
 													}
 												} else {
 													if(abs($fc_split[$i + $j - 1]) > $delta_threshold) {
 														#S meaning significant
 														if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]}{$a1} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}{$a2}) {
-															$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'S'}++;
+															$matrix_pos_muts{$char_two[$c]}{$c}{'S'}++;
 														} else {
-															$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'S'}++;
+															$matrix_pos_muts{$char_one[$c]}{$c}{'S'}++;
 														}
 													} else {
 														if($block{$last_line}{$motif}{$motif_pos}{$strains[$i]}{$a1} > $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}{$a2}) {
-															$matrix_pos_muts{$motif}{$char_two[$c]}{$c}{'N'}++;
+															$matrix_pos_muts{$char_two[$c]}{$c}{'N'}++;
 														} else {
-															$matrix_pos_muts{$motif}{$char_one[$c]}{$c}{'N'}++;
+															$matrix_pos_muts{$char_one[$c]}{$c}{'N'}++;
 														}
 													}
 
 												}
+
 											}
 										}
 									}

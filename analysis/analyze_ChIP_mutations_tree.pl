@@ -309,7 +309,6 @@ if($center == 1) {
 	%seq_recentered = %{$seq};
 	$num_of_peaks{'motif'} = $line_number;
 }
-
 my $tmp_out_main_motif = "tmp" . rand(15);
 
 if($plots eq "") {
@@ -318,7 +317,6 @@ if($plots eq "") {
 if($output eq "") {
 	$output = "output_motif";
 }
-
 if($analyze_motif == 1) {
 	print STDERR "Run analysis for all sequences with " . $ab . " motif\n";
 	if($tmp_center ne "") {
@@ -329,12 +327,14 @@ if($analyze_motif == 1) {
 }
 
 if($analyze_no_motif == 1) {
+	print "analyze no motif\n";
 	print STDERR "Run analysis for all sequences without " . $ab . " motif\n";
 	&screen_and_plot($output . "_without_motif", $plots. "_without_motif", $tmp_center . ".no_motif", $tmp_out_main_motif . "_no_motif", $longest_seq_no_motif, \%seq_no_motif, $num_of_peaks{'no'}, 1);
 	$delete{$tmp_out_main_motif . "_no_motif"} = 1;
 }
 
 if($analyze_far_motif == 1) {
+	print "analyze far motif\n";
 	print STDERR "Run analysis for all sequences with " . $ab . " motif that is not in the peak center\n";
 	&screen_and_plot($output . "_with_far_motif", $plots . "_with_far_motif", $tmp_center . ".far_motif", $tmp_out_main_motif . "_far_motif", $longest_seq_far_motif, \%seq_far_motif, $num_of_peaks{'far'});
 	$delete{$tmp_out_main_motif . "_far_motif"} = 1;
@@ -390,9 +390,9 @@ sub screen_and_plot{
 		$count_motifs++;
 		my $tmp_file = $tmp_out_main_motif . "_" . $motifs;
 		$delete{$tmp_file} = 1;
-		#Analyze the motifs between the different strains and save convert the output file into a hash
+		#Analyze the motifs between the different strains and save convert the output file into a has$allele, h
 		my ($block_ref) = analysis::analyze_motifs($tmp_file, \@strains, \%tree, \%lookup_strain, \%last_strain, $allele, $region);
-		my %block = %$block_ref;
+		%block = %$block_ref;
 		#		$mu->record('saved all motifs');
 		#Merge the hash (when overlap is set, merge the overlapping motifs, calculate motif score if motif was not found)
 		$block_ref = analysis::merge_block(\%block, $overlap, \@strains, $seq, \%tree, \%lookup_strain, \%last_strain, $allele);
@@ -409,6 +409,10 @@ sub screen_and_plot{
 			my ($dist_plot_ref) = analysis::distance_plot(\%block, \@strains, \%fc, $fc_significant, $effect, $longest_seq, $seq, $delta_tag, $delta_threshold, $allele);
 			%{$dist_plot{$motifs}} = %{$dist_plot_ref};
 		}
+		if($mut_pos == 1) {
+			my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant, $seq, \%tree, \%last_strain, \%lookup_strain, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $allele, $region);
+			%{$mut_pos_analysis{$motifs}} = %{$mut_pos_analysis_ref};
+		}
 		if($delta == 1) {
 			&generate_delta_files($output, $plots . "_delta.R");
 		}
@@ -417,11 +421,11 @@ sub screen_and_plot{
 		}
 	#	analysis::output_motifs(\%block, \@fileHandlesMotif, \%tag_counts, \@strains, \%index_motifs, \%fc, \%recenter_conversion, $motif_diff, $motif_diff_percentage, $allele);
 	}
-	print STDERR "\n\n";
 #	for(my $i = 0; $i < @fileHandlesMotif; $i++) {
 #		close $fileHandlesMotif[$i];
 #	}
 #	$mu->record('output all motifs');
+	print STDERR "\n\n";	
 	if(@strains > 2) {
 		#Write GLMM scripts per core that will be used
 		my @motif_array;
@@ -502,11 +506,10 @@ sub screen_and_plot{
 		#Writes output file per motif for further analysis
 		print STDERR "Generating R files!\n";
 		&generate_R_files($plots . ".R", $output, $seq_considered);
-		if($mut_pos == 1) {
-			my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant, $seq, \%tree, \%last_strain, \%lookup_strain, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold);
-			%mut_pos_analysis = %$mut_pos_analysis_ref;
-			&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs.R");
-		}
+	}
+
+	if($mut_pos == 1) {
+		&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs.R");
 	}
 	if($dist_plot==1) {
 		my $bg_folder = config::read_config()->{'motif_background_path'};
@@ -552,19 +555,6 @@ sub screen_and_plot{
 				}
 			}
 			&generate_R_files($plots . "_removed.R", $output . "_removed", $seq_considered);
-			if($mut_pos == 1) {
-				#Delete peaks where chipped TF motif is mutated from summary hash (block) to generate mutation position plots for motifs			
-				foreach my $pos (keys %block) {
-					if(exists $remove{$pos}) {
-						delete $remove{$pos};
-						delete $block{$pos};
-					}
-				}
-				%mut_pos_analysis = ();
-				my ($mut_pos_analysis_ref) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant, $seq, \%tree, \%last_strain, \%lookup_strain, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $allele);
-				%mut_pos_analysis = %$mut_pos_analysis_ref;
-				&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs_removed.R");
-			}
 		}
 	}
 }
@@ -1228,7 +1218,7 @@ sub center_peaks{
 	#Summarize and merge the peaks between the strains, so we know their exact position within the peak
 	my ($block_ref) = analysis::analyze_motifs("output_tmp.txt", \@strains, \%tree, \%lookup_strain, \%last_strain, $allele, $region);
 	%block = %$block_ref;
-	my ($block_ref) = analysis::merge_block(\%block, $overlap, \@strains, \%seq, \%tree, \%lookup_strain, \%last_strain, $allele);
+	my ($block_ref) = analysis::merge_block(\%block, $overlap, \@strains, \%seq_recentered, \%tree, \%lookup_strain, \%last_strain, $allele);
 	%block = %$block_ref;
 	$tmp_center = "tmp" . rand(15);
 	open OUT, ">$tmp_center.far_motif";
@@ -1236,7 +1226,7 @@ sub center_peaks{
 	foreach my $position (keys %block) {
 		$peak_center = 10000;
 		foreach my $motif (keys %{$block{$position}}) {
-			foreach my $pos (keys %{$block{$position}{$motif}}) {		
+			foreach my $pos (keys %{$block{$position}{$motif}}) {	
 				for(my $i = 0; $i < @strains; $i++) {
 					for(my $al = 1; $al <= $allele; $al++) {
 						$dist_to_center = int(length($seq->{$position . "_" . $strains[$i] . "_" . $al})/2 - ($pos + ($block{$position}{$motif}{$pos}{'length'}/2)));
@@ -1252,9 +1242,16 @@ sub center_peaks{
 		#Save peaks that have the motif withing +/2 center_dist of the peak center - change the coordinates so the motif is in the center - we need to get new sequences for these peaks
 		if(abs($peak_center) < $center_dist) {
 			@header_recenter = split("_", $position);
+			my $new_position = "chr" . substr($header_recenter[0], 3) . "_" . ($header_recenter[1] - $peak_center) . "_" . ($header_recenter[2] - $peak_center);
+			$peaks{substr($header_recenter[0], 3)}{$header_recenter[1] - $peak_center} = ($header_recenter[2] - $peak_center);
 			$peaks_recentered{substr($header_recenter[0], 3)}{$header_recenter[1] - $peak_center} = ($header_recenter[2] - $peak_center);
-			$recenter_conversion{substr($header_recenter[0], 3)}{$header_recenter[1] - $peak_center}{'start'} = $header_recenter[1];
-			$recenter_conversion{substr($header_recenter[0], 3)}{$header_recenter[1] - $peak_center}{'end'} = $header_recenter[2];
+		#	$tag_counts{$new_position} = $tag_counts{$position};
+			$fc{substr($header_recenter[0], 3)}{$header_recenter[1] - $peak_center} = $fc{substr($header_recenter[0], 3)}{$header_recenter[1]};
+			$tag_counts{substr($header_recenter[0], 3)}{$header_recenter[1] - $peak_center} = $tag_counts{substr($header_recenter[0], 3)}{$header_recenter[1]};
+			delete $peaks{$position};
+		#	delete $tag_counts{$position};
+			delete $fc{substr($header_recenter[0], 3)}{$header_recenter[1]};
+			delete $tag_counts{substr($header_recenter[0], 3)}{$header_recenter[1]};
 			$num_of_peaks{'motif'}++;
 			#Delete these sequences from original seq hash so we have just seq without motif left at the end
 			for(my $i = 0; $i < @strains; $i++) {
