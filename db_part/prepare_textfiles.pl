@@ -329,7 +329,6 @@ sub thread_routine {
 	print STDERR "Processing " . uc($header[$h+9]) . "\n";
 	#Run through all merged lines for strain $h
 	foreach my $l (@{$lines->[$i]->[$h]}) {
-		print "allele: " . $i . "\theader: " . $h . "\tline: " . $l . "\n";
 		@split = split('\t', $l);
 		$out = $split[1] . "\t" . $split[2] . "\t" . $split[3];
 		if($split[0] !~ /\d+/) {
