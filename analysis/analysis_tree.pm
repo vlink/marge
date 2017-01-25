@@ -121,8 +121,8 @@ sub analyze_motifs{
 	my $last = $_[4];
 	my $allele = $_[5];
 	my $region = $_[6];
-        open FH, "<$motif_file";
-        foreach my $line (<FH>) {
+	open(my $fh, "<", $motif_file);
+	while(my $line = <$fh>) {
                 chomp $line;
                 @split = split('\t', $line);
 		$split[3] = &get_motif_name($split[3]);
@@ -173,6 +173,7 @@ sub analyze_motifs{
 		$block{$last_line}{$split[3]}{$motif_pos}{'length'} = length($split[2]);
 		$block{$last_line}{$split[3]}{$motif_pos}{'orientation'} = $split[4];
         }
+	close $fh;
 	return \%block;
 }
 
@@ -467,7 +468,7 @@ sub background_dist_plot{
 		$delete->{$tmp_motif2} = 1;
 		$command = "scanMotifGenomeWide.pl " . $tmp_motif . " " . $genome . " > " . $tmp_motif2;
 		`$command`;
-		open FH, "<$tmp_motif2";
+		open(my $fh, "<", $tmp_motif2);
 		#Save motifs in file
 		#Open filehandle for the background file for every motif
 		foreach my $motif (keys %scan_candidates) {
@@ -478,7 +479,7 @@ sub background_dist_plot{
 			$i++;
 		}
 		#Write output of motif scan in all the different files
-		foreach my $line (<FH>) {
+		while(my $line = <$fh>) {
 			chomp $line;
 			@split = split('\t', $line);
 			@name = split('-', $split[0]);
@@ -487,13 +488,14 @@ sub background_dist_plot{
 		foreach my $motif (keys %scan_candidates) {
 			close $fileHandlesBackground[$motifs{$motif}];
 		}
+		close $fh;
 	}
 	#Read in all files with background distribution of motifs that are in the list - start with transcription factor that was use for the cip
 	$motif_genomewide = $background_folder . "/" . $genome . "_" . $ab . ".txt";
-	open FH, "<$motif_genomewide";
+	open(my $fh, "<", $motif_genomewide); 
 	print STDERR "Saving chipped TF " . $motif_genomewide . "\n";
 	#Save the positions of the TF used for the chip, which will be the reference for the distance of all the other TF
-	foreach my $line (<FH>) {
+	while(my $line = <$fh>) {
 		chomp $line;
 		@split = split('\t', $line);
 		if($first == 0) {
@@ -508,15 +510,15 @@ sub background_dist_plot{
 		$background{$split[0]}{$split[1]} = $split[2];
 		$count++;
 	}
-	close FH;
+	close $fh;
 	$count = 0;
 	#After knowing where the main TF is, calculate the distance distribution of all the other TF
 	foreach my $motif (keys %index_motifs) {
 		print STDERR "Processing " . $motif . "\n";
 		$file = $background_folder . "/" . $genome . "_" . $motif . ".txt";
-		open FH, "<$file";
+		open(my $fh, "<", $file);
 		$count = 0;
-		foreach my $line (<FH>) {
+		while(my $line = <$fh>) {
 			chomp $line;
 			#Start with first binding motif of the reference transcription factor and run through second TF till the distance of count is smaller than the distance of count + 1 (we start running away from the motif again - so this is the closest instance) 
 			@split = split('\t', $line);
@@ -546,6 +548,7 @@ sub background_dist_plot{
 				}
 			}
 		}
+		close $fh;
 	}
 	return ($delete, \%dist_plot_background);
 }
@@ -620,7 +623,10 @@ sub analyze_motif_pos{
 								($motif_diff > 0 && abs($block{$last_line}{$motif}{$motif_pos}{$strains[$i]}{$a1} - $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}{$a2}) > $motif_diff) ||
 								#Percentage of motif score difference is used to call different motifs and the percentual difference is bigger than the defined minimum to call it as significant
 								($motif_diff_percentage > 0 && abs($block{$last_line}{$motif}{$motif_pos}{$strains[$i]}{$a1} - $block{$last_line}{$motif}{$motif_pos}{$strains[$j]}{$a2}) > ($max_motif * $motif_diff_percentage))) {
-									#Check if there was an indel between the start of the sequence and the position of the motif in the strain because the original sequences needs to be used in this method
+									$shift_vector = 0;
+									$current_shift = 0;
+									$prev_shift = 0;
+									#Check if there was an indel between the start of the sequence and the position of the motif in the strain because original sequences needs to be used in this method
 									if(defined $tree->{$strains[$i]}->{$chr_num}->{$a1}) {
 										if($current_pos + $motif_pos > $last->{$strains[$i]}->{$chr_num}->{$a1}->{'pos'}) {
 											$current_shift = $last->{$strains[$i]}->{$chr_num}->{$a1}->{'shift'};
@@ -642,8 +648,9 @@ sub analyze_motif_pos{
 									} else {
 										@char_one = split("", &rev_comp(substr($seq->{$last_line . "_" . $strains[$i] . "_" . $a1}, $motif_pos + $shift_vector, $block{$last_line}{$motif}{$motif_pos}{'length'})));
 									}
-
 									$shift_vector = 0;
+									$current_shift = 0;
+									$prev_shift = 0;
 									#Check if there was an indel between the start of the sequence and the position of the motif in the second strain
 									if(defined $tree->{$strains[$j]}->{$chr_num}->{$a2}) {
 										if($current_pos + $motif_pos > $last->{$strains[$j]}->{$chr_num}->{$a2}->{'pos'}) {
@@ -666,6 +673,7 @@ sub analyze_motif_pos{
 									} else {
 										@char_two = split("", &rev_comp(substr($seq->{$last_line . "_" . $strains[$j] . "_" . $a2}, $motif_pos + $shift_vector, $block{$last_line}{$motif}{$motif_pos}{'length'})));
 									}
+
 									#Count number of differences - if more than 2 dismiss this comparison because motifs are not the same and count it as indel
 									$num_of_muts = 0;
 									for(my $c = 0; $c < @char_one; $c++) {
@@ -673,6 +681,7 @@ sub analyze_motif_pos{
 											$num_of_muts++;
 										}
 									}
+									print $num_of_muts . "\n\n\n";
 									if($num_of_muts > 2) {
 										#Number of mutation is greater than 2 -> mutation is counted as indel - check FC in order to define if mutation changed the binding of TF
 										if($delta_tag == 0) {
@@ -899,7 +908,7 @@ sub scan_motif_with_homer{
 	my $seq_file = $_[0];
 	my $out_file = $_[1];
 	my $tf = $_[2];
-	my $command = "homer2 find -i " . $seq_file . " -m " . $tf . " -offset 0 > " . $out_file;
+	my $command = "homer2 find -i " . $seq_file . " -m " . $tf . " -offset 0 > " . $out_file . " 2> /dev/null";
 	`$command`;	
 }
 
@@ -1111,7 +1120,7 @@ sub all_vs_all_comparison {
 			for(my $i = 0; $i < @strains; $i++) {
 				for(my $al = 1; $al <= $allele; $al++) {
 					print OUT $strains[$i] . "_" . $al . "\t" . $pos . "\t";
-					if(!exists $motif_matrix{$motif}{$pos}{$al}) {
+					if(!exists $motif_matrix{$motif}{$pos}{$strains[$i]}{$al}) {
 						print OUT "0\t0";
 					} else {
 						print OUT $motif_matrix{$motif}{$pos}{$strains[$i]}{$al} . "\t" . $motif_matrix_number{$motif}{$pos}{$strains[$i]}{$al};
