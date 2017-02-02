@@ -1,0 +1,3 @@
+data_folder=/home/vlink/mouse_strains/marge/install_routine/test/data//
+homer_path=/bioinformatics/homer//
+motif_background_path=/home/vlink/mouse_strains/marge/install_routine/test/data//motif_distribution_background/
