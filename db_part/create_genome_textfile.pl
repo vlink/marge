@@ -14,8 +14,8 @@ $_ = 0 for my ($hetero);
 sub printCMD{ 
 	print STDERR "Usage:\n";
 	print STDERR "\t-genome <genome>: Path to folder with fastq files per chromosome\n";
-	print STDERR "\t-strains <strains>: one or several strains (comma separated)\n";
-	print STDERR "\t-data <path to folder with strains mutations> (default defined in config)\n";
+	print STDERR "\t-ind <individuals>: one or several individuals (comma separated)\n";
+	print STDERR "\t-data <path to folder with individuals mutations> (default defined in config)\n";
 	print STDERR "\t-out <name of the output directory>: Script automatically creates a directory for each strain (default in config)\n";
 	print STDERR "\t-ref <name for reference>: creates folder for reference genome (if nothing is specified folder is called REFERENCE\n";
 	print STDERR "\t-hetero: Genome is heterozygous (Default: homozygouse)\n";
@@ -27,12 +27,12 @@ if(@ARGV < 1) {
 }
 
 #Check mandatory command line arguments
-my %mandatory = ('-genome' => 1, '-strains' => 1);
+my %mandatory = ('-genome' => 1, '-ind' => 1);
 my %convert = map { $_ => 1 } @ARGV;
 config::check_parameters(\%mandatory, \%convert);
 
 GetOptions(	"genome=s" => \$genome,
-		"strains=s{,}" => \@strains,
+		"ind=s{,}" => \@strains,
 		"out=s" => \$output,
 		"data=s" => \$data,
 		"ref=s" => \$ref_genome,

@@ -25,7 +25,7 @@ sub printCMD{
 	print STDERR "\t-genome: path to fastq files per chromosome: input directory of the reference genome per chromosome in fastq file format\n";
 	print STDERR "\t-no-genome: Does not create strains specific genomes (default: off)\n";
 	print STDERR "\t-genome_dir: output directory for fastq genome file per strain - default: folder specified in config file\n";
-	print STDERR "\t-strains <list of strains>: comma separated list of strains to include - when empty every strain in vcf file is considered\n";
+	print STDERR "\t-ind <list of individuals>: comma separated list of strains to include - when empty every strain in vcf file is considered\n";
 	print STDERR "\t-ref <name>: Software generates a reference genome folder with all necessary files for further analysis - Folder is called REFERENCE, if nothing is specified here\n";
 	print STDERR "\n\n";
 	print STDERR "Filter vcf file:\n";
@@ -45,7 +45,7 @@ if(@ARGV < 1) {
 }
 
 my %mandatory = ('-files' => 1, '-genome' => 1);
-#my %mandatory = ('-files' => 1, '-strains' => 1, '-genome' => 1);
+#my %mandatory = ('-files' => 1, '-ind' => 1, '-genome' => 1);
 my %convert = map { $_ => 1 } @ARGV;
 config::check_parameters(\%mandatory, \%convert);
 
@@ -54,7 +54,7 @@ GetOptions(	"files=s{,}" => \@mut_files,
 		"dir=s" => \$data,
 		"genome_dir=s" => \$genome_dir,
 		"no-genome" => \$no_genome,
-		"strains=s{,}" => \@strains_to_use,
+		"ind=s{,}" => \@strains_to_use,
 		"ref=s" => \$ref_name,
 		"filter" => \$filter,
 		"same" => \$same,

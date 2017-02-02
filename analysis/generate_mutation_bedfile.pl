@@ -11,8 +11,8 @@ $_ = 0 for my($exists);
 
 sub printCMD {
         print STDERR "Usage:\n";
-        print STDERR "\t-strains <strains>: Comma-separated list of strains\n";
-	print STDERR "\t-data <data folder>: Default specified in config\n";
+        print STDERR "\t-ind <individuals>: Comma-separated list of individuals\n";
+	print STDERR "\t-data_dir <data folder>: Default specified in config\n";
         exit;
 }
 
@@ -21,12 +21,12 @@ if(@ARGV < 1) {
 	exit;
 }
 
-my %mandatory = ('-strains' => 1);
+my %mandatory = ('-ind' => 1);
 my %convert = map { $_ => 1 } @ARGV;
 config::check_parameters(\%mandatory, \%convert);
 
-GetOptions(     "data=s" => \$data,
-                "strains=s{,}" => \@strains)
+GetOptions(     "data_dir=s" => \$data,
+                "ind=s{,}" => \@strains)
         or die("Error in command line options!\n");
 
 if($data eq "") {

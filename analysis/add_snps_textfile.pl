@@ -17,7 +17,7 @@ sub printCMD{
         print STDERR "General commands:\n";
         print STDERR "\t-file <input file>: coordinates have to be the reference coordinates\n";
 	print STDERR "\t-output <output name>: default <file name>_snps.txt\n";
-        print STDERR "\t-strains: one or several strains (comma separated)\n";
+        print STDERR "\t-ind: one or several individuals (comma separated)\n";
 	print STDERR "\n\nOptions for RNA-Seq:\n";
 	print STDERR "\tAnnotation RNA-Seq esp. with exons takes a while\n";
         print STDERR "\t-genome <genome> (e.g. mm10/hg38 - to lookup exon and refseq annotations)\n";
@@ -33,7 +33,7 @@ if(@ARGV < 1) {
 	&printCMD();
 }
 
-my %mandatory = ('-file' => 1, '-strains' => 1);
+my %mandatory = ('-file' => 1, '-ind' => 1);
 my %convert = map { $_ => 1 } @ARGV;
 config::check_parameters(\%mandatory, \%convert);
 
@@ -42,7 +42,7 @@ GetOptions(     "genome=s" => \$genome,
 		"gene_file=s" => \$gene_file,
 		"refseq_file=s" => \$refseq_file,
 		"output=s" => \$output,
-                "strains=s{,}" => \@strains,
+                "ind=s{,}" => \@strains,
 		"exons" => \$exons,
 		"hetero" => \$hetero,
 		"data_dir=s" => \$data)

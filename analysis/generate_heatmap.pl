@@ -5,7 +5,7 @@ BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
 use config;
 $_ = () for my(@files, @names, %delete);
 $_ = 0 for my($sig, $threshold);
-$_ = "" for my ($output, $method, $main);
+$_ = "" for my ($output, $method, $title);
 
 sub printCMD {
 	print STDERR "\t-files <comma separated list of files>\n";
@@ -14,7 +14,6 @@ sub printCMD {
 	print STDERR "\t-threshold: threshold for significant\n";
 	print STDERR "\t-output: output name for R file and pdf (default summary_heatmap.R)\n";
 	print STDERR "\t-title: Title of the heatmap plot (default: output name for R file)\n";
-	print STDERR "\t-method: pairwise|all (default pairwise)\n";
 	exit;
 }
 
@@ -32,7 +31,7 @@ GetOptions(     "files=s{,}" => \@files,
 		"sig" => \$sig,
 		"threshold=s" => \$threshold,
 		"method=s" => \$method,
-		"main=s" => \$main,
+		"title=s" => \$title,
 		"output=s" => \$output)
         or die("Error in command line options!\n");
 #First step: Get the sequences for the peaks
@@ -48,9 +47,12 @@ for(my $i = 0; $i < @files; $i++) {
 if($output eq "") {
 	$output = "summary_heatmap.R";
 }
+if(substr($output, length($output)-2) ne ".R") {
+	$output .= ".R";
+}
 
-if($main eq "") {
-	$main = substr($output, 0, length($output) - 2);
+if($title eq "") {
+	$title = substr($output, 0, length($output) - 2);
 }
 
 if($method eq "") {
@@ -160,7 +162,7 @@ print OUT "matrix <- as.matrix(read.delim(\"matrix_" . $output . "\", row.names=
 print OUT "matrix[ matrix > " . ($threshold*10) . " ] <- " . ($threshold*10) . "\n";
 print OUT "pdf(\"" . substr($output, 0, length($output) - 2) . ".pdf\", width=5, height=10)\n";
 print OUT "custom.color.fun = colorRampPalette(c(\"blue\", \"white\", \"red\"), bias = 1, space = \"rgb\")\n";
-print OUT "heatmap.2(matrix, trace = \"n\", cexCol = 0.4, scale = \"n\", col=custom.color.fun(10), Colv=NA, Rowv=NA, dendrogram='n', cex=0.5, margin=c(8,12), cexRow=0.3, main=\"" . $main . "\")\n";
+print OUT "heatmap.2(matrix, trace = \"n\", cexCol = 0.4, scale = \"n\", col=custom.color.fun(10), Colv=NA, Rowv=NA, dendrogram='n', cex=0.5, margin=c(8,12), cexRow=0.3, main=\"" . $title . "\")\n";
 print OUT "dev.off()\n"; 
 close OUT;
 `Rscript $output`;

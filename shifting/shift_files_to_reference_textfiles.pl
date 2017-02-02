@@ -6,8 +6,9 @@ use Storable;
 use config;
 use general;
 use Set::IntervalTree;
+use Data::Dumper;
 
-$_ = 0 for my ($sam, $peak, $tag, $help, $print_header, $hetero, $allele);
+$_ = 0 for my ($sam, $peak, $tag, $help, $print_header, $allele, $bed);
 $_ = "" for my ($dir, $chr, $last, $data_dir, $out_name, $last_strain);
 $_ = () for my (@files, @strains, @split, %last, %lookup, %tree, @tmp, $fetch, $pos_shifted);
 
@@ -16,15 +17,15 @@ sub printCMD {
         print STDERR "General commands:\n";
 	print STDERR "\t-dir <directory with files to shift>: has to be the same strain\n";
 	print STDERR "\t-files <list with files>: comma separated list\n";
-	print STDERR "\t-strains: one or several strains - comma separated\n";
+	print STDERR "\t-ind: one or several individuals - comma separated\n";
 	print STDERR "\tIf only one strain is specified all files are shifted from this strain\n";
-	print STDERR "\tIf several strains are specified it has to match the number of files specified!\n";
-	print STDERR "\t-hetero: Organism is heterozygous\n";
+	print STDERR "\tIf several individuals are specified it has to match the number of files specified!\n";
 	print STDERR "\t-data_dir <directory>: directory with data: default specified in config\n";
 	print STDERR "\n\nFormat to shift (default = sam):\n";
 	print STDERR "\t-sam: shifts sam file (result file from mapping with bowtie or STAR\n";
 	print STDERR "\t-homer: shifts HOMER peak and RNA files\n";
 	print STDERR "\t-tag: shifts tag directory\n";
+	print STDERR "\t-bed: shifts bed file\n";
 	print STDERR "\n\n";
 	print STDERR "\t-h | --help: prints help\n";
         exit;
@@ -34,18 +35,18 @@ if(@ARGV < 1) {
         &printCMD();
 }
 
-my %mandatory = ('-strains' => 1);
+my %mandatory = ('-ind' => 1);
 my %convert = map { $_ => 1 } @ARGV;
 config::check_parameters(\%mandatory, \%convert);
 
 GetOptions(     "dir=s" => \$dir,
                 "files=s{,}" => \@files,
-                "strains=s{,}" => \@strains,
-                "hetero" => \$hetero,
+                "ind=s{,}" => \@strains,
                 "data_dir=s" => \$data_dir,
                 "sam" => \$sam,
                 "homer" => \$peak,
                 "tag" => \$tag,
+		"bed" => \$bed,
                 "h" => \$help,
                 "help" => \$help)
         or die (&printCMD());
@@ -54,17 +55,12 @@ GetOptions(     "dir=s" => \$dir,
 if($help == 1) {
         &printCMD();
 }
-if($sam == 0 && $peak == 0 && $tag == 0) {
+if($sam == 0 && $peak == 0 && $tag == 0 && $bed == 0) {
 	$sam = 1;
 }
 if(@files == 0 && $dir eq "") {
 	print STDERR "Files for shifting are missing!\n";
 	exit;
-}
-if($hetero == 1) {
-	$allele = 2;
-} else {
-	$allele = 1;
 }
 #Read in files from directory
 if(@files == 0) {
@@ -77,6 +73,9 @@ if(@files == 0) {
 	if($peak == 1) {
 		@files = `ls $dir/*`;
 	}
+	if($bed == 1) {
+		@files = `ls $dir/*bed`;
+	}
 }
 #Check if files and strains have the same length
 if(@strains > 1 && @strains != @files) {
@@ -84,6 +83,10 @@ if(@strains > 1 && @strains != @files) {
 	exit;
 }
 #Remove commas
+my @tmp = split('\s', $files[0]);
+if(@tmp > @files) {
+	@files = @tmp;
+}
 for(my $i = 0; $i < @files; $i++) {
 	chomp $files[$i];
 	$files[$i] =~ s/,//g;
@@ -94,20 +97,21 @@ for(my $i = 0; $i < @strains; $i++) {
 	$strains[$i] = uc($strains[$i]);
 }
 if(@strains == 1 && @files > 1) {
-	@strains = (@strains, ($strains[0]) x @files);
+	@strains = (@strains, ($strains[0]) x (@files - 1));
 }
 if($data_dir eq "") {
 	$data_dir = config::read_config()->{'data_folder'};
 }
-
 #Save all vectors befor shifting!
 #There is only one strain specified - all files are shifted with the same vector
+print STDERR "Save shifting vector\n";
 for(my $i = 0; $i < @strains; $i++) {
 	if($last_strain ne $strains[$i]) {
-		my($tree_ref, $last, $lookup) = general::read_strains_data($strains[$i], $data_dir, $allele, "strain_to_ref");
+		my($tree_ref, $last, $lookup) = general::read_strains_data($strains[$i], $data_dir, "strain_to_ref");
 		%tree = %{$tree_ref};
 		%last = %{$last};
 		%lookup = %{$lookup};
+		print STDERR "\tsuccessful for $strains[$i]\n";
 	}
 	if($sam == 1) {
 		$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_from_" . $strains[$i] . ".sam";
@@ -115,7 +119,9 @@ for(my $i = 0; $i < @strains; $i++) {
 	} elsif($peak == 1) {
 		$out_name = $files[$i] . "_shifted_from_" . $strains[$i] . ".txt";
 		&shift_peak_file($files[$i], $strains[$i], $out_name);
-
+	} elsif($bed == 1) {
+		$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_from_" . $strains[$i] . ".txt";
+		&shift_bed_file($files[$i], $strains[$i], $out_name);
 	} else {
 		$out_name = $files[$i];
 		while(substr($out_name, length($out_name) - 1) eq "/") {
@@ -139,7 +145,7 @@ sub shift{
 	if($pos_to_shift > $last{$chr}{$allele}{'pos'}) {
 		$pos_shifted = $pos_to_shift + $last{$chr}{$allele}{'shift'};
 	} else {
-		$fetch = $tree{$chr_num}->fetch($pos_to_shift, $pos_to_shift + 1);
+		$fetch = $tree{$chr_num}->{$allele}->fetch($pos_to_shift, $pos_to_shift + 1);
 		if(scalar(@$fetch) == 0) {
 			$pos_shifted = $pos_to_shift;
 		} else {
@@ -175,6 +181,11 @@ sub shift_sam_file{
 			next;
 		}
 		$chr = substr($tmp[0], 3);
+		if(@tmp > 1) {
+			$allele = $tmp[2];
+		} else {
+			$allele = 1;
+		}
 		#chromosomes without mutations can not be shifted		
 		if(!exists $last{$chr}{$allele}) {
 			print OUT $line . "\n";
@@ -200,6 +211,11 @@ sub shift_peak_file{
 		@split = split('\t', $line);
 		@tmp = split("_", $split[1]);
 		$chr = substr($tmp[0], 3);
+		if(@tmp > 1) {
+			$allele = $tmp[2];
+		} else {
+			$allele = 1;
+		}
 		#chromosomes without mutations can not be shifted
 		if(!exists $last{$chr}{$allele}) {
 			print OUT $line . "\n";
@@ -247,9 +263,41 @@ sub shift_tag_directory{
 			@split = split('\t', $line);
 			@tmp = split("_", $split[1]);
 			$chr = substr($tmp[0], 3);
+			if(@tmp > 1) {
+				$allele = $tmp[2];
+			} else {
+				$allele = 1;
+			}
 			print OUT $split[0] . "\t" . $split[1] . "\t" . &shift($chr, $allele, $split[2]) . "\t" . $split[3] . "\t" . $split[4] . "\t" . $split[5] . "\n";
 		}
 		close OUT;
 		close FH;
 	}
+}
+
+sub shift_bed_file{
+	my $file = $_[0];
+	my $strain = $_[1];
+	my $out_file = $_[2];
+	print STDERR "shifting " . $file . "\n";
+	open OUT, ">$out_file" or die "Can't open file!\n";
+	open FH, "<$file";
+	foreach my $line (<FH>) {
+		chomp $line;
+		@split = split('\t', $line);
+		@tmp = split("_", $split[0]);
+		$chr = substr($tmp[0], 3);
+		if(@tmp > 1) {
+			$allele = $tmp[2];
+		} else {
+			$allele = 1;
+		}
+		if(!exists $last{$chr}{$allele}) {
+			print OUT $line . "\n";
+		} else {
+			print OUT $tmp[0] . "\t" . &shift($chr, $allele, $split[1]) . "\t" . &shift($chr, $allele, $split[2]) . "\n";
+		}
+	}
+	close FH;
+	close OUT;
 }

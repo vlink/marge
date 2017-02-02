@@ -20,45 +20,51 @@ my $line_number = 1;
 
 sub printCMD {
         print STDERR "Usage:\n";
-        print STDERR "\t-genome: Genome (Used for distribution plots to generate the background distributions)\n";
-        print STDERR "\t-strains <strains>: Comma-separated list of strains - Order must overlay with order in annotated peak file\n";
-	print STDERR "\t-core <number of cores for model calculation> (default 4): Is only used when more than 2 strains are defined\n";
+	print STDERR "\nRequired parameters:\n";
         print STDERR "\t-file <file>: annotated peak file (including tag counts)\n";
-	print STDERR "\t-AB: Antibody that was used for this ChIP (to exclude mutations in this motif from analysis)\n";
+        print STDERR "\t-ind <individuals>: Comma-separated list of individuals - Order must overlay with order in annotated peak file\n";
+     
+	print STDERR "\nAdditional parameters:\n";
+	print STDERR "\t-output: Name of the output files\n";
+	print STDERR "\t-plots: Output name of the plots\n";
+	print STDERR "\t-AB: Antibody that was used for this ChIP (to exclude mutations in this motif from analysis in the secound round). It is also required for centering peaks\n";
+        print STDERR "\t-hetero: Data is heterozygous\n";
+
+	print STDERR "\nCentering peaks:\n";
 	print STDERR "\t-center: centers peaks on TF specified in -AB (automatically analyzes sequences with motif in center - set -far_motif and/or -no_motif for analysis of these sequences)\n";
 	print STDERR "\t-center_dist: Distance to peak center that motif can be away from (max) to still be centered on (default: 25bp)\n"; 
-	print STDERR "\t-TF <file with PWM for transcription factors>: (default HOMERs all.motifs) \n";
-        print STDERR "\t-hetero: Data is heterozygous\n";
+	 
+	print STDERR "\nManipulation of input file:\n";
 	print STDERR "\t-region: Size of the region used to look for other motifs (Default: 0 - peak is not extended)\n";
-	print STDERR "\t-delta: Uses motif score differences instead of binary existance\n";
-	print STDERR "\t-motif_diff: Difference in the motif score to count it as mutated motif (for pairwise analysis) - can either be a percentage or absolute number (please use % for percentage - default 50% - also turned on when only using -delta)\n";
-	print STDERR "\t-output: Name of the output files\n";
-	print STDERR "\n\nAnalysis options for peaks\n";
-	print STDERR "\t-motif: analyzes sequences with TF motif (only works with -center - without centering on TF it is not possible to group the sequences in with motif/ far motif/ no mitf)\n";
-	print STDERR "\t-no_motif: analyzes sequences without TF motif\n";
-	print STDERR "\t-far_motif: analyzes sequences with TF motif that are more that n bp away from peak center (default: 25 - different value can be defined in -center_dist)\n";
-	print STDERR "\n\nAdditional options:\n";
-	print STDERR "\t-tf_direction <list with TF>: (comma seperated list) for each of these transcription factor 3 output files are printed (all peaks where mutation and loss of binding are in the same direction (same_direction_<TF>.txt), all peaks with mutations that are between significant foldchange (direction_between_foldchanges_<TF>.txt) and all peaks where mutation and loss of binding are in the opposite direction (opposite_direction_<TF>.txt) - all: all motifs\n";
-	print STDERR "\t-tf_dir_name <prefix>: Prefix for the naming of the files created by tf_direction option\n";
-	print STDERR "\t-plots: Output name of the plots\n";
-	print STDERR "\t-keep: keep temporary files\n";
-	print STDERR "\t-data_dir <folder to data directory>: default defined in config\n";
-	print STDERR "\t-genome_dir <folder to strains genomes>: default defined in config\n";
-	print STDERR "\t-delta_tag: Does not use foldchange but delta of the tag counts between the strains\n";
-	print STDERR "\t-delta_threshold: Difference between tag counts that is counted as significant (default: 100)\n";
-	print STDERR "\n\nFiltering options:\n";
 	print STDERR "\t-tg <minmal tag count>: Filters out all peaks with less than x tag counts\n";
-	print STDERR "\t-mut_only: just keeps peaks where one strains is mutated\n";
-	print STDERR "\t-fc_pos: Foldchange threshold to count peaks as strain specific vs not (Default: 2fold)\n";
-	print STDERR "\t-overlap: Count motif as not mutated if the overlap n basepairs (complete|half|#bp)\n";
-	print STDERR "\n\nPlot options:\n";
+	
+	print STDERR "\nPlot options:\n";
 	print STDERR "\t-mut_pos: Also analyzes the position of the motif that is mutated\n";
 	print STDERR "\t-dist_plot: Plots distance relationships between TF and motif candidates\n";
 	print STDERR "\t\t-effect: Just plots distance relationship for peaks that are affected\n";
-	print STDERR "\t-print_block: Prints the merged block and ends there\n";
-	print STDERR "Script needs R package seqinr\n";
-	print STDERR "\n\nAll vs all comparison\n";
-	print STDERR "\t-method <pearson|spearman|mutual|group> (Default: pearson)\n";
+ 	print STDERR "\t-genome: Genome (Used for distribution plots to generate the background distributions)\n";
+
+	print STDERR "\nAnalysis parameters:\n";
+	print STDERR "\t-motif_diff: Difference in the motif score to count it as mutated motif (for pairwise analysis) - can either be a percentage or absolute number (please use % for percentage - default 50% - also turned on when only using -delta)\n";
+	print STDERR "\t-motif: analyzes sequences with TF motif (only works with -center - without centering on TF it is not possible to group the sequences in with motif/ far motif/ no mitf)\n";
+	print STDERR "\t-no_motif: analyzes sequences without TF motif\n";
+	print STDERR "\t-far_motif: analyzes sequences with TF motif that are more that n bp away from peak center (default: 25 - different value can be defined in -center_dist)\n";
+	print STDERR "\t-delta_tag: Does not use foldchange but delta of the tag counts between the individuals\n";
+	print STDERR "\t-delta_threshold: Difference between tag counts that is counted as significant (default: 100)\n";
+	print STDERR "\t-mut_only: just keeps peaks where one individuals is mutated\n";
+	print STDERR "\t-fc_pos: Foldchange threshold to count peaks as strain specific vs not (Default: 2fold)\n";
+	print STDERR "\t-overlap: Count motif as not mutated if the overlap n basepairs (complete|half|#bp)\n";
+
+	print STDERR "\nAdditional options:\n";
+	print STDERR "\t-tf_direction <list with TF>: (comma seperated list) for each of these transcription factor 3 output files are printed (all peaks where mutation and loss of binding are in the same direction (same_direction_<TF>.txt), all peaks with mutations that are between significant foldchange (direction_between_foldchanges_<TF>.txt) and all peaks where mutation and loss of binding are in the opposite direction (opposite_direction_<TF>.txt) - all: all motifs\n";
+	print STDERR "\t-tf_dir_name <prefix>: Prefix for the naming of the files created by tf_direction option\n";
+	print STDERR "\t-core <number of cores for model calculation> (default 4): Is only used when more than 2 individuals are defined\n";
+	print STDERR "\t-keep: keep temporary files\n";
+
+	print STDERR "\nParamters to overwrite default paths:\n";
+	print STDERR "\t-TF <file with PWM for transcription factors>: (default HOMERs all.motifs) \n";
+	print STDERR "\t-data_dir <folder to data directory>: default defined in config\n";
+	print STDERR "\t-genome_dir <folder to indivial genomes>: default defined in config\n";
         exit;
 }
 
@@ -70,7 +76,7 @@ if(@ARGV < 1) {
 }
 
 #Check mandatory command line arguments
-my %mandatory = ('-file' => 1, '-strains' => 1);
+my %mandatory = ('-file' => 1, '-ind' => 1);
 my %convert = map { $_ => 1 } @ARGV;
 config::check_parameters(\%mandatory, \%convert);
 
@@ -86,7 +92,7 @@ $commandline .= $commandline_tmp;
 
 GetOptions(     "genome=s" => \$genome,
                 "file=s" => \$file,
-                "strains=s{,}" => \@strains,
+                "ind=s{,}" => \@strains,
 		"core=s" => \$core,
                 "hetero" => \$hetero, 
 		"-TF=s" => \$tf, 
@@ -730,7 +736,7 @@ sub generate_dist_plot{
 			if($first == 0) {
 				#Use plot fo rno motif, because there is no background
 				if($no_motif == 0) {
-					print R "plot(x, " . $tmp_ab . "_" . $strain . ", type=\"l\", col=\"forestgreen\", main=\"Distance plot for " . $ab . " and " . $motif_print . "\", ylim=c(0, " . $max_ab . "), ylab=\"Motif frequence\")\n";
+					print R "plot(x, " . $tmp_ab . "_" . $strain . ", type=\"l\", col=\"forestgreen\", main=\"Distance plot for " . $ab . " and " . $motif_print . "\", ylim=c(0, " . $max_ab . "), ylab=\"Motif frequency\")\n";
 				}
 				$legend_class = "legend_class <- c(\"" . $ab . "_" . $strain. "\",";
 				$legend_col = "legend_col <- c(\"forestgreen\",";
@@ -955,6 +961,7 @@ sub generate_R_files {
 	print R_DEN "pdf(\"" . substr($output_R_file_den, 0, length($output_R_file_den) - 2) . ".pdf\", width=10, height=5)\n";
 	print R_DEN "plot(0, 0, xlim=c(0,0), ylim=c(0,0), main=\"" . $commandline . "\", bty=\'n\', xaxt=\"n\", yaxt=\"n\", col=\"white\", xlab=\"\", ylab=\"\")\n";
 	foreach my $motif (sort {$index_motifs{$a} cmp $index_motifs{$b}} keys %index_motifs) {
+		print $motif . "\n";
 		$filename = $output . "_" . $motif . ".txt";
 		$num_of_muts = `wc -l $filename`;
 		$delete{$filename} = 1;

@@ -11,16 +11,16 @@ use analysis_tree;
 use Data::Dumper;
 
 $_ = "" for my($output, $data_dir, $genome_dir, $strain, $allele, $chr);
-$_ = () for my(%peaks, %strand, @split, %tree, %lookup_strain, %last_strain, @tmp_split, %save_id, $tree, @files, $tree_tmp, @strains, %last, $last, @chr_split);
+$_ = () for my(%peaks, %strand, @split, %tree, %last_strain, @tmp_split, %save_id, $tree, @files, $tree_tmp, @strains, %last, $last, @chr_split);
 $_ = 0 for my($hetero, $line_number, $id);
 
 sub printCMD {
         print STDERR "Usage:\n";
-        print STDERR "\t-strain <strain>: Strain we look for muts in\n";
-	print STDERR "\t-strains <strains>: Two strains we look for muts in\n";
+        print STDERR "\t-ind <individual>: Individual we look for muts versus reference\n";
+	print STDERR "\t-inds <individuals>: Two individuals we look for muts against each otehr\n";
         print STDERR "\t-files <files>: Comma seperated list of files\n";
-	print STDERR "\t-data_dir <path to strain mutation data>: default defined in config\n";
-	print STDERR "\t-genome_dir <path to strain genomes>: default defined in config\n";
+	print STDERR "\t-data_dir <path to individual mutation data>: default defined in config\n";
+	print STDERR "\t-genome_dir <path to individual genomes>: default defined in config\n";
 	print STDERR "\t-hetero: Data is heterozygous\n";
         exit;
 }
@@ -35,8 +35,8 @@ config::check_parameters(\%mandatory, \%convert);
 
 
 GetOptions(   	"files=s{,}" => \@files,
-		"strain=s" => \$strain,
-		"strains=s{,}" => \@strains,
+		"ind=s" => \$strain,
+		"inds=s{,}" => \@strains,
 		"genome_dir=s" => \$genome_dir,
 		"data_dir=s" => \$data_dir,
 		"hetero" => \$hetero)

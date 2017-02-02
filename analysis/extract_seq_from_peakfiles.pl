@@ -16,13 +16,13 @@ $_ = 0 for my($hetero, $allele, $line_number, $id);
 
 sub printCMD {
         print STDERR "Usage:\n";
-        print STDERR "\t-strains <strains>: Comma-separated list of strains - Order must overlay with order in annotated peak file\n";
+        print STDERR "\t-ind <individuals>: Comma-separated list of individuals - Order must overlay with order in annotated peak file\n";
         print STDERR "\t-file <file>: File with genomic coordinates to pull the sequences\n";
 	print STDERR "\t-data_dir <path to strain mutation data>: default defined in config\n";
 	print STDERR "\t-genome_dir <path to strain genomes>: default defined in config\n";
 	print STDERR "\t-output: Name of the output files (default: sequences.txt)\n";
 	print STDERR "\t-hetero: Data is heterozygous\n";
-	print STDERR "\t-id: Use gene ID: can only be used when only one strain was specified\n";
+	print STDERR "\t-id: Uses peak ID as identifer for sequences - can only be used when only one individual was specified\n";
         exit;
 }
 
@@ -30,13 +30,13 @@ if(@ARGV < 1) {
         &printCMD();
 }
 
-my %mandatory = ('-file' => 1, '-strains' => 1);
+my %mandatory = ('-file' => 1, '-ind' => 1);
 my %convert = map { $_ => 1 } @ARGV;
 config::check_parameters(\%mandatory, \%convert);
 
 
 GetOptions(   	"file=s" => \$file,
-		"strains=s{,}" => \@strains,
+		"ind=s{,}" => \@strains,
 		"genome_dir=s" => \$genome_dir,
 		"data_dir=s" => \$data_dir,
 		"hetero" => \$hetero,
@@ -94,7 +94,6 @@ close FH;
 		$lookup_strain{$strains[$i]} = $lookup;
 		$last_strain{$strains[$i]} = $last;
 	}
-	print "ID: " . $id . "\n";
 	#Get sequences for every peak
 	if($id == 0) {
 		analysis::get_seq_for_peaks($output, \%peaks, \@strains, $genome_dir, $allele, $line_number, 0, 0, \%tree, \%lookup_strain, \%last_strain, \%strand);

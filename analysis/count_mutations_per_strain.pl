@@ -5,13 +5,14 @@ use Getopt::Long;
 use config;
 
 $_ = () for my(@split, @strains, %save, @name, @filename);
-$_ = 0 for my($snps, $indels);
+$_ = 0 for my($snps, $indels, $private);
 $_ = "" for my ($data, $path);
 
 sub printCMD {
         print STDERR "Usage:\n";
-        print STDERR "\t-strains <strains>: Comma separated list to count mutations\n";
-	print STDERR "\t-data: data folder: default specified in config file\n";
+        print STDERR "\t-ind <individuals>: Comma separated list to count mutations\n";
+	print STDERR "\t-data_dir: data folder: default specified in config file\n";
+	print STDERR "\t-private: Counts number of private mutations\n";
         exit;
 }
 
@@ -20,13 +21,14 @@ if(@ARGV < 1) {
 }
 
 
-my %mandatory = ('-strains' => 1);
+my %mandatory = ('-ind' => 1);
 my %convert = map { $_ => 1 } @ARGV;
 config::check_parameters(\%mandatory, \%convert);
 
 
-GetOptions(	"strains=s{,}" => \@strains, 
-		"data=s" => \$data)
+GetOptions(	"ind=s{,}" => \@strains, 
+		"data_dir=s" => \$data, 
+		"private" => \$private)
         or die(&printCMD());
 
 #Set variables
@@ -69,54 +71,89 @@ foreach my $strains (@strains) {
 		}
 	}
 }
-#Run all pairwise comparisons
-print "Strain comparison\t#SNPs\t#InDels\n";
-for(my $i = 0; $i < @strains - 1; $i++) {
-	for(my $j = $i +1 ; $j < @strains; $j++) {
-		$snps = 0;
-		$indels = 0;
-		#Run through all mutations in strain 1 and see if they exist in strain 2
-		if(exists $save{$strains[$i]}) {
-			foreach my $chr (keys %{$save{$strains[$i]}}) {
-				foreach my $pos (keys %{$save{$strains[$i]}{$chr}}) {
-					#Mutation does not exist - check length and count indel/snp up
-					if(!exists $save{$strains[$j]}{$chr}{$pos}) {
-						if(length($save{$strains[$i]}{$chr}{$pos}) > 1) {
-							$indels++;
-						} else {
-							$snps++;
-						}
-					#Mutation does exist - do string comparison to see if different - check length and count indel/snp up
-					} else {
-						if($save{$strains[$j]}{$chr}{$pos} ne $save{$strains[$i]}{$chr}{$pos}) {
-							if(length($save{$strains[$i]}{$chr}{$pos}) == length($save{$strains[$j]}{$chr}{$pos})) {
-								$snps++;
-							} else {
+if($private == 0) {
+	#Run all pairwise comparisons
+	print "Strain comparison\t#SNPs\t#InDels\n";
+	for(my $i = 0; $i < @strains - 1; $i++) {
+		for(my $j = $i +1 ; $j < @strains; $j++) {
+			$snps = 0;
+			$indels = 0;
+			#Run through all mutations in strain 1 and see if they exist in strain 2
+			if(exists $save{$strains[$i]}) {
+				foreach my $chr (keys %{$save{$strains[$i]}}) {
+					foreach my $pos (keys %{$save{$strains[$i]}{$chr}}) {
+						#Mutation does not exist - check length and count indel/snp up
+						if(!exists $save{$strains[$j]}{$chr}{$pos}) {
+							if(length($save{$strains[$i]}{$chr}{$pos}) > 1) {
 								$indels++;
+							} else {
+								$snps++;
+							}
+						#Mutation does exist - do string comparison to see if different - check length and count indel/snp up
+						} else {
+							if($save{$strains[$j]}{$chr}{$pos} ne $save{$strains[$i]}{$chr}{$pos}) {
+								if(length($save{$strains[$i]}{$chr}{$pos}) == length($save{$strains[$j]}{$chr}{$pos})) {
+									$snps++;
+								} else {
+									$indels++;
+								}
 							}
 						}
 					}
 				}
 			}
+			#Check if mutation exists in second strain
+			if(exists $save{$strains[$j]}) {
+				foreach my $chr (keys %{$save{$strains[$j]}}) {
+					foreach my $pos (keys %{$save{$strains[$j]}{$chr}}) {
+						#Just count up if mutation does not exist in first strain - if it exists in both strains it was already counted up in the loop for strain 1
+						if(!exists $save{$strains[$i]}{$chr}{$pos}) {
+							if(length($save{$strains[$j]}{$chr}{$pos}) > 1) {
+								$indels++;
+							} else {
+								$snps++;
+							}
+						}
+					}
+				}
+			}
+			#Add comma seperators for 1000 pos
+			$snps =~ s/(\d)(?=(\d{3})+(\D|$))/$1\,/g;
+			$indels =~ s/(\d)(?=(\d{3})+(\D|$))/$1\,/g;
+			print "" . $strains[$i] . " vs " . $strains[$j] . "\t" . $snps . "\t" . $indels . "\n";
 		}
-		#Check if mutation exists in second strain
-		if(exists $save{$strains[$j]}) {
-			foreach my $chr (keys %{$save{$strains[$j]}}) {
-				foreach my $pos (keys %{$save{$strains[$j]}{$chr}}) {
-					#Just count up if mutation does not exist in first strain - if it exists in both strains it was already counted up in the loop for strain 1
-					if(!exists $save{$strains[$i]}{$chr}{$pos}) {
-						if(length($save{$strains[$j]}{$chr}{$pos}) > 1) {
-							$indels++;
+	}
+} else {
+	my $exist = 0;
+	my %private_snp;
+	my %private_indel;
+	for(my $i = 0; $i < @strains; $i++) {
+		if(exists $save{$strains[$i]}) {
+			foreach my $chr (keys %{$save{$strains[$i]}}) {
+				foreach my $pos (keys %{$save{$strains[$i]}{$chr}}) {
+					$exist = 0;
+					for(my $j = 0; $j < @strains; $j++) {
+						if($i == $j) { next; }
+						if(exists $save{$strains[$j]}{$chr}{$pos}) {
+							$exist = 1;
+						}
+					}
+					if($exist == 0) {
+						if(length($save{$strains[$i]}{$chr}{$pos}) > 1) {
+							$private_indel{$strains[$i]}++;
 						} else {
-							$snps++;
+							$private_snp{$strains[$i]}++;
 						}
 					}
 				}
 			}
 		}
-		#Add comma seperators for 1000 pos
-		$snps =~ s/(\d)(?=(\d{3})+(\D|$))/$1\,/g;
-		$indels =~ s/(\d)(?=(\d{3})+(\D|$))/$1\,/g;
-		print "" . $strains[$i] . " vs " . $strains[$j] . "\t" . $snps . "\t" . $indels . "\n";
+	}
+	print "Strain\tprivate SNPs\tprivate InDels\n";
+	foreach my $strains (keys %save) {
+		$private_snp{$strains} =~ s/(\d)(?=(\d{3})+(\D|$))/$1\,/g;
+		$private_indel{$strains} =~ s/(\d)(?=(\d{3})+(\D|$))/$1\,/g;
+		print $strains . "\t" . $private_snp{$strains} . "\t" . $private_indel{$strains} . "\n";;
 	}
 }
+
