@@ -1,5 +1,6 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl
 use strict;
+use warnings;
 use Getopt::Long;
 use Storable;
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
@@ -80,6 +81,9 @@ for(my $i = 0; $i < @strains_to_use; $i++) {
 	$strains_to_use{uc($strains_to_use[$i])} = 1;
 }
 
+if($core > $num_strains) {
+	$core= $num_strains;
+}
 if($ref_name eq "") {
 	$ref_name = "REFERENCE";
 }
