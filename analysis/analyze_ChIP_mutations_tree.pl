@@ -1,7 +1,8 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/analysis'};
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
 use strict;
+use warnings;
 use POSIX;
 use Getopt::Long;
 use Storable;
@@ -151,6 +152,12 @@ if($center == 1 && $center_dist eq "") {
 if(($ab eq "" || $genome eq "" || $center == 0) && $dist_plot == 1) {
 	print STDERR "Distance plots not possible without anchor TF, genome, and center for the motif\n";
 	print STDERR "Do not generate distance plots!\n";
+	print STDERR "Waiting for 10 seconds - if you want to abort and restart hit Ctrl + C\n";
+	for(my $i = 0; $i < 10; $i++) {
+		print STDERR ".";
+		sleep(1);
+	}
+	print STDERR "\n";
 	$dist_plot = 0;
 	$effect = 0;
 }
@@ -225,6 +232,7 @@ if(@tf_dir == 1 && $tf_dir[0] eq "all") {
 		$tf_for_direction{$tf_dir[$i]} = 1;
 	}
 }
+
 
 if($ab ne "") {
 	if(!exists $index_motifs{$ab}) {
@@ -318,9 +326,9 @@ for(my $i = 0; $i < @strains; $i++) {
 
 #Get all sequences from file and save them in hash
 &get_files_from_seq();
-#$mu->record('got sequencing files');
 
 #Center peaks - if not set save seq in seq_recentered for downstream analysis
+
 if($center == 1) {
 	&center_peaks();
 } else {
@@ -329,6 +337,14 @@ if($center == 1) {
 	%seq_recentered = %{$seq};
 	$num_of_peaks{'motif'} = $line_number;
 }
+
+if(!exists $num_of_peaks{'motif'}) {
+	print STDERR "Motif specified in -AB (" . $ab . ") was not found in any peaks!\n";
+	print STDERR "Are you sure you used the correct antibody?\n";
+	print STDERR "Exiting...\n";
+	exit;
+}
+
 my $tmp_out_main_motif = "tmp" . rand(15);
 print STDERR "tmp out main motif: " . $tmp_out_main_motif . "\n";
 if($plots eq "") {
@@ -388,7 +404,7 @@ sub screen_and_plot{
 	my $seq = $_[5];
 	my $no_motif = 0;
 	my $seq_considered = $_[6];
-	$seq_considered = $seq_considered - $filter_no_mut;
+#	$seq_considered = $seq_considered - $filter_no_mut;
 	if(@_ > 7) {
 		$no_motif = 1;
 	}
@@ -419,7 +435,6 @@ sub screen_and_plot{
 		if(not $pid) {
 			print "we are in $count_fork\n";
 			&process_motifs_for_analysis(\@{$save_motifs[$count_fork]}, $output, $seq);
-			print STDERR "In the fork : " . $count_fork . "\n";
 			exit;
 		}
 		$count_fork++;
@@ -676,7 +691,7 @@ sub generate_dist_plot{
 				}	
 			}	
 		}
-		if(length($y) > length($a) + length($strain) + 8) {
+		if(length($y) > length($strain) + 8) {
 			chop $y;
 		}
 		$y .= ")";
@@ -751,7 +766,7 @@ sub generate_dist_plot{
 				}
 				$legend_class .= "\"" . $ab . "_" . $strain . "\",";
 				$legend_col .= "\"green\",";
-				print R $second_factor . "\n";
+			#	print R $second_factor . "\n";
 				$second_factor{$strain} =  "lines(x, " . $motif_print . "_" . $strain . ", col=color[" . $strain_number . "])\n";
 				$legend_class .= "\"" . $motif_print . "_" . $strain . "\",";
 				$legend_col .= "color[" . $strain_number . "],";
@@ -1029,7 +1044,6 @@ sub generate_R_files {
 				$delta_two = "delta_two <- c(";
 				$delta_no_mut = "delta_no_mut <- c(";
 				$x_count = 1;
-				$tmp_delta;
 				if($delta == 1) {
 					$max = $max + $max_delta;
 					$min = $min + $min_delta;
@@ -1271,7 +1285,6 @@ sub center_peaks{
 	my $start;
 	my $tmp_header;
 	my $length;
-
 	if($ab eq "") {
 		print STDERR "Not possible to center peak - no transcription factor is specified\n";
 		print STDERR "Skipping...\n";
@@ -1286,12 +1299,13 @@ sub center_peaks{
 		close TMP_MOTIF;
 	}
 	my $command = "homer2 find -i " . $tmp_out . " -m tmp_scan_motif_" . $ab . ".txt -offset 0 > output_tmp.txt";
+	print STDERR $command. "\n";
 	`$command`;
 	open FH, "<output_tmp.txt";
 	#Summarize and merge the peaks between the strains, so we know their exact position within the peak
 	my ($block_ref) = analysis::analyze_motifs("output_tmp.txt", \@strains, \%tree, \%lookup_strain, \%last_strain, $allele, $region);
 	%block = %$block_ref;
-	my ($block_ref) = analysis::merge_block(\%block, $overlap, \@strains, \%seq_recentered, \%tree, \%lookup_strain, \%last_strain, $allele);
+	($block_ref) = analysis::merge_block(\%block, $overlap, \@strains, $seq, \%tree, \%lookup_strain, \%last_strain, $allele);
 	%block = %$block_ref;
 	$tmp_center = "tmp" . rand(15);
 	open OUT, ">$tmp_center.far_motif";
@@ -1321,9 +1335,12 @@ sub center_peaks{
 		#	$tag_counts{$new_position} = $tag_counts{$position};
 			$fc{substr($header_recenter[0], 3)}{$header_recenter[1] - $peak_center} = $fc{substr($header_recenter[0], 3)}{$header_recenter[1]};
 			$tag_counts{substr($header_recenter[0], 3)}{$header_recenter[1] - $peak_center} = $tag_counts{substr($header_recenter[0], 3)}{$header_recenter[1]};
-			delete $peaks{$position};
-			delete $fc{substr($header_recenter[0], 3)}{$header_recenter[1]};
-			delete $tag_counts{substr($header_recenter[0], 3)}{$header_recenter[1]};
+			#Remove the old peak coordiantes - if the motif was directly in the center don't do anything
+			if(abs($peak_center) > 0) {
+				delete $peaks{$position};
+				delete $fc{substr($header_recenter[0], 3)}{$header_recenter[1]};
+				delete $tag_counts{substr($header_recenter[0], 3)}{$header_recenter[1]};
+			}
 			$num_of_peaks{'motif'}++;
 			#Delete these sequences from original seq hash so we have just seq without motif left at the end
 			for(my $i = 0; $i < @strains; $i++) {
