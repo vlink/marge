@@ -195,6 +195,7 @@ sub merge_block {
 	my $lookup = $_[5];
 	my $last = $_[6];
 	my $allele = $_[7];
+	my $chr_num_original;
         #Now run through all motifs and see if they are in all the other strains
 	foreach my $chr_pos (keys %block) {
 		$current_pos = (split("_", $chr_pos))[1];
@@ -223,6 +224,7 @@ sub merge_block {
 					for(my $al = 1; $al <= $allele; $al++) {
 						$shift_vector = 0;
 						$chr_num = substr((split('_', $chr_pos))[0], 3);
+						$chr_num_original = $chr_num;
 						if($chr_num !~ /\d+/ && !exists $lookup->{$strains[$i]}->{$chr_num}) {
 							print STDERR "Skip analysis of chromosome " . $chr_num . " allele " . $al . " in merge_block\n";
 							next;
@@ -264,21 +266,46 @@ sub merge_block {
 						if(!exists $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}{$al} || $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}{$al} eq "") {
 							#Define the position of this motif in the strain that is currently investigated
 							#Then pull this sequence from the sequence hash and calculate the motif score
+						#	print STDERR "strain: " . $strains[$i] . "\t" . $chr_num . "\t" . $al . "\n";
+						#	print STDERR "current pos: " . $current_pos . "\tmotif pos: " . $motif_pos ."\n";
+						#	print STDERR "chr original: " . $chr_num_original . "\n";
+						#	print STDERR "last: " . $last->{$strains[$i]}->{$chr_num_original}->{$al}->{'pos'} . " vs " . ($current_pos + $motif_pos) . "\n";
+						#	print STDERR $seq->{$chr_pos . "_" . $strains[$i] . "_" . $al} . "\n";
 							if(defined $tree->{$strains[$i]}->{$chr_num}->{$al}) {
-								$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
-								$current_shift = $tree_tmp->[0]->{'shift'};
-								$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos, $current_pos + 1);
-								$prev_shift = $tree_tmp->[0]->{'shift'};
+								if($current_pos + $motif_pos >= $last->{$strains[$i]}->{$chr_num_original}->{$al}->{'pos'}) {
+						#			print STDERR "Last\n";
+									$current_shift = $last->{$strains[$i]}->{$chr_num_original}->{$al}->{'pos'};
+								} else {
+									$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
+								#	print STDERR "From sequence\n";
+									$current_shift = $tree_tmp->[0]->{'shift'};
+								}
+								if($current_pos >= $last->{$strains[$i]}->{$chr_num_original}->{$al}->{'pos'}) {
+									$prev_shift = $last->{$strains[$i]}->{$chr_num_original}->{$al}->{'pos'};
+								} else { 
+									$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos, $current_pos + 1);
+									$prev_shift = $tree_tmp->[0]->{'shift'};
+								}
+							#	print STDERR "motif: " . $motif . "\t";
+							#	print STDERR $current_shift . "\t" . $prev_shift . "\n";
 								$shift_vector = $current_shift - $prev_shift;	
 							}
 						#	print STDERR $seq->{$chr_pos . "_" . $strains[$i] . "_" . $al} . "\n";
-						#	print STDERR "strain: " . $strains[$i] . "\tmotif pos: " . $motif_pos . "\tshift vector: " . $shift_vector . "\n";
-						#	print STDERR "position: " . $chr_pos . "\n";
-						#	print STDERR "length: " . $block{$chr_pos}{$motif}{$motif_pos}{'length'} . "\n";
-							if(length($seq->{$chr_pos . "_" . $strains[$i] . "_" . $al}) < $motif_pos + $shift_vector || length(substr($seq->{$chr_pos . "_" . $strains[$i] . "_" . $al}, $motif_pos + $shift_vector, $block{$chr_pos}{$motif}{$motif_pos}{'length'})) == 0) {
+						#	print STDERR "motif pos + shift vector: " . ($motif_pos + $shift_vector) . "\n";
+						#	print STDERR "length of seq: " . length($seq->{$chr_pos . "_" . $strains[$i] . "_" . $al}) . "\n";
+						#	print STDERR "length of motif: " . $block{$chr_pos}{$motif}{$motif_pos}{'length'} . "\n";
+							if(length($seq->{$chr_pos . "_" . $strains[$i] . "_" . $al}) < $motif_pos + $shift_vector || length(substr($seq->{$chr_pos . "_" . $strains[$i] . "_" . $al}, $motif_pos + $shift_vector)) < $block{$chr_pos}{$motif}{$motif_pos}{'length'} || $motif_pos + $shift_vector < 0) {
+						#		print STDERR "Why are we not setting it to zero?\n";
 								$block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}{$al} = 0;
 							} else {
-								$block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}{$al} = &calculate_motif_score($motif, substr($seq->{$chr_pos . "_" . $strains[$i] . "_" . $al}, $motif_pos + $shift_vector, $block{$chr_pos}{$motif}{$motif_pos}{'length'}), $block{$chr_pos}{$motif}{$motif_pos}{'orientation'});
+							#	print STDERR "chr pos: " . $chr_pos .  "\tstrain: " . $strains[$i] . "\tallele: " . $al . "\tmotif pos" . ($motif_pos + $shift_vector) . "\tlength: " . $block{$chr_pos}{$motif}{$motif_pos}{'length'} . "\n";
+							#	print STDERR $seq->{$chr_pos . "_" . $strains[$i] . "_" . $al} . "\n";
+								if(substr($seq->{$chr_pos . "_" . $strains[$i] . "_" . $al}, $motif_pos + $shift_vector, $block{$chr_pos}{$motif}{$motif_pos}{'length'}) eq "") {
+							#		print STDERR "Set to zero\n";
+									$block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}{$al} = 0;
+								} else {
+									$block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}{$al} = &calculate_motif_score($motif, substr($seq->{$chr_pos . "_" . $strains[$i] . "_" . $al}, $motif_pos + $shift_vector, $block{$chr_pos}{$motif}{$motif_pos}{'length'}), $block{$chr_pos}{$motif}{$motif_pos}{'orientation'});
+								}
 							}
 							$diff{$strains[$i]}{$al} += $block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}{$al};
 						} else {
@@ -446,7 +473,7 @@ sub distance_plot{
 
 #Method prepares output hash for the background distribution in the distance plots
 sub background_dist_plot{
-	$_ = () for my (%scan_candidates, %motifs, @fileHandlesBackground, @name, %background, %background_saved, %dist_plot_background);
+	$_ = () for my (%scan_candidates, %motifs, @fileHandlesBackground, @name, %background, %background_saved, %dist_plot_background, %missed_bg);
 	$_ = "" for my ($motif_genomewide, $command, $tmp_motif, $tmp_motif2, $filename, $current_chr, $file);
 	$_ = 0 for my ($i, $first, $count, $current_dist, $next_dist, $smallest_dist, $main_tf_start, $main_tf_end, $length);
 	my $background_folder = $_[0];	
@@ -495,8 +522,7 @@ sub background_dist_plot{
 		print STDERR "Scan motifs genome wide\n";
 		$tmp_motif2 = "tmp" . rand(15);
 		$delete->{$tmp_motif2} = 1;
-		$command = "scanMotifGenomeWide.pl " . $tmp_motif . " /home/vlink/genomes/mm10_clean/chr10.fa > " . $tmp_motif2;
-	#	$command = "scanMotifGenomeWide.pl " . $tmp_motif . " " . $genome . " > " . $tmp_motif2;
+		$command = "scanMotifGenomeWide.pl " . $tmp_motif . " " . $genome . " > " . $tmp_motif2;
 		`$command`;
 		print STDERR $command . "\n";
 		open(my $fh, "<", $tmp_motif2);
@@ -558,7 +584,12 @@ sub background_dist_plot{
 			if($split[1] ne $current_chr) {
 				$count = 0;
 			}
+			if(!defined $background_saved{$split[1]}) {
+				$missed_bg{$split[1]} = 1;
+				next;
+			}
 			$current_chr = $split[1];
+			print STDERR "Calculate current dist: " . $split[1] . "\t" . $count . "\n";
 			$current_dist = $split[2] - $background_saved{$split[1]}[$count];
 			if(defined $background_saved{$split[1]}[$count + 1]) {
 			$next_dist = $split[2] - $background_saved{$split[1]}[$count + 1];
@@ -594,6 +625,13 @@ sub background_dist_plot{
 			}
 		}
 		close $fh;
+		if(keys %missed_bg > 0) {
+			print STDERR "Could not calculate a background for these chromosomes:\n";
+			foreach my $k (keys %missed_bg) {
+				print STDERR "\t" . $k . "\n";
+			}
+		}
+		%missed_bg = ();
 	}
 	return ($delete, \%dist_plot_background);
 }
@@ -675,13 +713,13 @@ sub analyze_motif_pos{
 									$prev_shift = 0;
 									#Check if there was an indel between the start of the sequence and the position of the motif in the strain because original sequences needs to be used in this method
 									if(defined $tree->{$strains[$i]}->{$chr_num}->{$a1}) {
-										if($current_pos + $motif_pos > $last->{$strains[$i]}->{$chr_num_original}->{$a1}->{'pos'}) {
+										if($current_pos + $motif_pos >= $last->{$strains[$i]}->{$chr_num_original}->{$a1}->{'pos'}) {
 											$current_shift = $last->{$strains[$i]}->{$chr_num_original}->{$a1}->{'shift'};
 										} else {
 											$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$a1}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
 											$current_shift = $tree_tmp->[0]->{'shift'};
 										}
-										if($current_pos > $last->{$strains[$i]}->{$chr_num_original}->{$a1}->{'pos'}) {
+										if($current_pos >= $last->{$strains[$i]}->{$chr_num_original}->{$a1}->{'pos'}) {
 											$prev_shift = $last->{$strains[$i]}->{$chr_num_original}->{$a1}->{'shift'};
 										} else {
 											$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$a1}->fetch($current_pos, $current_pos + 1);
@@ -708,13 +746,13 @@ sub analyze_motif_pos{
 									$prev_shift = 0;
 									#Check if there was an indel between the start of the sequence and the position of the motif in the second strain
 									if(defined $tree->{$strains[$j]}->{$chr_num}->{$a2}) {
-										if($current_pos + $motif_pos > $last->{$strains[$j]}->{$chr_num_original}->{$a2}->{'pos'}) {
+										if($current_pos + $motif_pos >= $last->{$strains[$j]}->{$chr_num_original}->{$a2}->{'pos'}) {
 											$current_shift = $last->{$strains[$j]}->{$chr_num_original}->{$a2}->{'shift'};
 										} else {
 											$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->{$a2}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
 											$current_shift = $tree_tmp->[0]->{'shift'};
 										}
-										if($current_pos > $last->{$strains[$j]}->{$chr_num_original}->{$a2}->{'pos'}) {
+										if($current_pos >= $last->{$strains[$j]}->{$chr_num_original}->{$a2}->{'pos'}) {
 											$prev_shift = $last->{$strains[$j]}->{$chr_num_original}->{$a2}->{'shift'};
 										} else {
 											$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->{$a2}->fetch($current_pos, $current_pos + 1);
@@ -919,12 +957,14 @@ sub get_motif_name{
 			$name = $clean2[0];
 		}
 	}
-	$name =~ s/-/_/g;
+	$name =~ s/\-/_/g;
 	$name =~ s/ //g;
 	$name =~ s/://g;
 	$name =~ s/\)//g;
 	$name =~ s/\(//g;
 	$name =~ s/\|/_/g;
+	$name =~ s/\?//g;
+	$name =~ s/\+//g;
 	return $name;
 }
 
@@ -1198,7 +1238,8 @@ sub all_vs_all_comparison {
 	foreach my $motif (keys %motif_matrix) {
 		open OUT, ">matrix_$motif.txt";
 		print OUT "Strain\tLocus\tMotif\tMotif_score\tbinding\n";
-		foreach my $pos (sort {$a <=> $b} keys %tag_matrix) {
+
+		foreach my $pos (sort {$a cmp $b} keys %tag_matrix) {
 			for(my $i = 0; $i < @strains; $i++) {
 				for(my $al = 1; $al <= $allele; $al++) {
 					print OUT $strains[$i] . "_" . $al . "\t" . $pos . "\t";

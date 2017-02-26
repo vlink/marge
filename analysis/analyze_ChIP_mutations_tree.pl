@@ -217,7 +217,6 @@ if(@strains > 2 && $core < 4) {
 my ($index_motif_ref, $PWM_ref, $score_ref) = analysis::read_motifs($tf);
 %index_motifs = %$index_motif_ref;
 %motif_scan_scores = %$score_ref;
-
 print STDERR "Save index file\n";
 #$mu->record('read_motifs');
 
@@ -375,7 +374,6 @@ if($analyze_far_motif == 1) {
 	$longest_seq = $longest_seq_far_motif;
 	&screen_and_plot($output . "_with_far_motif", $plots . "_with_far_motif", $tmp_center . ".far_motif", $tmp_out_main_motif . "_far_motif", $longest_seq_far_motif, \%seq_far_motif, $num_of_peaks{'far'});
 }
-
 if($keep == 0) {
 	print STDERR "Delete output files\n";
 	foreach my $d (keys %delete) {
@@ -444,11 +442,17 @@ sub screen_and_plot{
 	}
 
 	print STDERR "Done with scanning and processing motifs\n";
+	foreach my $motif (keys %index_motifs) {
+		$delete{$output . "_" . $motif . ".txt"} = 1;
+	}
 	if(@strains > 2) {
+		my $group;
+		my %skipped;
 		#Write GLMM scripts per core that will be used
 		my @motif_array;
 		foreach my $motif (keys %index_motifs) {
 			push @motif_array, $motif;
+			print STDERR $motif . "\n";
 		}
 		my $part = int((@motif_array)/$core) + 1;
 		my $end_index;
@@ -464,11 +468,33 @@ sub screen_and_plot{
 				$end_index = $part * ($i + 1);
 			}
 			for(my $j = $i * $part; $j < $end_index; $j++) {
+				#Make sure there are several grouping levels
+				if(!-e "matrix_$motif_array[$j].txt") {
+					print STDERR $motif_array[$j] . " does not exist - no motif was found.\n";
+					print STDERR "Skipping...\n";
+					$skipped{$motif_array[$j]} = 1;
+					next;
+				}
+				$group = `cat matrix_$motif_array[$j].txt | awk '{print \$5}' | sort -u | wc -l`;
+				chomp $group;
+				if($group == 2) { 
+					print STDERR $motif_array[$j] . " does not have enough levels for a GLMM\nskipping...\n"; 
+					$skipped{$motif_array[$j]} = 1; 
+					next; 
+				}
+				$group = `wc -l $output\_$motif_array[$j].txt`;
+				
+				if((split('\s+', $group))[0] < @strains + 2) {
+					print STDERR $motif_array[$j] . " is only found in one genomic location\nNot enough levels for GLMM\nskipping...\n";
+					$skipped{$motif_array[$j]} = 1;
+					next;
+				}
 				print OUT "print(\"" . $motif_array[$j] . " in thread " . $i . " (" . $i . " of " . $end_index . " (" . ($j/$end_index) . "%))i\")\n";
 				print OUT $motif_array[$j] . " <- read.delim(\"matrix_" . $motif_array[$j] . ".txt\", header=T)\n";
 				$delete{"matrix_" . $motif_array[$j]. ".txt"} = 1;
 				print OUT "write(\"Calculating model for " . $motif_array[$j] . "\", stderr())\n";
-				print OUT "mod_" . $motif_array[$j] . " <- lmer(binding ~ Motif + (1 | Locus) + (1| Strain), data=" . $motif_array[$j] . ")\n";
+				#	print OUT "mod_" . $motif_array[$j] . " <- lmer(binding ~ Motif + (1 | Locus) + (1| Strain), data=" . $motif_array[$j] . ")\n";
+				print OUT "mod_" . $motif_array[$j] . " <- lmer(binding ~ Motif_score + (1 | Locus) + (1| Strain), data=" . $motif_array[$j] . ")\n";
 				print OUT "pvalue_" . $motif_array[$j] . " <- drop1(mod_" . $motif_array[$j] . ",test=\"Chisq\")\n";
 				print OUT "print(\"" . $motif_array[$j] . "\")\n";
 				print OUT "pvalue_" . $motif_array[$j] . "\n";
@@ -505,8 +531,10 @@ sub screen_and_plot{
 					next;
 				}
 				@split = split('\s+', $line);
-				if($split[0] eq "Motif") {
-					if($split[4] eq "<") {
+				if(@split > 1 && $split[0] eq "Motif") {
+					if(@split < 5) {
+						$save_pvalues{1}{$m_name} = 1;
+					} elsif($split[4] eq "<") {
 						$save_pvalues{$split[5]}{$m_name} = 1;
 					} else {
 						$save_pvalues{$split[4]}{$m_name} = 1;
@@ -519,6 +547,9 @@ sub screen_and_plot{
 			foreach my $motif_name (keys %{$save_pvalues{$pvalue}}) {
 				print GLMM $motif_name . "\t" . $pvalue . "\n";
 			}
+		}
+		foreach my $motifs (keys %skipped) {
+			print GLMM $motifs . "\t1\n";
 		}
 		close GLMM;
 	} else {
@@ -550,7 +581,9 @@ sub screen_and_plot{
 	if($ab ne "") {
 		#Not possible at this point for all vs all, because we do not analyze in detail which motifs are mutated, only how well motif score and tag count correlate
 		if(@strains > 2) { 
-			exit;
+			print STDERR "ChIP AB is defined\n";
+			print STDERR "No analysis run for peaks without mutated PU.1 motif\n";	
+			next;
 		} else {
 			my $considered = 0;
 			#check mutation summary file for chipped antibody and remove all peaks with one or more mutated motifs
@@ -595,18 +628,23 @@ sub process_motifs_for_analysis{
 	my $dist_plot_thread = ();
 	my $mut_pos_thread = ();
 	my $motifs;
+	my $tmp_out = "tmp" . rand(15);
+	my $tmp_motif_file;
+	my $tmp_file;
 	for(my $i = 0; $i < @fork_motifs; $i++) {
 		if(!defined $fork_motifs[$i]) { next; }
 		$motifs = $fork_motifs[$i];
 		print STDERR "Scanning for $motifs\n";
-		my $tmp_motif_file = "tmp" . rand(15) . "_" . $motifs . ".txt";
+		$tmp_motif_file = $tmp_out . "_" . $motifs . ".txt";
+		print STDERR "motif file: " . $tmp_motif_file . "\n";
 		open OUT, ">$tmp_motif_file";
 		print OUT ">" . $motifs . "\t" . $motifs . "\t" . $motif_scan_scores{$motifs} . "\n";
 		foreach my $pos (sort {$a cmp $b} keys %{$PWM{$motifs}}) {
 			print OUT $PWM{$motifs}{$pos}{'A'} . "\t" . $PWM{$motifs}{$pos}{'C'} . "\t" . $PWM{$motifs}{$pos}{'G'} . "\t" . $PWM{$motifs}{$pos}{'T'} . "\n";
 		}
 		close OUT;
-		my $tmp_file = $tmp_out . "_" . $motifs . ".txt";
+		$tmp_file = "tmp_file_" . $tmp_out . "_" . $motifs . ".txt";
+		print STDERR "tmp_file: " . $tmp_file . "\n";
 		analysis::scan_motif_with_homer($tmp_out, $tmp_file, $tmp_motif_file); 
 		print STDERR "Start analysis for " . $motifs . "\n";
 		#Analyze the motifs between the different strains and save convert the output file into a has$allele, h
@@ -639,7 +677,9 @@ sub process_motifs_for_analysis{
 		}
 		print STDERR "Done analyzing " . $motifs . "\n";
 		if($keep == 0) {
+			print STDERR "rm $tmp_motif_file\n";
 			`rm $tmp_motif_file`;
+			print STDERR "rm $tmp_file\n";
 			`rm $tmp_file`;
 		}
 	}
@@ -656,7 +696,8 @@ sub generate_dist_plot{
 	print STDERR "Creating R script for $output\n";
 	open R, ">$output";
 	my $strain_number = 1;
-	my $tmp_ab = &motif_name($ab);
+#	my $tmp_ab = &motif_name($ab);
+	my $tmp_ab = analysis::get_motif_name($ab);
 	#longest seq is needed for x axis
 	if($longest_seq % 2 == 1) {
 		$longest_seq++;
@@ -716,7 +757,8 @@ sub generate_dist_plot{
 		$max_second = "max_second <- max(";
 		#Skip distance plot for main transcription factor 
 		if($motif eq $ab) { next; }
-		$motif_print = &motif_name($motif);
+		#	$motif_print = &motif_name($motif);
+		$motif_print = analysis::get_motif_name($motif);
 		$max = 0;
 		$first = 0;
 		$strain_number = 1;
@@ -892,6 +934,12 @@ sub generate_mut_pos_analysis_file{
 					} else {
 						$mut_freq_unsig .= $mut_pos_analysis{$motif}{$base}{$pos}{'N'} . ",";
 					}
+				}
+				if(!exists $mut_pos_analysis{$motif}{'indel'}{'S'}) {
+					$mut_pos_analysis{$motif}{'indel'}{'S'} = 0;
+				}
+				if(!exists $mut_pos_analysis{$motif}{'indel'}{'N'}) {
+					$mut_pos_analysis{$motif}{'indel'}{'S'} = 0;
 				}
 				if($pos > 1) {
 					$y_sig .= $pos . " + ($step  * ($pos - 1)) + (0.05 * $count),";
@@ -1406,15 +1454,16 @@ sub fakrek{
 }
 
 #Change motif name so it won't break the R script
-sub motif_name{
-	my $local_seq = $_[0];
-	$local_seq =~ s/\-/_/g;
-	$local_seq =~ s/\+//g;
-	$local_seq =~ s/://g;
-	$local_seq =~ s/ //g;
-	$local_seq =~ s/\)//g;
-	return $local_seq;
-}
+#sub motif_name{
+#	my $local_seq = $_[0];
+#	$local_seq =~ s/\-/_/g;
+#	$local_seq =~ s/\+//g;
+#	$local_seq =~ s/://g;
+#	$local_seq =~ s/ //g;
+#	$local_seq =~ s/\?//g;
+#	$local_seq =~ s/\)//g;
+#	return $local_seq;
+#}
 
 sub thread_routine{
 	my $file_thread = $_[0];
