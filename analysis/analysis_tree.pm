@@ -304,6 +304,7 @@ sub merge_block {
 							#		print STDERR "Set to zero\n";
 									$block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}{$al} = 0;
 								} else {
+									#	print STDERR substr($seq->{$chr_pos . "_" . $strains[$i] . "_" . $al}, $motif_pos + $shift_vector, $block{$chr_pos}{$motif}{$motif_pos}{'length'}) . "\n";
 									$block{$chr_pos}{$motif}{$motif_pos}{$strains[$i]}{$al} = &calculate_motif_score($motif, substr($seq->{$chr_pos . "_" . $strains[$i] . "_" . $al}, $motif_pos + $shift_vector, $block{$chr_pos}{$motif}{$motif_pos}{'length'}), $block{$chr_pos}{$motif}{$motif_pos}{'orientation'});
 								}
 							}
@@ -589,7 +590,6 @@ sub background_dist_plot{
 				next;
 			}
 			$current_chr = $split[1];
-			print STDERR "Calculate current dist: " . $split[1] . "\t" . $count . "\n";
 			$current_dist = $split[2] - $background_saved{$split[1]}[$count];
 			if(defined $background_saved{$split[1]}[$count + 1]) {
 			$next_dist = $split[2] - $background_saved{$split[1]}[$count + 1];
@@ -890,7 +890,6 @@ sub calculate_motif_score{
 		print STDERR "Return\n";
 		return sprintf("%.6f", $score);	
 	}
-#	print STDERR "local seq: " .  $local_seq . "\n";
 	my @base = split('', $local_seq);
 #	print STDERR "we keep going\n";
 	if($orientation eq "+") {
@@ -1030,7 +1029,10 @@ sub scan_motif_with_homer{
 	my $seq_file = $_[0];
 	my $out_file = $_[1];
 	my $tf = $_[2];
-	my $command = "homer2 find -i " . $seq_file . " -m " . $tf . " -offset 0 > " . $out_file . " 2> /dev/null";
+	my $rfolder = $_[3];
+	my $wd = $_[4];
+#	my $command = "homer2 find -i " . $seq_file . " -m " . $tf . " -offset 0 > " . $out_file . " 2> /dev/null";
+	my $command = "cd " . $rfolder . " && homer2 find -i " . $wd . "/" . $seq_file . " -m " . $wd . "/" . $tf . " -offset 0 -o " . $wd . "/" . $out_file . " 2> /dev/null; cd -";
 	`$command`;	
 }
 
@@ -1072,6 +1074,7 @@ sub get_seq_for_peaks {
 					delete $peaks{$chr};
 					#Also remove it from sequence 
 					foreach my $s (%seq) {
+						if($s eq "") { next; }
 						@tmp_split = split("_", $s);
 						$h = $tmp_split[0];
 						for(my $k = 1; $k < @tmp_split - 3; $k++) {

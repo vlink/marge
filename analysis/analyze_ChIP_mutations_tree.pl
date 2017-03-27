@@ -16,7 +16,7 @@ use Memory::Usage;
 
 $_ = "" for my($genome, $file, $tf, $filename, $output, $ab, $plots, $overlap, $tmp_out, $data, $tmp_center, $genome_dir, $center_dist, $tf_dir_name, $longest_seq);
 $_ = () for my(@strains, %peaks, @split, @split_one, @split_two, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, %block, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %lookup_strain, %last_strain, %tree, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, $pvalue, %wrong_direction, %right_direction, %middle_direction, %tf_for_direction, %num_of_peaks, @tf_dir, $seq, @strains_working, @Threads, @running, $current_thread);
-$_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $filter_out, $print_block, $core);
+$_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $filter_out, $print_block, $core, $rand_tmp_mut, $rand_tmp_dist);
 my $line_number = 1;
 
 sub printCMD {
@@ -200,6 +200,13 @@ for(my $i = 0; $i < @strains; $i++) {
 #	$core = 4;
 #}
 if($core == 0) { $core = 1; }
+
+if($dist_plot == 1) {
+	$rand_tmp_dist = rand(5);
+}
+if($mut_pos == 1) {
+	$rand_tmp_mut = rand(5);
+}
 
 if(@strains > 2 && $core < 4) {
 	print STDERR "Only $core used for an all vs. all comparison\n";
@@ -431,9 +438,8 @@ sub screen_and_plot{
 	for(1 .. $core) {
 		my $pid = fork;
 		if(not $pid) {
-			print "we are in $count_fork\n";
-			&process_motifs_for_analysis(\@{$save_motifs[$count_fork]}, $output, $seq);
-			exit;
+			&process_motifs_for_analysis(\@{$save_motifs[$count_fork]}, $output, $seq, $count_fork);
+			exit();
 		}
 		$count_fork++;
 	}
@@ -516,6 +522,7 @@ sub screen_and_plot{
 		for (1 .. $core) {
 			wait();
 		}
+		print STDERR "Done with waiting for forks\n";
 		print "Done with waiting for forks\n";
 		open GLMM, ">GLMM_results.txt";
 		print GLMM "Motif\tp-value\n";
@@ -523,6 +530,7 @@ sub screen_and_plot{
 		my $m_name;
 		for(my $i = 0; $i < $core; $i++) {
 			my $output_file = "output_" . substr($data_for_threading{$i}, 0, length($data_for_threading{$i}) - 2) . ".txt";
+			print STDERR "Analyzing $output_file\n";
 			open FH, "<$output_file";
 			foreach my $line (<FH>) {
 				chomp $line;
@@ -531,7 +539,7 @@ sub screen_and_plot{
 					next;
 				}
 				@split = split('\s+', $line);
-				if(@split > 1 && $split[0] eq "Motif") {
+				if(($line ne "" && @split > 1) && ($split[0] eq "Motif" || $split[0] eq "Motif_score")) {
 					if(@split < 5) {
 						$save_pvalues{1}{$m_name} = 1;
 					} elsif($split[4] eq "<") {
@@ -561,8 +569,8 @@ sub screen_and_plot{
 
 	if($mut_pos == 1) {
 		foreach my $motifs (keys %index_motifs) {
-			%{$mut_pos_analysis{$motifs}} = %{retrieve("tmp_storage_mut_pos_" . $motifs . ".txt")};
-			$delete{"tmp_storage_mut_pos_" . $motifs . ".txt"} = 1;
+			%{$mut_pos_analysis{$motifs}} = %{retrieve("tmp_storage_mut_pos_" . $rand_tmp_mut . "_" . $motifs . ".txt")};
+			$delete{"tmp_storage_mut_pos_" . $rand_tmp_mut . "_" . $motifs . ".txt"} = 1;
 		}
 		&generate_mut_pos_analysis_file($plots . "_mut_pos_motifs.R");
 	}
@@ -572,8 +580,8 @@ sub screen_and_plot{
 		%delete = %{$delete_ref};
 		%dist_plot_background = %{$dist_plot_background_ref};
 		foreach my $motifs (keys %index_motifs) {
-			%{$dist_plot{$motifs}} = %{retrieve("tmp_storage_dist_" . $motifs . ".txt")};
-			$delete{"tmp_storage_dist_" . $motifs . ".txt"} = 1;
+			%{$dist_plot{$motifs}} = %{retrieve("tmp_storage_dist_" . $rand_tmp_dist . "_" . $motifs . ".txt")};
+			$delete{"tmp_storage_dist_" . $rand_tmp_dist . "_" . $motifs . ".txt"} = 1;
 		}
 		&generate_dist_plot($plots . "_distance.R", $no_motif, $longest_seq);	
 	}
@@ -624,19 +632,25 @@ sub process_motifs_for_analysis{
 	my @fork_motifs = @{$_[0]};
 	my $output = $_[1];
 	my $seq = $_[2];
+	my $c = $_[3];
 	my %block;
 	my $dist_plot_thread = ();
 	my $mut_pos_thread = ();
 	my $motifs;
-	my $tmp_out = "tmp" . rand(15);
+#	my $tmp_out = "tmp" . rand(15);
 	my $tmp_motif_file;
 	my $tmp_file;
+	my $rand_folder;
+	$rand_folder = "threading_" . rand(5) . "_" . $c;
+	my $command = "mkdir -p " . $rand_folder;
+	`$command`;
+	my $pwd = `pwd`;
+	chomp $pwd;
 	for(my $i = 0; $i < @fork_motifs; $i++) {
 		if(!defined $fork_motifs[$i]) { next; }
 		$motifs = $fork_motifs[$i];
 		print STDERR "Scanning for $motifs\n";
 		$tmp_motif_file = $tmp_out . "_" . $motifs . ".txt";
-		print STDERR "motif file: " . $tmp_motif_file . "\n";
 		open OUT, ">$tmp_motif_file";
 		print OUT ">" . $motifs . "\t" . $motifs . "\t" . $motif_scan_scores{$motifs} . "\n";
 		foreach my $pos (sort {$a cmp $b} keys %{$PWM{$motifs}}) {
@@ -644,8 +658,8 @@ sub process_motifs_for_analysis{
 		}
 		close OUT;
 		$tmp_file = "tmp_file_" . $tmp_out . "_" . $motifs . ".txt";
-		print STDERR "tmp_file: " . $tmp_file . "\n";
-		analysis::scan_motif_with_homer($tmp_out, $tmp_file, $tmp_motif_file); 
+	#	sleep($c);		
+		analysis::scan_motif_with_homer($tmp_out, $tmp_file, $tmp_motif_file, $rand_folder, $pwd); 
 		print STDERR "Start analysis for " . $motifs . "\n";
 		#Analyze the motifs between the different strains and save convert the output file into a has$allele, h
 		%block = ();
@@ -663,11 +677,11 @@ sub process_motifs_for_analysis{
 		if($dist_plot == 1) {
 			#Check background distribution
 			my ($dist_plot_thread) = analysis::distance_plot(\%block, \@strains, \%fc, $fc_significant, $effect, $longest_seq, $seq, $delta_tag, $delta_threshold, $allele);
-			store $dist_plot_thread, "tmp_storage_dist_" . $motifs . ".txt";
+			store $dist_plot_thread, "tmp_storage_dist_" . $rand_tmp_dist . "_" . $motifs . ".txt";
 		}
 		if($mut_pos == 1) {
 			my ($mut_pos_thread) = analysis::analyze_motif_pos(\%block, \%fc, \@strains, $fc_significant, $seq, \%tree, \%last_strain, \%lookup_strain, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $allele, $region);
-			store $mut_pos_thread, "tmp_storage_mut_pos_" . $motifs . ".txt";
+			store $mut_pos_thread, "tmp_storage_mut_pos_" . $rand_tmp_mut . "_" . $motifs . ".txt";
 		}
 		if($delta == 1) {
 			&generate_delta_files($output, $plots . "_delta.R");
@@ -677,12 +691,14 @@ sub process_motifs_for_analysis{
 		}
 		print STDERR "Done analyzing " . $motifs . "\n";
 		if($keep == 0) {
-			print STDERR "rm $tmp_motif_file\n";
+			#print STDERR "rm $tmp_motif_file\n";
 			`rm $tmp_motif_file`;
-			print STDERR "rm $tmp_file\n";
+			#print STDERR "rm $tmp_file\n";
 			`rm $tmp_file`;
 		}
 	}
+	$command = "rm -rf $rand_folder";
+	`$command`;
 }
 
 #Generate distance plots
@@ -981,6 +997,10 @@ sub generate_mut_pos_analysis_file{
 			print R "points(y_unsig, mut_freq_unsig_" . $base . ", col=\"" . $col{$base} . "\", pch=8)\n";
 			print R "axis(2)\n";
 		}
+		if(!exists $mut_pos_analysis{$motif}{'indel'}{'S'}) { $mut_pos_analysis{$motif}{'indel'}{'S'} = 0; }
+		if(!exists $mut_pos_analysis{$motif}{'indel'}{'N'}) { $mut_pos_analysis{$motif}{'indel'}{'N'} = 0; }
+		if(!exists $mut_pos_analysis{$motif}{'multi'}{'S'}) { $mut_pos_analysis{$motif}{'multi'}{'S'} = 0; } 
+		if(!exists $mut_pos_analysis{$motif}{'multi'}{'N'}) { $mut_pos_analysis{$motif}{'multi'}{'N'} = 0; }
 		print R "legend(\"topleft\", c(\"sig\", \"unsig\", \"A\", \"C\", \"G\", \"T\", \"InDels sig: " . $mut_pos_analysis{$motif}{'indel'}{'S'} . "\", \"Indels not-s: " . $mut_pos_analysis{$motif}{'indel'}{'N'} . "\", \"Multiple SNPs sig: " . $mut_pos_analysis{$motif}{'multi'}{'S'} . "\",\"Multiple SNPs not-s: " . $mut_pos_analysis{$motif}{'multi'}{'N'} . "\"), col=c(\"black\", \"black\", \"" . $col{'A'} . "\", \"" . $col{'C'} . "\", \"" . $col{'G'} . "\", \"" . $col{'T'} . "\", \"black\", \"black\", \"black\", \"black\"), pch=c(20, 8, 16, 16, 16, 16, 16, 16, 16, 16), ncol=4)\n";
 		print R "opar <- par(las=1)\n";
 		print R "par(opar)\n";	
