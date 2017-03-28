@@ -202,10 +202,10 @@ for(my $i = 0; $i < @strains; $i++) {
 if($core == 0) { $core = 1; }
 
 if($dist_plot == 1) {
-	$rand_tmp_dist = rand(5);
+	$rand_tmp_dist = srand(5);
 }
 if($mut_pos == 1) {
-	$rand_tmp_mut = rand(5);
+	$rand_tmp_mut = srand(5);
 }
 
 if(@strains > 2 && $core < 4) {
@@ -351,7 +351,7 @@ if(!exists $num_of_peaks{'motif'}) {
 	exit;
 }
 
-my $tmp_out_main_motif = "tmp" . rand(15);
+my $tmp_out_main_motif = "tmp" . srand(15);
 print STDERR "tmp out main motif: " . $tmp_out_main_motif . "\n";
 if($plots eq "") {
 	$plots = "output_mut";
@@ -390,7 +390,7 @@ if($keep == 0) {
 
 #$mu->dump();
 sub get_files_from_seq{
-        $tmp_out = "tmp" . rand(15);
+        $tmp_out = "tmp" . srand(15);
         $delete{$tmp_out} = 1;
         my ($seq_ref, $l_seq, $filter) = analysis::get_seq_for_peaks($tmp_out, \%peaks, \@strains, $genome_dir, $allele, $line_number, $mut_only, $region, \%tree, \%lookup_strain, \%last_strain);
 	$seq = $seq_ref;
@@ -641,7 +641,7 @@ sub process_motifs_for_analysis{
 	my $tmp_motif_file;
 	my $tmp_file;
 	my $rand_folder;
-	$rand_folder = "threading_" . rand(5) . "_" . $c;
+	$rand_folder = "threading_" . srand(5) . "_" . $c;
 	my $command = "mkdir -p " . $rand_folder;
 	`$command`;
 	my $pwd = `pwd`;
@@ -1375,7 +1375,7 @@ sub center_peaks{
 	%block = %$block_ref;
 	($block_ref) = analysis::merge_block(\%block, $overlap, \@strains, $seq, \%tree, \%lookup_strain, \%last_strain, $allele);
 	%block = %$block_ref;
-	$tmp_center = "tmp" . rand(15);
+	$tmp_center = "tmp" . srand(15);
 	open OUT, ">$tmp_center.far_motif";
 	$delete{$tmp_center . ".far_motif"} = 1;
 	foreach my $position (keys %block) {

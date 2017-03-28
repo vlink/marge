@@ -509,7 +509,7 @@ sub background_dist_plot{
 	}
 	#Scan for motifs that were not already proprocessed
 	if(keys %scan_candidates > 0) {
-		$tmp_motif = "tmp" . rand(15) . ".txt";
+		$tmp_motif = "tmp" . srand(15) . ".txt";
 		$delete->{$tmp_motif} = 1;
 		open TMP, ">$tmp_motif";
 		foreach my $motif (keys %scan_candidates) {
@@ -521,7 +521,7 @@ sub background_dist_plot{
 		close TMP;
 
 		print STDERR "Scan motifs genome wide\n";
-		$tmp_motif2 = "tmp" . rand(15);
+		$tmp_motif2 = "tmp" . srand(15);
 		$delete->{$tmp_motif2} = 1;
 		$command = "scanMotifGenomeWide.pl " . $tmp_motif . " " . $genome . " > " . $tmp_motif2;
 		`$command`;
