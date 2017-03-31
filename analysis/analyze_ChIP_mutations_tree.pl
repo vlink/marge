@@ -16,7 +16,7 @@ use Memory::Usage;
 
 $_ = "" for my($genome, $file, $tf, $filename, $output, $ab, $plots, $overlap, $tmp_out, $data, $tmp_center, $genome_dir, $center_dist, $tf_dir_name, $longest_seq);
 $_ = () for my(@strains, %peaks, @split, @split_one, @split_two, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, %block, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %lookup_strain, %last_strain, %tree, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, $pvalue, %wrong_direction, %right_direction, %middle_direction, %tf_for_direction, %num_of_peaks, @tf_dir, $seq, @strains_working, @Threads, @running, $current_thread);
-$_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $filter_out, $print_block, $core, $rand_tmp_mut, $rand_tmp_dist);
+$_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $filter_out, $print_block, $core, $rand_tmp_mut, $rand_tmp_dist, $seed);
 my $line_number = 1;
 
 sub printCMD {
@@ -202,10 +202,12 @@ for(my $i = 0; $i < @strains; $i++) {
 if($core == 0) { $core = 1; }
 
 if($dist_plot == 1) {
-	$rand_tmp_dist = srand(5);
+	$seed = srand(5);
+	$rand_tmp_dist = rand($seed);
 }
 if($mut_pos == 1) {
-	$rand_tmp_mut = srand(5);
+	$seed = srand(5);
+	$rand_tmp_mut = rand($seed);
 }
 
 if(@strains > 2 && $core < 4) {
@@ -351,7 +353,8 @@ if(!exists $num_of_peaks{'motif'}) {
 	exit;
 }
 
-my $tmp_out_main_motif = "tmp" . srand(15);
+$seed = srand(15);
+my $tmp_out_main_motif = "tmp" . rand($seed);
 print STDERR "tmp out main motif: " . $tmp_out_main_motif . "\n";
 if($plots eq "") {
 	$plots = "output_mut";
@@ -390,7 +393,8 @@ if($keep == 0) {
 
 #$mu->dump();
 sub get_files_from_seq{
-        $tmp_out = "tmp" . srand(15);
+	$seed = srand(15);
+        $tmp_out = "tmp" . rand($seed);
         $delete{$tmp_out} = 1;
         my ($seq_ref, $l_seq, $filter) = analysis::get_seq_for_peaks($tmp_out, \%peaks, \@strains, $genome_dir, $allele, $line_number, $mut_only, $region, \%tree, \%lookup_strain, \%last_strain);
 	$seq = $seq_ref;
@@ -641,7 +645,8 @@ sub process_motifs_for_analysis{
 	my $tmp_motif_file;
 	my $tmp_file;
 	my $rand_folder;
-	$rand_folder = "threading_" . srand(5) . "_" . $c;
+	$seed = srand(5);
+	$rand_folder = "threading_" . rand($seed) . "_" . $c;
 	my $command = "mkdir -p " . $rand_folder;
 	`$command`;
 	my $pwd = `pwd`;
@@ -1375,7 +1380,8 @@ sub center_peaks{
 	%block = %$block_ref;
 	($block_ref) = analysis::merge_block(\%block, $overlap, \@strains, $seq, \%tree, \%lookup_strain, \%last_strain, $allele);
 	%block = %$block_ref;
-	$tmp_center = "tmp" . srand(15);
+	$seed = srand(15);
+	$tmp_center = "tmp" . rand($seed);
 	open OUT, ">$tmp_center.far_motif";
 	$delete{$tmp_center . ".far_motif"} = 1;
 	foreach my $position (keys %block) {
