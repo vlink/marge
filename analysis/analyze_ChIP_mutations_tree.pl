@@ -13,10 +13,11 @@ use analysis_tree;
 use Set::IntervalTree;
 use Data::Dumper;
 use Memory::Usage;
+use 5.014;
 
-$_ = "" for my($genome, $file, $tf, $filename, $output, $ab, $plots, $overlap, $tmp_out, $data, $tmp_center, $genome_dir, $center_dist, $tf_dir_name, $longest_seq);
+$_ = "" for my($genome, $file, $tf, $filename, $output, $ab, $plots, $overlap, $tmp_out, $data, $tmp_center, $genome_dir, $center_dist, $tf_dir_name, $longest_seq, $motif_measure, $GLMM_output);
 $_ = () for my(@strains, %peaks, @split, @split_one, @split_two, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, %block, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %lookup_strain, %last_strain, %tree, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, $pvalue, %wrong_direction, %right_direction, %middle_direction, %tf_for_direction, %num_of_peaks, @tf_dir, $seq, @strains_working, @Threads, @running, $current_thread);
-$_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $filter_out, $print_block, $core, $rand_tmp_mut, $rand_tmp_dist, $seed);
+$_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $filter_out, $print_block, $core, $rand_tmp_mut, $rand_tmp_dist);
 my $line_number = 1;
 
 sub printCMD {
@@ -55,6 +56,7 @@ sub printCMD {
 	print STDERR "\t-mut_only: just keeps peaks where one individuals is mutated\n";
 	print STDERR "\t-fc_pos: Foldchange threshold to count peaks as strain specific vs not (Default: 2fold)\n";
 	print STDERR "\t-overlap: Count motif as not mutated if the overlap n basepairs (complete|half|#bp)\n";
+	print STDERR "\t-measure [Motif|Motif_score]: For all versus all analysis. Either the existance of the motif (Motif) or the exact motif score (Motif_score) is considered in the GLMM (default: Motif)\n";
 
 	print STDERR "\nAdditional options:\n";
 	print STDERR "\t-tf_direction <list with TF>: (comma seperated list) for each of these transcription factor 3 output files are printed (all peaks where mutation and loss of binding are in the same direction (same_direction_<TF>.txt), all peaks with mutations that are between significant foldchange (direction_between_foldchanges_<TF>.txt) and all peaks where mutation and loss of binding are in the opposite direction (opposite_direction_<TF>.txt) - all: all motifs\n";
@@ -66,6 +68,7 @@ sub printCMD {
 	print STDERR "\t-TF <file with PWM for transcription factors>: (default HOMERs all.motifs) \n";
 	print STDERR "\t-data_dir <folder to data directory>: default defined in config\n";
 	print STDERR "\t-genome_dir <folder to indivial genomes>: default defined in config\n";
+	print STDERR "\t-GLMM_output <name>: Name of the output file from the GLMM analysis (default = GLMM_results.txt)\n";
         exit;
 }
 
@@ -100,6 +103,7 @@ GetOptions(     "genome=s" => \$genome,
 		"-region=s" => \$region,
 		"-delta" => \$delta, 
 		"-output=s" => \$output,
+		"-GLMM_output=s" => \$GLMM_output,
 		"-delta_tag" => \$delta_tag,
 		"-delta_threshold=s" => \$delta_threshold,
 		"-plots=s" => \$plots,
@@ -118,6 +122,7 @@ GetOptions(     "genome=s" => \$genome,
 		"-dist_plot" => \$dist_plot, 
 		"-effect" => \$effect,
 		"-center" => \$center, 
+		"-measure=s" => \$motif_measure,
 		"-center_dist=s" => \$center_dist,
 		"-motif" => \$analyze_motif,
 		"-no_motif" => \$analyze_no_motif,
@@ -135,6 +140,14 @@ if($genome_dir eq "") {
 	$genome_dir = $data;
 }
 
+if($motif_measure eq "") {
+	$motif_measure = "Motif";
+}
+if($motif_measure ne "Motif" && $motif_measure ne "Motif_score") {
+	print STDERR "Unknown measurement for all vs. all\n";
+	print STDERR "Measurement can be Motif or Motif_score\n";
+	exit;
+}
 
 if($data eq "") {
 	$data = config::read_config()->{'data_folder'};
@@ -202,12 +215,10 @@ for(my $i = 0; $i < @strains; $i++) {
 if($core == 0) { $core = 1; }
 
 if($dist_plot == 1) {
-	$seed = srand(5);
-	$rand_tmp_dist = rand($seed);
+	$rand_tmp_dist = rand();
 }
 if($mut_pos == 1) {
-	$seed = srand(5);
-	$rand_tmp_mut = rand($seed);
+	$rand_tmp_mut = rand();
 }
 
 if(@strains > 2 && $core < 4) {
@@ -353,8 +364,7 @@ if(!exists $num_of_peaks{'motif'}) {
 	exit;
 }
 
-$seed = srand(15);
-my $tmp_out_main_motif = "tmp" . rand($seed);
+my $tmp_out_main_motif = "tmp" . rand();
 print STDERR "tmp out main motif: " . $tmp_out_main_motif . "\n";
 if($plots eq "") {
 	$plots = "output_mut";
@@ -362,6 +372,10 @@ if($plots eq "") {
 if($output eq "") {
 	$output = "output_motif";
 }
+if($GLMM_output eq "") {
+	$GLMM_output = "GLMM_results.txt";
+}	
+
 if($analyze_motif == 1) {
 	print STDERR "Run analysis for all sequences with " . $ab . " motif\n";
 	if($tmp_center ne "") {
@@ -393,8 +407,7 @@ if($keep == 0) {
 
 #$mu->dump();
 sub get_files_from_seq{
-	$seed = srand(15);
-        $tmp_out = "tmp" . rand($seed);
+        $tmp_out = "tmp" . rand();
         $delete{$tmp_out} = 1;
         my ($seq_ref, $l_seq, $filter) = analysis::get_seq_for_peaks($tmp_out, \%peaks, \@strains, $genome_dir, $allele, $line_number, $mut_only, $region, \%tree, \%lookup_strain, \%last_strain);
 	$seq = $seq_ref;
@@ -437,7 +450,6 @@ sub screen_and_plot{
 		}
 		$run++;
 	}
-
 	my $count_fork = 0;
 	for(1 .. $core) {
 		my $pid = fork;
@@ -447,17 +459,24 @@ sub screen_and_plot{
 		}
 		$count_fork++;
 	}
-	for (1 .. $core) {
+	my $pid = fork;
+	if(not $pid) {
+		&monitor_processes();
+		exit();
+	}
+	for (1 .. ($core+1)) {
 		wait();
 	}
-
+	print STDERR "\n\n";
 	print STDERR "Done with scanning and processing motifs\n";
 	foreach my $motif (keys %index_motifs) {
 		$delete{$output . "_" . $motif . ".txt"} = 1;
 	}
+
 	if(@strains > 2) {
 		my $group;
 		my %skipped;
+		my $filename;
 		#Write GLMM scripts per core that will be used
 		my @motif_array;
 		foreach my $motif (keys %index_motifs) {
@@ -468,9 +487,9 @@ sub screen_and_plot{
 		my $end_index;
 		my %data_for_threading;
 		for(my $i = 0; $i < $core; $i++) {
-			open OUT, ">GLMM_script_" . ($i + 1) . ".R";
-			$delete{"GLMM_script_" . ($i + 1) . ".R"} = 1;
-			$data_for_threading{$i} = "GLMM_script_" . ($i + 1) . ".R";
+			open OUT, ">GLMM_script_" . $output . "_" . ($i + 1) . ".R";
+			$delete{"GLMM_script_" . $output . "_" . ($i + 1) . ".R"} = 1;
+			$data_for_threading{$i} = "GLMM_script_" . $output . "_" . ($i + 1) . ".R";
 			print OUT "library(lme4)\n";
 			if($part * ($i + 1) > @motif_array) {
 				$end_index = @motif_array;
@@ -478,14 +497,15 @@ sub screen_and_plot{
 				$end_index = $part * ($i + 1);
 			}
 			for(my $j = $i * $part; $j < $end_index; $j++) {
+				$filename = $output . "_" . $motif_array[$j] . ".txt";
 				#Make sure there are several grouping levels
-				if(!-e "matrix_$motif_array[$j].txt") {
+				if(!-e $filename) {
 					print STDERR $motif_array[$j] . " does not exist - no motif was found.\n";
 					print STDERR "Skipping...\n";
 					$skipped{$motif_array[$j]} = 1;
 					next;
 				}
-				$group = `cat matrix_$motif_array[$j].txt | awk '{print \$5}' | sort -u | wc -l`;
+				$group = `cat $filename | awk '{print \$5}' | sort -u | wc -l`;
 				chomp $group;
 				if($group == 2) { 
 					print STDERR $motif_array[$j] . " does not have enough levels for a GLMM\nskipping...\n"; 
@@ -500,11 +520,14 @@ sub screen_and_plot{
 					next;
 				}
 				print OUT "print(\"" . $motif_array[$j] . " in thread " . $i . " (" . $i . " of " . $end_index . " (" . ($j/$end_index) . "%))i\")\n";
-				print OUT $motif_array[$j] . " <- read.delim(\"matrix_" . $motif_array[$j] . ".txt\", header=T)\n";
-				$delete{"matrix_" . $motif_array[$j]. ".txt"} = 1;
+				print OUT $motif_array[$j] . " <- read.delim(\"" . $filename . "\", header=T)\n";
+				$delete{$filename} = 1;
 				print OUT "write(\"Calculating model for " . $motif_array[$j] . "\", stderr())\n";
-				#	print OUT "mod_" . $motif_array[$j] . " <- lmer(binding ~ Motif + (1 | Locus) + (1| Strain), data=" . $motif_array[$j] . ")\n";
-				print OUT "mod_" . $motif_array[$j] . " <- lmer(binding ~ Motif_score + (1 | Locus) + (1| Strain), data=" . $motif_array[$j] . ")\n";
+				if($motif_measure eq "Motif") {
+					print OUT "mod_" . $motif_array[$j] . " <- lmer(binding ~ Motif + (1 | Locus) + (1| Strain), data=" . $motif_array[$j] . ")\n";
+				} else {
+					print OUT "mod_" . $motif_array[$j] . " <- lmer(binding ~ Motif_score + (1 | Locus) + (1| Strain), data=" . $motif_array[$j] . ")\n";
+				}
 				print OUT "pvalue_" . $motif_array[$j] . " <- drop1(mod_" . $motif_array[$j] . ",test=\"Chisq\")\n";
 				print OUT "print(\"" . $motif_array[$j] . "\")\n";
 				print OUT "pvalue_" . $motif_array[$j] . "\n";
@@ -528,7 +551,7 @@ sub screen_and_plot{
 		}
 		print STDERR "Done with waiting for forks\n";
 		print "Done with waiting for forks\n";
-		open GLMM, ">GLMM_results.txt";
+		open GLMM, ">$GLMM_output";
 		print GLMM "Motif\tp-value\n";
 		my %save_pvalues;
 		my $m_name;
@@ -566,8 +589,7 @@ sub screen_and_plot{
 		close GLMM;
 	} else {
 		#Writes output file per motif for further analysis
-		print STDERR "Generating R files!\n";
-		print STDERR $output . "\n";
+		print STDERR "Generating R files for all!\n";
 		&generate_R_files($plots . ".R", $output, $seq_considered);
 	}
 
@@ -645,8 +667,7 @@ sub process_motifs_for_analysis{
 	my $tmp_motif_file;
 	my $tmp_file;
 	my $rand_folder;
-	$seed = srand(5);
-	$rand_folder = "threading_" . rand($seed) . "_" . $c;
+	$rand_folder = "threading_" . rand() . "_" . $c;
 	my $command = "mkdir -p " . $rand_folder;
 	`$command`;
 	my $pwd = `pwd`;
@@ -654,7 +675,6 @@ sub process_motifs_for_analysis{
 	for(my $i = 0; $i < @fork_motifs; $i++) {
 		if(!defined $fork_motifs[$i]) { next; }
 		$motifs = $fork_motifs[$i];
-		print STDERR "Scanning for $motifs\n";
 		$tmp_motif_file = $tmp_out . "_" . $motifs . ".txt";
 		open OUT, ">$tmp_motif_file";
 		print OUT ">" . $motifs . "\t" . $motifs . "\t" . $motif_scan_scores{$motifs} . "\n";
@@ -665,7 +685,6 @@ sub process_motifs_for_analysis{
 		$tmp_file = "tmp_file_" . $tmp_out . "_" . $motifs . ".txt";
 	#	sleep($c);		
 		analysis::scan_motif_with_homer($tmp_out, $tmp_file, $tmp_motif_file, $rand_folder, $pwd); 
-		print STDERR "Start analysis for " . $motifs . "\n";
 		#Analyze the motifs between the different strains and save convert the output file into a has$allele, h
 		%block = ();
 		my ($block_ref) = analysis::analyze_motifs($tmp_file, \@strains, \%tree, \%lookup_strain, \%last_strain, $allele, $region);
@@ -692,13 +711,10 @@ sub process_motifs_for_analysis{
 			&generate_delta_files($output, $plots . "_delta.R");
 		}
 		if(@strains > 2) {
-			analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains, $allele, \%motif_scan_scores);
+			analysis::all_vs_all_comparison(\%block, \%recenter_conversion, \%tag_counts, \@strains, $allele, \%motif_scan_scores, $output);
 		}
-		print STDERR "Done analyzing " . $motifs . "\n";
 		if($keep == 0) {
-			#print STDERR "rm $tmp_motif_file\n";
 			`rm $tmp_motif_file`;
-			#print STDERR "rm $tmp_file\n";
 			`rm $tmp_file`;
 		}
 	}
@@ -1049,13 +1065,17 @@ sub generate_R_files {
 	print R_DEN "pdf(\"" . substr($output_R_file_den, 0, length($output_R_file_den) - 2) . ".pdf\", width=10, height=5)\n";
 	print R_DEN "plot(0, 0, xlim=c(0,0), ylim=c(0,0), main=\"" . $commandline . "\", bty=\'n\', xaxt=\"n\", yaxt=\"n\", col=\"white\", xlab=\"\", ylab=\"\")\n";
 	foreach my $motif (sort {$index_motifs{$a} cmp $index_motifs{$b}} keys %index_motifs) {
-		print $motif . "\n";
+#		print $motif . "\n";
 		$filename = $output . "_" . $motif . ".txt";
 		$num_of_muts = `wc -l $filename`;
 		$delete{$filename} = 1;
 		@split = split('\s+', $num_of_muts);
 		if($split[0] == 1) {
-			print STDERR "No occurrences of " . $motif . " found close to " . $ab . "\n";
+			if($ab ne "") {
+				print STDERR "No occurrences of " . $motif . " with variants found close to " . $ab . " - No statistical analysis possible\n";
+			} else {
+				print STDERR "No occurrences of " . $motif . " with variants found within 200bp of peak center - No statistical analysis possible!\n";
+			}
 			next;
 		}
 		#Generate motif mutation distribution plots for every motif that occurs close to the chipped motif
@@ -1380,8 +1400,7 @@ sub center_peaks{
 	%block = %$block_ref;
 	($block_ref) = analysis::merge_block(\%block, $overlap, \@strains, $seq, \%tree, \%lookup_strain, \%last_strain, $allele);
 	%block = %$block_ref;
-	$seed = srand(15);
-	$tmp_center = "tmp" . rand($seed);
+	$tmp_center = "tmp" . rand();
 	open OUT, ">$tmp_center.far_motif";
 	$delete{$tmp_center . ".far_motif"} = 1;
 	foreach my $position (keys %block) {
@@ -1495,4 +1514,18 @@ sub thread_routine{
 	my $file_thread = $_[0];
 	my $command = "Rscript " . $file_thread . " > output_" . substr($file_thread, 0, length($file_thread) - 2) . ".txt";
 	`$command`;
+}
+
+sub monitor_processes {
+	my $final_number = 0;
+	my $lines;
+	my @n;
+	print STDERR "\n\n";
+	while($final_number < (keys %index_motifs)) {
+		$lines = `ls $output* 2> error_tmp | wc -l`;
+		chomp $lines;
+		@n = split('\t', $lines);
+		$final_number = $n[0];
+		print STDERR "\t\t" . $final_number . " of " . (keys %index_motifs) . " motifs analyzed so far - " . sprintf("%.2f", (($final_number/(keys %index_motifs))*100)) . "%" . "\r";
+	}	
 }

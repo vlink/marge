@@ -527,7 +527,7 @@ sub background_dist_plot{
 		$delete->{$tmp_motif2} = 1;
 		$command = "scanMotifGenomeWide.pl " . $tmp_motif . " " . $genome . " > " . $tmp_motif2;
 		`$command`;
-		print STDERR $command . "\n";
+	#	print STDERR $command . "\n";
 		open(my $fh, "<", $tmp_motif2);
 		#Save motifs in file
 		#Open filehandle for the background file for every motif
@@ -1209,10 +1209,12 @@ sub all_vs_all_comparison {
 	my @strains = @{$_[3]};
 	my $allele = $_[4];
 	my $score = $_[5];
+	my $output = $_[6];
 	my $same = 0;
 	my $value = 0;
 	my $all = keys %{$block};
 	my $count = 0;
+	my $filename;
 	$_ = () for my(@a, %motif_matrix, %motif_matrix_number, %tag_matrix, @tag_sum);
 	foreach my $pos (sort {$a cmp $b} keys %{$block}) {
 		@a = split("_", $pos);
@@ -1241,9 +1243,9 @@ sub all_vs_all_comparison {
 		}
 	}
 	foreach my $motif (keys %motif_matrix) {
-		open OUT, ">matrix_$motif.txt";
+		$filename = $output . "_" . $motif . ".txt";
+		open OUT, ">$filename";
 		print OUT "Strain\tLocus\tMotif\tMotif_score\tbinding\n";
-
 		foreach my $pos (sort {$a cmp $b} keys %tag_matrix) {
 			for(my $i = 0; $i < @strains; $i++) {
 				for(my $al = 1; $al <= $allele; $al++) {
