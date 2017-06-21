@@ -1,0 +1,6 @@
+#program_path=/home/vlink/mouse_strains/marge
+#data_folder=/home/vlink/mouse_strains/marge/data/
+data_folder=/home/vlink/mouse_strains/marge/db_part/strain_genomes/
+homer_path=/bioinformatics/homer/
+motif_background_path=/home/vlink/mouse_strains/marge/config/motif_distribution_background/
+motif_file=/home/vlink/mouse_strains/motifs/jenhan_merged_motifs_5.txt
