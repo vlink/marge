@@ -4,6 +4,7 @@ package analysis;
 use strict;
 use warnings;
 use config;
+use POSIX;
 #use Statistics::Basic qw(:all);
 #use Statistics::Distributions;
 #use Statistics::RankCorrelation;;
@@ -20,50 +21,6 @@ $comp{'C'} = 'G';
 $comp{'G'} = 'C';
 $comp{'-'} = '-';
 $comp{'N'} = 'N';
-
-#Write header for mutation distribution plots
-#sub write_header{
-#	my @fileHandlesMotif = @{$_[0]};
-#	my @strains = @{$_[1]};
-#	my $fc = $_[2];
-#	my $delta = $_[3];
-#	my $allele = $_[4];
-#	for(my $files = 0; $files < @fileHandlesMotif; $files++) {
-#		$fileHandlesMotif[$files]->print("motif\tpos\t");
-#		for(my $i = 0; $i < @strains; $i++) {
-#			for(my $al = 1; $al <= $allele; $al++) {
-#				$fileHandlesMotif[$files]->print("tg " . $strains[$i] . " - " . $al . "\t");
-#			}
-#		}
-#		#Check if foldchange is set 
-#		if($fc == 0) {
-#			for(my $i = 0; $i < @strains - 1; $i++) {
-#				for(my $j = $i + 1; $j < @strains; $j++) {
-#					for(my $a1 = 1; $a1 <= $allele; $a1++) {
-#						for(my $a2 = 1; $a2 <= $allele; $a2++) {
-#							if($delta == 1) {
-#								$fileHandlesMotif[$files]->print("delta of tg" . $strains[$i] . "-" . $a1 . " vs " . $strains[$j] . "-" . $a2 . "\t");
-#							} else {
-#								$fileHandlesMotif[$files]->print("log2 fc ". $strains[$i] . "-" . $a1 . " vs " . $strains[$j] . "-" . $a2 . "\t");
-#							}
-#						}
-#					}
-#				}
-#			}
-#		}
-#		for(my $i = 0; $i < @strains; $i++) {
-#			for(my $al = 1; $al <= $allele; $al++) {
-#				$fileHandlesMotif[$files]->print("motif_score " . $strains[$i] . "-" . $al . "\t");
-#			}
-#		}
-#		for(my $i = 0; $i < @strains; $i++) {
-#			for(my $al = 1; $al <= $allele; $al++) {
-#				$fileHandlesMotif[$files]->print("exist " . $strains[$i] . "-" . $al . "\t");
-#			}
-#		}
-#		$fileHandlesMotif[$files]->print("#motifs\n");
-#	}
-#}
 
 sub write_header{
 	my $filehandle = $_[0];
@@ -155,14 +112,16 @@ sub analyze_motifs{
 		if(defined $tree->{$header[3]}->{$chr_num}->{$allele_num}) {
 			#Get shifting vector for the beginning of the sequence that was used to scan for the motif
 		#	$tree_tmp = $tree->{$header[3]}->{$chr_num}->fetch($pos_beginning, $pos_beginning + 1);
-			$tree_tmp = $tree->{$header[3]}->{$chr_num}->{$allele_num}->fetch($pos_beginning, $pos_beginning + 1);
+			#$tree_tmp = $tree->{$header[3]}->{$chr_num}->{$allele_num}->fetch($pos_beginning, $pos_beginning + 1);
+			$tree_tmp = $tree->{$header[3]}->{$chr_num}->{$allele_num}->fetch($pos_beginning, $pos_beginning);
 			if(!exists $tree_tmp->[0]->{'shift'}) {
 				$shift_beginning = $last->{$header[3]}->{$original_chr_num}->{$allele_num}->{'shift'};
 			} else {
 				$shift_beginning = $tree_tmp->[0]->{'shift'};
 			}
 			#Get shifting vector for the position of the motif
-			$tree_tmp = $tree->{$header[3]}->{$chr_num}->{$allele_num}->fetch($motif_start, $motif_start + 1);
+			#$tree_tmp = $tree->{$header[3]}->{$chr_num}->{$allele_num}->fetch($motif_start, $motif_start + 1);
+			$tree_tmp = $tree->{$header[3]}->{$chr_num}->{$allele_num}->fetch($motif_start, $motif_start);
 			if(!exists $tree_tmp->[0]->{'shift'}) {
 				$shift_current = $last->{$header[3]}->{$original_chr_num}->{$allele_num}->{'shift'};
 			} else {
@@ -276,14 +235,16 @@ sub merge_block {
 						#			print STDERR "Last\n";
 									$current_shift = $last->{$strains[$i]}->{$chr_num_original}->{$al}->{'pos'};
 								} else {
-									$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
+									#$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
+									$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos);
 								#	print STDERR "From sequence\n";
 									$current_shift = $tree_tmp->[0]->{'shift'};
 								}
 								if($current_pos >= $last->{$strains[$i]}->{$chr_num_original}->{$al}->{'pos'}) {
 									$prev_shift = $last->{$strains[$i]}->{$chr_num_original}->{$al}->{'pos'};
 								} else { 
-									$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos, $current_pos + 1);
+									#$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos, $current_pos + 1);
+									$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos, $current_pos);
 									$prev_shift = $tree_tmp->[0]->{'shift'};
 								}
 							#	print STDERR "motif: " . $motif . "\t";
@@ -485,6 +446,7 @@ sub background_dist_plot{
 	my $ab = $_[5];
 	my $region = $_[6];
 	my $longest_seq = $_[7];
+	my $core = $_[8];
 	#Once the motif was scanned in this genome it is saved - so check if the data is already there otherwise add it to the list of motifs to scan for
 	print STDERR "Checking for genome wide scan of motifs\n";
 	foreach my $motif (keys %index_motifs) {
@@ -493,65 +455,45 @@ sub background_dist_plot{
 			$scan_candidates{$motif} = 1;
 		}
 	}
-	print STDERR "Scanning for these motifs\n";
-	foreach my $m (sort {$a cmp $b} keys %scan_candidates) {
-		print STDERR "\t$m\n";
+	my $split_motifs = ceil((keys %scan_candidates)/$core);
+	$count = 0;
+	my @split_array;
+	foreach my $key (sort {$a cmp $b} keys %scan_candidates) {
+		$split_array[$count] = $key;
+		$count++;
 	}
-	if(keys %scan_candidates > 0) {
-		print STDERR "Scanning for motifs will take a long time - proceed?\n";
-		print STDERR "Press Ctrl + C if you want to stop\n";
-		print STDERR "Waiting for 10 seconds\n";
-		for(my $i = 0; $i < 10; $i++) {
-			print STDERR ".";
-			sleep(1);
+	my @save_motifs;
+	my $run = 0;
+	my $k = 0;
+	for(my $i = 0; $i < @split_array; $i = $i + $split_motifs) {
+		$k = 0;
+		for(my $j = $run * $split_motifs; $j < ($run + 1) * $split_motifs; $j++) {
+			$save_motifs[$run][$k] = $split_array[$j];
+			$k++;
 		}
-		print STDERR "\n";
+		$run++;
 	}
-	#Scan for motifs that were not already proprocessed
-	if(keys %scan_candidates > 0) {
-		$seed = srand(15);
-		$tmp_motif = "tmp" . rand($seed) . ".txt";
-		$delete->{$tmp_motif} = 1;
-		open TMP, ">$tmp_motif";
-		foreach my $motif (keys %scan_candidates) {
-			print TMP ">consensus_" . $motif . "\t$motif\t" . $motif_scan_score->{$motif} . "\n";
-			foreach my $pos (sort {$a <=> $b} keys %{$PWM{$motif}}) {
-				print TMP $PWM{$motif}{$pos}{'A'} . "\t" . $PWM{$motif}{$pos}{'C'} . "\t" . $PWM{$motif}{$pos}{'G'} . "\t" . $PWM{$motif}{$pos}{'T'} . "\n";
-			}
+	my $count_fork = 0;
+	for(1 .. $core) {
+		my $pid = fork;
+		if(not $pid) {
+			print STDERR "start pid:  " . $pid . "\n";
+			&process_background_scanning(\@{$save_motifs[$count_fork]}, $count_fork, $motif_scan_score, $genome, $background_folder);
+			exit();
 		}
-		close TMP;
-
-		print STDERR "Scan motifs genome wide\n";
-		$seed = srand(15);
-		$tmp_motif2 = "tmp" . rand($seed);
-		$delete->{$tmp_motif2} = 1;
-		$command = "scanMotifGenomeWide.pl " . $tmp_motif . " " . $genome . " > " . $tmp_motif2;
-		`$command`;
-	#	print STDERR $command . "\n";
-		open(my $fh, "<", $tmp_motif2);
-		#Save motifs in file
-		#Open filehandle for the background file for every motif
-		foreach my $motif (keys %scan_candidates) {
-			$filename = $background_folder . "/" . $genome . "_" . $motif . ".txt";
-			open my $fh, ">", $filename or die "Can't open $filename: $!\n";
-			$motifs{$motif} = $i;
-			$fileHandlesBackground[$motifs{$motif}] = $fh;
-			$i++;
-		}
-		#Write output of motif scan in all the different files
-		while(my $line = <$fh>) {
-			chomp $line;
-			@split = split('\t', $line);
-			@name = split('-', $split[0]);
-		#	$fileHandlesBackground[$motifs{$name[0]}]->print($split[1] . "\t" . $split[2] . "\t" . $split[3] . "\n");
-			$fileHandlesBackground[$motifs{$name[0]}]->print($line . "\n");
-		}
-		foreach my $motif (keys %scan_candidates) {
-			close $fileHandlesBackground[$motifs{$motif}];
-		}
-		close $fh;
+		$count_fork++;
 	}
-	#Read in all files with background distribution of motifs that are in the list - start with transcription factor that was use for the cip
+	my $pid = fork;
+	if(not $pid) {
+		&monitor_scanning_process($count);
+		exit();
+	}
+	print STDERR "\n\n";
+	for(1 .. ($core+1)) {
+		wait();
+	}
+	#}
+	#Read in all files with background distribution of motifs that are in the list - start with transcription factor that was use for the chip
 	$motif_genomewide = $background_folder . "/" . $genome . "_" . $ab . ".txt";
 	open(my $fh, "<", $motif_genomewide); 
 	print STDERR "Saving chipped TF " . $motif_genomewide . "\n";
@@ -718,13 +660,15 @@ sub analyze_motif_pos{
 										if($current_pos + $motif_pos >= $last->{$strains[$i]}->{$chr_num_original}->{$a1}->{'pos'}) {
 											$current_shift = $last->{$strains[$i]}->{$chr_num_original}->{$a1}->{'shift'};
 										} else {
-											$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$a1}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
+											#$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$a1}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
+											$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$a1}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos);
 											$current_shift = $tree_tmp->[0]->{'shift'};
 										}
 										if($current_pos >= $last->{$strains[$i]}->{$chr_num_original}->{$a1}->{'pos'}) {
 											$prev_shift = $last->{$strains[$i]}->{$chr_num_original}->{$a1}->{'shift'};
 										} else {
-											$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$a1}->fetch($current_pos, $current_pos + 1);
+											#$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$a1}->fetch($current_pos, $current_pos + 1);
+											$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$a1}->fetch($current_pos, $current_pos);
 											$prev_shift = $tree_tmp->[0]->{'shift'};
 										}
 										$shift_vector = $current_shift - $prev_shift;	
@@ -751,13 +695,15 @@ sub analyze_motif_pos{
 										if($current_pos + $motif_pos >= $last->{$strains[$j]}->{$chr_num_original}->{$a2}->{'pos'}) {
 											$current_shift = $last->{$strains[$j]}->{$chr_num_original}->{$a2}->{'shift'};
 										} else {
-											$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->{$a2}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
+											#$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->{$a2}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
+											$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->{$a2}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos);
 											$current_shift = $tree_tmp->[0]->{'shift'};
 										}
 										if($current_pos >= $last->{$strains[$j]}->{$chr_num_original}->{$a2}->{'pos'}) {
 											$prev_shift = $last->{$strains[$j]}->{$chr_num_original}->{$a2}->{'shift'};
 										} else {
-											$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->{$a2}->fetch($current_pos, $current_pos + 1);
+											#$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->{$a2}->fetch($current_pos, $current_pos + 1);
+											$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->{$a2}->fetch($current_pos, $current_pos);
 											$prev_shift = $tree_tmp->[0]->{'shift'};
 										}
 										$shift_vector = $current_shift - $prev_shift;	
@@ -1114,14 +1060,16 @@ sub get_seq_for_peaks {
 					$working_stop = $peaks{$chr}{$start_pos} + int($region/2);
 					#Calculate strain specific offset from shifting vector
 					if($no_shift == 0) {
-						$ref_start = $current_tree->fetch($working_start, $working_start + 1);
+						#$ref_start = $current_tree->fetch($working_start, $working_start + 1);
+						$ref_start = $current_tree->fetch($working_start, $working_start);
 						if(!exists $ref_start->[0]->{'shift'}) {
 							$shift_vector = $last->{$strains[$i]}->{$chr}->{$allele_num}->{'shift'};
 						} else {
 							$shift_vector = $ref_start->[0]->{'shift'};
 						}
 						$working_start = $working_start + $shift_vector;
-						$ref_start = $current_tree->fetch($working_stop, $working_stop + 1);
+						#$ref_start = $current_tree->fetch($working_stop, $working_stop + 1);
+						$ref_start = $current_tree->fetch($working_stop, $working_stop);
 						if(!exists $ref_start->[0]->{'shift'}) {
 							$shift_vector = $last->{$strains[$i]}->{$chr}->{$allele_num}->{'shift'};
 						} else {
@@ -1285,4 +1233,94 @@ sub split_into_single_files{
 	}
 	close OUT;
 	close($fh);
+}
+
+sub process_background_scanning {
+	my @fork_motifs = @{$_[0]};
+	my $c = $_[1];
+	my $motif_scan_score = $_[2];
+	my $genome = $_[3];
+	my $background_folder = $_[4];
+	$_ = () for my (%delete, $motif, $tmp_motif, $tmp_motif2, $command, $filename, $delete, @name);
+	for(my $i = 0; $i < @fork_motifs; $i++) {
+		if(!defined $fork_motifs[$i]) { next; }
+		$motif = $fork_motifs[$i];
+		print STDERR "motif: " . $motif . "\n";
+#	}
+#	print STDERR "Scanning for these motifs\n";
+#	foreach my $m (sort {$a cmp $b} keys %scan_candidates) {
+#		print STDERR "\t$m\n";
+#	}
+#	if(keys %scan_candidates > 0) {
+#		print STDERR "Scanning for motifs will take a long time - proceed?\n";
+#		print STDERR "Press Ctrl + C if you want to stop\n";
+#		print STDERR "Waiting for 10 seconds\n";
+#		for(my $i = 0; $i < 10; $i++) {
+#			print STDERR ".";
+#			sleep(1);
+#		}
+#		print STDERR "\n";
+#	}
+	#Scan for motifs that were not already proprocessed
+#	if(keys %scan_candidates > 0) {
+		$tmp_motif = "tmp" . rand() . ".txt";
+		$delete->{$tmp_motif} = 1;
+		open TMP, ">$tmp_motif";
+	#	foreach my $motif (keys %scan_candidates) {
+		print STDERR "motif: " . $motif . "\n";
+			print TMP ">consensus_" . $motif . "\t$motif\t" . $motif_scan_score->{$motif} . "\n";
+			foreach my $pos (sort {$a <=> $b} keys %{$PWM{$motif}}) {
+				print TMP $PWM{$motif}{$pos}{'A'} . "\t" . $PWM{$motif}{$pos}{'C'} . "\t" . $PWM{$motif}{$pos}{'G'} . "\t" . $PWM{$motif}{$pos}{'T'} . "\n";
+			}
+	#	}
+		close TMP;
+
+		print STDERR "Scan motifs genome wide\n";
+		$tmp_motif2 = "tmp" . rand();
+		$delete->{$tmp_motif2} = 1;
+		$command = "scanMotifGenomeWide.pl " . $tmp_motif . " " . $genome . " > " . $tmp_motif2;
+		print STDERR $command . "\n";
+		`$command`;
+		open(my $fh, "<", $tmp_motif2);
+		#Save motifs in file
+		#Open filehandle for the background file for every motif
+#		foreach my $motif (keys %scan_candidates) {
+		$filename = $background_folder . "/" . $genome . "_" . $motif . ".txt";
+		open(my $fh_out, ">", $filename) or die "Can't open $filename: $!\n";
+#			$motifs{$motif} = $i;
+#			$fileHandlesBackground[$motifs{$motif}] = $fh;
+#			$i++;
+#		}
+		#Write output of motif scan in all the different files
+		while(my $line = <$fh>) {
+			chomp $line;
+			@split = split('\t', $line);
+			@name = split('-', $split[0]);
+		#	$fileHandlesBackground[$motifs{$name[0]}]->print($split[1] . "\t" . $split[2] . "\t" . $split[3] . "\n");
+			print $fh_out $line . "\n";
+		#	$fileHandlesBackground[$motifs{$name[0]}]->print($line . "\n");
+		}
+		close $fh_out;
+#		foreach my $motif (keys %scan_candidates) {
+#			close $fileHandlesBackground[$motifs{$motif}];
+#		}
+		close $fh;
+
+	}
+}
+
+sub monitor_scanning_process{
+	my $final_number = 0;
+	my $all = $_[0];
+	print STDERR "all: " . $all . "\n";
+	my $lines;
+	my @n;
+	print STDERR "\n\n";
+	while($final_number < $all) {
+		$lines = `ls consensus_* 2> error_tmp | wc -l`;
+		chomp $lines;
+		@n = split('\t', $lines);
+		$final_number = $n[0];
+		print STDERR "\t\t" . $final_number . " of " . $all . " backgrounds generated so far - " . sprintf("%.2f", (($final_number/$all)*100)) . "\r";
+	}
 }
