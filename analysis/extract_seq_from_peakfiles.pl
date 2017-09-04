@@ -1,7 +1,8 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/analysis'};
 use strict;
+use warnings;
 use Getopt::Long;
 use Storable;
 use Set::IntervalTree;
@@ -15,14 +16,15 @@ $_ = () for my(@strains, %peaks, %strand, @split, %tree, %lookup_strain, %last_s
 $_ = 0 for my($hetero, $allele, $line_number, $id);
 
 sub printCMD {
-        print STDERR "Usage:\n";
-        print STDERR "\t-ind <individuals>: Comma-separated list of individuals - Order must overlay with order in annotated peak file\n";
+        print STDERR "\n\nUsage:\n";
+        print STDERR "\t-ind <individuals>: Comma-separated list of individuals\n";
         print STDERR "\t-file <file>: File with genomic coordinates to pull the sequences\n";
-	print STDERR "\t-data_dir <path to strain mutation data>: default defined in config\n";
-	print STDERR "\t-genome_dir <path to strain genomes>: default defined in config\n";
 	print STDERR "\t-output: Name of the output files (default: sequences.txt)\n";
-	print STDERR "\t-hetero: Data is heterozygous\n";
 	print STDERR "\t-id: Uses peak ID as identifer for sequences - can only be used when only one individual was specified\n";
+	print STDERR "\t-hetero: Data is heterozygous\n";
+	print STDERR "\nAdditional parameters:\n";
+	print STDERR "\t-data_dir <path to strain mutation data>: default defined in config\n";
+	print STDERR "\t-genome_dir <path to strain genomes>: default defined in config\n\n";
         exit;
 }
 
@@ -80,7 +82,7 @@ foreach my $line (<FH>) {
 	@tmp_split = split("_", $split[1]);
 	$peaks{substr($tmp_split[0], 3)}{$split[2]} = $split[3];
 	$strand{substr($tmp_split[0], 3)}{$split[2]} = $split[4];
-	$save_id{$split[1] . "_" . $split[2] . "_" . $split[3]} = $split[0];
+	$save_id{$tmp_split[0] . "_" . $split[2] . "_" . $split[3]} = $split[0];
 	$line_number++;
 }
 close FH;
@@ -100,7 +102,7 @@ close FH;
 	} else {
 		my $tmp = "tmp_" . rand(10) . ".txt";
 		my ($seq, $long, $mut) = analysis::get_seq_for_peaks($tmp, \%peaks, \@strains, $genome_dir, $allele, $line_number, 0, 0, \%tree, \%lookup_strain, \%last_strain, \%strand);
-		`rm $tmp`;
+		#	`rm $tmp`;
 		open OUT, ">$output";
 		foreach my $header (keys %{$seq}) {
 			@split = split("_", $header);

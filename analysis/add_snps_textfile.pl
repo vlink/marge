@@ -1,7 +1,8 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl
+use strict;
+use warnings;
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/db_part'};
-use strict;
 use Getopt::Long;
 use config;
 use processing;
@@ -13,19 +14,19 @@ $_ = 0 for my($chr, $exons, $hetero, $allele);
 $_ = () for my(@strains, @split,  %peaks, %exons, @exon_split, %all_exons, @tmp_split);
 
 sub printCMD{
-        print STDERR "Usage:\n";
-        print STDERR "General commands:\n";
+        print STDERR "\nUsage:\n";
         print STDERR "\t-file <input file>: coordinates have to be the reference coordinates\n";
 	print STDERR "\t-output <output name>: default <file name>_snps.txt\n";
         print STDERR "\t-ind: one or several individuals (comma separated)\n";
+	print STDERR "\t-hetero: Strains are heterozygous\n";
 	print STDERR "\n\nOptions for RNA-Seq:\n";
 	print STDERR "\tAnnotation RNA-Seq esp. with exons takes a while\n";
         print STDERR "\t-genome <genome> (e.g. mm10/hg38 - to lookup exon and refseq annotations)\n";
 	print STDERR "\t-exons: Just looks for mutations within the exons\n";
 	print STDERR "\t-refseq_file: File with RefSeq IDs (default in HOMER path defined in config)\n";
 	print STDERR "\t-gene_file: File with Gene IDs (default in HOMER path defined in config)\n";
-	print STDERR "\t-hetero: Strains are heterozygous\n";
-	print STDERR "\t-data_dir: path to mutation data (default specified in config)\n";
+	print STDERR "\nAdditional parameters\n";
+	print STDERR "\t-data_dir: path to mutation data (default specified in config)\n\n";
         exit;
 }
 
@@ -73,7 +74,7 @@ open FH, "<$file";
 foreach my $line (<FH>) {
 	chomp $line;
 	@split = split('\t', $line);
-	if(substr($split[1], 0, 3) ne "chr" || length($split[1]) < 4 ) { $header = $line; next; }
+	if(substr($line, 0, 1) eq "#" || substr($split[1], 0, 3) ne "chr" || length($split[1]) < 4 ) { $header = $line; next; }
 	@tmp_split = split("_", $split[1]);
 	$chr = substr($tmp_split[0], 3);
 	$peaks{$chr}{$split[2]}{'end'} = $split[3];
