@@ -1,6 +1,6 @@
-#!/usr/bin/perl -w
-#
+#!/usr/bin/env perl
 use strict;
+use warnings;
 use Getopt::Long;
 use Storable;
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
@@ -16,13 +16,14 @@ $_ = "" for my($data, $last_line_strains, $last_line_ref, $command, $out);
 
 
 sub printCMD{
-	print STDERR "This script updates the last_shift and lookup tables\n";
-	print STDERR "It should be used when a strains was generated out of different files per chromosome, with the parameter -add\n";
-	print STDERR "Then the last_shift and lookup tables just contain the last entry, so it needs to be updated and all chromosomes need to be added\n\n\n";
+	print STDERR "\nThis script updates the last_shift and lookup tables\n";
+	print STDERR "It should be used when mutation files for each individual were generated using a different file per chromosome\n";
+	print STDERR "The -add parameter must have been used\n";
+	print STDERR "The last_shift and lookup tables only contain the last entry, so it needs to be updated and all chromosomes need to be added\n\n\n";
 	print STDERR "Usage:\n";
-	print STDERR "-strains <list of strains>\n";
-	print STDERR "-hetero: Strain is heterozygouse (Default: homozygouse)\n";
-	print STDERR "-dir: Directory where mutation files are located - default: folder specified in confing file\n";
+	print STDERR "-ind <list of individuals>\n";
+	print STDERR "-hetero: Strain is heterozygous (Default: homozygous)\n";
+	print STDERR "-dir: Directory where mutation files are located - default: folder specified in confing file\n\n\n";
 	exit;
 }
 
@@ -30,12 +31,12 @@ if(@ARGV < 1) {
 	&printCMD();
 }
 
-my %mandatory = ('-strains' => 1);
+my %mandatory = ('-ind' => 1);
 my %convert = map { $_ => 1 } @ARGV;
 config::check_parameters(\%mandatory, \%convert);
 
 #Read in command line arguments
-GetOptions(	"-strains=s{,}" => \@strains,
+GetOptions(	"-ind=s{,}" => \@strains,
 		"-hetero" => \$hetero,
 		"-dir=s" => \$data)
 or die(&printCMD());
