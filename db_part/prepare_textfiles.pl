@@ -19,25 +19,30 @@ $none_number_chromosome = 1000;
 
 sub printCMD{
 	print STDERR "Usage:\n";
-	print STDERR "\n\nInput files:\n";
-	print STDERR "\t-files <file>: Files with mutations - list (max 2 - one file for snps, one file for indels)\n";
+	print STDERR "\nInput files:\n";
+	print STDERR "\t-files <file>: Files with mutations in VCF format\n";
+	print STDERR "\t\teither one file containing SNPs and InDels or two files (one with SNPs, one with InDels)\n";
+	print STDERR "\t\twhen using two files the order is SNP_file, InDel_file (either comma separated or with white space)\n";
+	print STDERR "\nAdditional parameters\n";
+	print STDERR "\t-ind <list of individuals>: comma separated list of strains to include - when empty every strain in VCF file is considered\n";
 	print STDERR "\t-hetero: Assumes phenotype is heterozygous - default: homozygous\n";
-	print STDERR "\t-dir: output directory for mutation files for strains folders - default: folder specified in config file\n";
-	print STDERR "\t-genome: path to fastq files per chromosome: input directory of the reference genome per chromosome in fastq file format\n";
+	print STDERR "\t-genome: path to fasta files per chromosome: input directory of the reference genome per chromosome in fasta file format\n";
 	print STDERR "\t-no-genome: Does not create strains specific genomes (default: off)\n";
-	print STDERR "\t-genome_dir: output directory for fastq genome file per strain - default: folder specified in config file\n";
-	print STDERR "\t-ind <list of individuals>: comma separated list of strains to include - when empty every strain in vcf file is considered\n";
 	print STDERR "\t-ref <name>: Software generates a reference genome folder with all necessary files for further analysis - Folder is called REFERENCE, if nothing is specified here\n";
-	print STDERR "\n\n";
-	print STDERR "Filter vcf file:\n";
-	print STDERR "\t-filter - Filters out all mutations that did not pass all filters\n"; 	
-	print STDERR "\t-same - Filters out all mutations that are homozyous\n";
-	print STDERR "\tif position is homozygous and -same is not defined the first allele is taken without any further evaluation\n";
 	print STDERR "\t-force: Overwrites existing folder\n";
 	print STDERR "\t-add: Adds data to existing folder - if file exists it is overwritten\n";
+	print STDERR "\t-core <number of cores>: default 1\n";
+	print STDERR "\nConfig parameters - these parameters are defined in the config, but can be changed\n";
+	print STDERR "\tCAUTION: If these parameters are changed, the config file either needs to be adjusted or they need to be defined for every script\n";
+	print STDERR "\t-dir: output directory for mutation files for strains folders - default: folder specified in config file\n";
+	print STDERR "\t-genome_dir: output directory for fasta genome file per strain - default: folder specified in config file\n";
+	print STDERR "\nFilter VCF files:\n";
+	print STDERR "\tFor a more sophisticated filtering - use vcftools\n";
+	print STDERR "\t-filter - Filters out all mutations that did not pass all filters\n"; 	
+	print STDERR "\t-same - Filters out all mutations that are homozygous\n";
+	print STDERR "\t\twhen position is homozygous and -same is not defined the first allele is taken without any further evaluation\n";
 	print STDERR "\n\n";
 	print STDERR "\t-h | --help: shows help\n";
-	print STDERR "\t-core <number of cores>: default 1\n";
 	exit;
 }
 
