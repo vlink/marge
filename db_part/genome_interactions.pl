@@ -1,6 +1,6 @@
-#!/usr/bin/perl -w
-
+#!/usr/bin/env perl
 use strict;
+use warnings;
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
 use Getopt::Long;
 use config;
@@ -14,21 +14,40 @@ use Set::IntervalTree;
 use Data::Dumper;
 
 sub printCMD {
-	print STDERR "Usage\n";
+	print STDERR "\n\nUsage\n\n";
+        print STDERR "\t-method <gene|protein|both|genomic|genomic_protein|genomic_both|align_gene|align_protein|align_both|align_genomic_gene|align_genomic_protein|align_genomic_both>\n";
+	print STDERR "\t\tgene: outputs the gene nucleotid sequence based on RefSeq of Gene ID annotation\n";
+	print STDERR "\t\tprotein: outputs the amino acid sequence of a gene based on RefSeq or Gene ID annotation\n";
+	print STDERR "\t\tboth: outputs the nucleotid and amino acid sequence of a gene based on RefSeq or GENE ID annotation\n";
+	print STDERR "\t\t\tFile with RefSeq or Gene ID coordinates have to be specified with -refseq_file or _gene_file\n";
+	print STDERR "\t\t\tIDs for genes have to be specified with -gene or -transcript\n";
+	print STDERR "\t\tgenomic: outputs the nucleotid sequence for any specified locus\n";
+	print STDERR "\t\t\tgenomic locus has to be specified with -chr, -start, -end and if desired -strand\n";
+	print STDERR "\t\tgenomic_protein: outputs the amino acid sequence of the specified locus\n";
+	print STDERR "\t\tgenomic_both: outputs the nucleotid and amino acid sequence of specified locus\n";
+	print STDERR "\t\talign_gene: outputs the alignment of nucleotid gene sequence based on mutation annotations in VCF file\n";
+	print STDERR "\t\talign_protein: outputs the alignment of protein sequence. For this the nucleotid sequences are aligned based on mutations from the VCF file and then translated into amino acid sequences\n";
+	print STDERR "\t\talign_both: outputs the alignment of the nucleotid and amino acid sequence for a gene based on the mutations in VCF file\n";
+	print STDERR "\t\talig_genomic_gene: outputs the alignment the nucleotid sequence of a locus specified with -chr, -start, -end (and -strand)\n";
+	print STDERR "\t\talign_genomic_protein: outputs the alignment of the amino acid sequence of a locus sepcified with -chr, -start, -end (and -strand). For this the nucleotid sequences are aligned based on mutations from the VCF file and then translated into amino acid sequences\n";
+	print STDERR "\t\talign_genomic_both: outputs the alignment of the nucleotid and amino acid sequence for a locus specified with -chr, -start, -end (and -strand)\n\n";
+        print STDERR "\t-ind <individuals>: Comma-separated list of individuals\n";
+	print STDERR "\nParameters for genes\n";
         print STDERR "\t-genome: Genome\n";
-	print STDERR "\t-species: species of genome e.g. mm10 is mouse\n";
 	print STDERR "\t-refseq_file: File with RefSeq IDs (check HOMER format)\n";
 	print STDERR "\t-gene_file: File with Gene IDs (check HOMER format)\n";
-        print STDERR "\t-method <gene|protein|both|genomic|align_gene|align_protein|align_both|align_genomic_gene|align_genomic_protein|align_genomic_both|genomic_protein|genomic_both>\n";
         print STDERR "\t-gene <gene name> (Comma separated list)\n";
         print STDERR "\t-transcript <RefSeq transcript name> (Comma separated list)\n";
-        print STDERR "\t-strains <strains>: Comma-separated list of strains - if not defined only the reference is used - if all is specified all strains are used\n";
+	print STDERR "\nParameters for genomic locations\n";
         print STDERR "\t-start <pos>: Start position of genomic region (Comma separated list - same length as end, chr, and strand)\n";
         print STDERR "\t-end <pos>: Stop position of genomic region (Comma separated list - same length as start, chr, and strand)\n";
         print STDERR "\t-chr <chromosome>:Chromosome for genomic region (Comma separated list - same length as start, end, and strand)\n";
         print STDERR "\t-strand <+|->: Default: + (Comma separated list - same length as start, end, and chr)\n";
-	print STDERR "\t-data_dir: Path to data directory for strains - default specified in config\n";
+	print STDERR "\nAdditional parameters:\n";
         print STDERR "\t-hetero: Data is heterozygous\n";
+	print STDERR "\t-data_dir: Path to data directory for individuals - default specified in config\n";
+	print STDERR "\t-genome_dir: Path to fastq files for individuals - default specified in config\n";
+	print STDERR "\n\n";
 	exit;
 }
 
@@ -36,24 +55,24 @@ if(@ARGV < 1) {
 	&printCMD();
 }
 
-$_ = "" for my ($genome, $path, $species, $refseq_file, $gene_file, $data, $refseq_NM, $method, $strand, $chr, $gene, $transcript);
+$_ = "" for my ($genome, $path, $refseq_file, $gene_file, $data, $genome_dir, $refseq_NM, $method, $strand, $chr, $gene, $transcript);
 $_ = 0 for my ($hetero, $html, $exon, $gene_found, $allele, $shift, $longest_seq, $filter_no_mut, $start);
 $_ = () for my (%strains, @split, @strains, @strains2, $seqs, @parts, @introns, %exons, %peaks, %gene, %codons, %tree, %last_strain, %lookup_strain, $f1, $mut_line, $f1_file, @fileHandles, @exons, %align_nt, %align_nt_seq, @gene, @transcript, @list, @list_id, @start, @end, @chr, @strand, $peak_ref, $exon_ref, %strand);
 
 
 GetOptions(     "genome=s" => \$genome,
-		"species=s" => \$species,
 		"refseq_file=s" => \$refseq_file,
 		"gene_file=s" => \$gene_file,
                 "method=s" => \$method,
                 "gene=s{,}" => \@gene,
                 "transcript=s{,}" => \@transcript,
-                "strains=s{,}" => \@strains,
+                "ind=s{,}" => \@strains,
                 "start=s{,}" => \@start,
                 "end=s{,}" => \@end,
                 "chr=s{,}"=> \@chr,
                 "hetero" => \$hetero,
 		"data_dir=s" => \$data,
+		"genome_dir=s" => \$genome_dir,
 		"strand=s{,}" => \@strand, 
                 "html" => \$html)
         or die("Error in command line options!\n");
@@ -115,6 +134,9 @@ for(my $i = 0; $i < @strains; $i++) {
 if($data eq "") {
 	$data = $config->{'data_folder'};
 }
+if($genome_dir eq "") {
+	$genome_dir = $data;
+}
 
 print STDERR "Loading shift vectors\n";
 for(my $i = 0; $i < @strains; $i++) {
@@ -152,32 +174,36 @@ for(my $entry_id = 0; $entry_id < @list; $entry_id++) {
 		}
 		$strand = $strand[$entry_id - $shift];
 		$chr = $chr[$entry_id - $shift];
-		print $chr . "\t" . $start[$entry_id - $shift] . "\t" . $end[$entry_id - $shift] . "\t" . $strand . "\n";
+		#print $chr . "\t" . $start[$entry_id - $shift] . "\t" . $end[$entry_id - $shift] . "\t" . $strand . "\n";
 		$peaks{substr($chr[$entry_id - $shift], 3)}{$start[$entry_id - $shift]} = $end[$entry_id - $shift];
 		$exons{$start[$entry_id - $shift] . "_" . $end[$entry_id - $shift]} = 1;
 	}
 	$seqs = ();
 	if(-e "tmp") { `rm tmp`; }
-	($seqs, $longest_seq, $filter_no_mut) = analysis::get_seq_for_peaks("tmp", \%peaks, \@strains, $data, $allele, $exon, 0, 0, \%tree, \%lookup_strain, \%last_strain, \%strand);
+	($seqs, $longest_seq, $filter_no_mut) = analysis::get_seq_for_peaks("tmp", \%peaks, \@strains, $genome_dir, $allele, $exon, 0, 0, \%tree, \%lookup_strain, \%last_strain, \%strand);
 	if($method eq "gene" || $method eq "genomic") {
 		&assemble_gene(1);
 	} elsif($method eq "protein" || $method eq "genomic_protein") {
 		&assemble_gene(0);
 		foreach my $s (keys %gene) {
-			print $s . "\n";
-			if($strand eq "-") {
-				$gene{$s} = analysis::rev_comp($gene{$s});
+			foreach my $al (keys %{$gene{$s}}) {
+				print STDERR $s . " - allele " . $al . "\n";
+				if($strand eq "-") {
+					$gene{$s}{$al} = analysis::rev_comp($gene{$s}{$al});
+				}
+				&translate_seq($gene{$s}{$al}, 1);
 			}
-			&translate_seq($gene{$s}, 1);
 		}
 	} elsif($method eq "both" || $method eq "genomic_both") {
 		&assemble_gene(1);
 		foreach my $s (keys %gene) {
-			print $s . "\n";
-			if($strand eq "-") {
-				$gene{$s} = analysis::rev_comp($gene{$s});
+			foreach my $al (keys %{$gene{$s}}) {
+				print STDERR $s . " - allele " . $al . "\n";
+				if($strand eq "-") {
+					$gene{$s}{$al} = analysis::rev_comp($gene{$s}{$al});
+				}
+				&translate_seq($gene{$s}{$al}, 1);
 			}
-			&translate_seq($gene{$s}, 1);
 		}
 	} elsif($method eq "align_gene" || $method eq "align_genomic_gene") {
 		&assemble_gene(0);
@@ -297,9 +323,9 @@ sub align_protein {
 	}
 	for(my $i = 0; $i < @strains; $i++) {
 		for(my $al = 1; $al <= $allele; $al++) {
-			print $strains[$i] . " - allele - " . $al . "\n";
-			print $align_prot_seq{$i}{$al} . "\n";
-			print $align_seq{$i}{$al} . "\n";
+			print STDERR $strains[$i] . " - allele - " . $al . "\n";
+			print STDERR $align_prot_seq{$i}{$al} . "\n";
+			print STDERR $align_seq{$i}{$al} . "\n";
 		}
 	}
 }
@@ -313,7 +339,7 @@ sub translate_seq{
 		$local_seq = substr($local_seq, 3);
 	}
 	if($print == 1) {
-		print $protein_seq . "\n";
+		print STDERR $protein_seq . "\n";
 	}
 	return $protein_seq;
 }
@@ -406,10 +432,11 @@ sub assemble_alignment{
 						$align_seq[$i][$al][$run] = $orig_seq[$i][$al][$run - $mut_shift[$i][$al]];
 					} elsif($mutation_hash{$i}{$al}{$run} > 0) {
 						if($strand eq "-") {
-							$align[$i][$al][$run] =  ( '-' x $mutation_hash{$i}{$al}{$run} ) . "|"; 
-							$align_seq[$i][$al][$run] =  ( '-' x $mutation_hash{$i}{$al}{$run} ) . $orig_seq[$i][$al][$run - $mut_shift[$i][$al]];
+							$align[$i][$al][$run] =  "|" . ( '-' x $mutation_hash{$i}{$al}{$run} ); 
+							$align_seq[$i][$al][$run] =  $orig_seq[$i][$al][$run - $mut_shift[$i][$al]] . ( '-' x $mutation_hash{$i}{$al}{$run} );
+
 						} else {
-							$align[$i][$al][$run] = "|" . ( '-' x $mutation_hash{$i}{$al}{$run} ) . "|"; 
+							$align[$i][$al][$run] = "|" . ( '-' x $mutation_hash{$i}{$al}{$run} ); 
 							$align_seq[$i][$al][$run] = $orig_seq[$i][$al][$run - $mut_shift[$i][$al]] . ( '-' x $mutation_hash{$i}{$al}{$run} );
 						}
 						$mut_shift[$i][$al] += $mutation_hash{$i}{$al}{$run};
@@ -445,8 +472,8 @@ sub assemble_alignment{
 									}
 								} else {
 									if(!exists $mutation_hash{$k}{$al_tmp}{$run}) {
-										$align[$k][$al_tmp][$run] = ( '-' x abs($mutation_hash{$i}{$al}{$run}) ) . "|";
-										$align_seq[$k][$al_tmp][$run] = ( '-' x abs($mutation_hash{$i}{$al}{$run} )) . $orig_seq[$k][$al_tmp][$run - $mut_shift[$k][$al_tmp]];
+										$align[$k][$al_tmp][$run] = "|" . ( '-' x abs($mutation_hash{$i}{$al}{$run}) );
+										$align_seq[$k][$al_tmp][$run] = $orig_seq[$k][$al_tmp][$run - $mut_shift[$k][$al_tmp]] . ( '-' x abs($mutation_hash{$i}{$al}{$run} ));
 									} elsif(exists $mutation_hash{$k}{$al_tmp}{$run} && $mutation_hash{$k}{$al_tmp}{$run} != $mutation_hash{$i}{$al}{$run}) {
 										if($mutation_hash{$k}{$al_tmp}{$run} < 0) {
 											$align[$k][$al_tmp][$run] = ( '-' x (abs($mutation_hash{$i}{$al}{$run}) - abs($mutation_hash{$k}{$al_tmp}{$run})));	
@@ -460,7 +487,6 @@ sub assemble_alignment{
 										$align[$k][$al_tmp][$run] = "|";
 										$align_seq[$k][$al_tmp][$run] = $orig_seq[$i][$al][$run - $mut_shift[$k][$al_tmp]];
 									}
-
 								}
 							}
 						}
@@ -474,10 +500,9 @@ sub assemble_alignment{
 					}
 				} else {
 					if(!defined $orig_seq[$i][$al][$run]) {
-						print "dead\n";
+						#	print "dead\n";
 						next;
 					}
-				#	$k .= $strains[$i] . "\t" . $orig_seq[$i][$run - $mut_shift[$i]] . "(" . ($run) . ")\t\t";
 					$align_seq[$i][$al][$run] = $orig_seq[$i][$al][$run];
 					$align[$i][$al][$run] = "|";
 				}
@@ -493,9 +518,9 @@ sub assemble_alignment{
 				$align_nt{$i}{$al} = reverse($align_nt{$i}{$al});
 			}
 			if($print == 1) {
-				print $strains[$i] . " - allele " . $al . "\n";
-				print $align_nt_seq{$i}{$al} . "\n";
-				print $align_nt{$i}{$al} . "\n";
+				print STDERR $strains[$i] . " - allele " . $al . "\n";
+				print STDERR $align_nt_seq{$i}{$al} . "\n";
+				print STDERR $align_nt{$i}{$al} . "\n";
 			}
 		}
 	}
@@ -527,9 +552,9 @@ sub assemble_gene{
 				if($strand eq "-") {
 					$assembly = analysis::rev_comp($assembly);
 				}
-				print $strains[$i] . " - allele " . $al . "\n";
-				print $assembly;
-				print "\n";
+				print STDERR $strains[$i] . " - allele " . $al . "\n";
+				print STDERR $assembly;
+				print STDERR "\n";
 			}
 		}
 	}
