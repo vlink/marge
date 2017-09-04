@@ -1,5 +1,6 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 use strict;
+use warnings;
 use Getopt::Long;
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
 use config;
@@ -8,12 +9,14 @@ $_ = 0 for my($sig, $threshold);
 $_ = "" for my ($output, $method, $title);
 
 sub printCMD {
-	print STDERR "\t-files <comma separated list of files>\n";
+	print STDERR "\nUsage:\n";
+	print STDERR "\t-files <comma separated list of files> (minmum 2)\n";
 	print STDERR "\t-names <comma separated list of names>\n";
-	print STDERR "\t-sig: only significant motifs (threshold p-value 0.001)\n";
+	print STDERR "\t-sig: only significant motifs (threshold p-value 0.001 - change with -threshold)\n";
 	print STDERR "\t-threshold: threshold for significant\n";
 	print STDERR "\t-output: output name for R file and pdf (default summary_heatmap.R)\n";
 	print STDERR "\t-title: Title of the heatmap plot (default: output name for R file)\n";
+	print STDERR "\t-method: <pairwise|all> (default pairwise)\n\n";
 	exit;
 }
 
@@ -35,6 +38,16 @@ GetOptions(     "files=s{,}" => \@files,
 		"output=s" => \$output)
         or die("Error in command line options!\n");
 #First step: Get the sequences for the peaks
+if(@files == 1) {
+	@files = split(",", $files[0]);
+}
+if(@files == 1) {
+	print STDERR "More than one input file is required for a heatmap!\n";
+	exit;
+}
+if(@names == 1) {
+	@names = split(",", $names[0]);
+}
 for(my $i = 0; $i < @files; $i++) {
 	$files[$i] =~ s/,//g;
 	if(defined $names[$i]) {
@@ -109,17 +122,24 @@ if($method eq "pairwise") {
 	}
 	close FH;
 } else {
+	my $first = 0;
 	for(my $i = 0; $i < @files; $i++) {
 		print $files[$i] . "\n";
-		print $names[$i] . "\n";
+		#print $names[$i] . "\n";
 		open FH, "<$files[$i]";
+		$first = 0;
 		foreach my $line (<FH>) {
+			if($first == 0) {
+				$first++;
+				next;
+			}
 			chomp $line;
 			@split = split('\s+', $line);
-			$save{$split[1]}{$names[$i]} = $split[4];
+			$save{$split[0]}{$names[$i]} = $split[1];
 		}
 	}
 }
+
 open OUT, ">matrix_" . $output;
 $first = 0;
 foreach my $motif (sort {$a cmp $b} keys %save) {
