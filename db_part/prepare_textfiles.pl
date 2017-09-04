@@ -20,7 +20,7 @@ $none_number_chromosome = 1000;
 sub printCMD{
 	print STDERR "Usage:\n";
 	print STDERR "\n\nInput files:\n";
-	print STDERR "\t-files <file>: Files with mutations - comma separated list (max 2 - one file for snps, one file for indels)\n";
+	print STDERR "\t-files <file>: Files with mutations - list (max 2 - one file for snps, one file for indels)\n";
 	print STDERR "\t-hetero: Assumes phenotype is heterozygous - default: homozygous\n";
 	print STDERR "\t-dir: output directory for mutation files for strains folders - default: folder specified in config file\n";
 	print STDERR "\t-genome: path to fastq files per chromosome: input directory of the reference genome per chromosome in fastq file format\n";
@@ -45,7 +45,7 @@ if(@ARGV < 1) {
 	&printCMD();
 }
 
-my %mandatory = ('-files' => 1, '-genome' => 1);
+my %mandatory = ('-files' => 1);
 #my %mandatory = ('-files' => 1, '-ind' => 1, '-genome' => 1);
 my %convert = map { $_ => 1 } @ARGV;
 config::check_parameters(\%mandatory, \%convert);
@@ -103,20 +103,6 @@ if($help == 1) {
 	&printCMD();
 }
 
-#Check if files are sorted
-print STDERR "Checking if files are sorted\n";
-print STDERR "This may take a while\n";
-for(my $i = 0; $i < @mut_files; $i++) {
-	$sort_check = `sort -k1,1n -c $mut_files[$i] 2>&1`;
-	if(length($sort_check) > 1) {
-		print STDERR "Your input file " . $mut_files[$i] . " is not sorted!\n";
-		print STDERR "Please sort the file with sort -k1,1n $mut_files[$i] > <output file> and try again\n";
-		exit;
-	} else {
-		print STDERR "\t$mut_files[$i] looks good\n";
-	}
-}
-print STDERR "Files are sorted\n";
 
 #define header
 if(@mut_files > 0) {
@@ -152,6 +138,30 @@ for(my $i = 0; $i < @header - 9; $i++) {
 	$header[$i+9] = uc($header[$i+9]);
 }
 
+my $min_one = 0;
+for(my $i = 9; $i < @header; $i++) {
+	if(exists $strains_to_use{$header[$i]}) {
+		$min_one++;
+	}
+}
+if($min_one == 0) {
+	print STDERR "None of the individuals you specified is in the VCF files!\n";
+	print STDERR "Here are all individuals specified in the header of your file:\n";
+	for(my $i = 9; $i < @header; $i++) {
+		print STDERR "\t" . $header[$i] . "\n";
+	}
+	print STDERR "Processing all individuals in 5 seconds\n";
+	print STDERR "Print Ctrl + C to abort\n";
+	for(my $i = 0; $i < 5; $i++) {
+		print STDERR ".";
+		sleep(1);
+	}
+	print STDERR "\n";
+	print STDERR "Starting to process all individuals\n";
+	for(my $i = 9; $i < @header; $i++) {
+		$strains_to_use{$header[$i]} = 1;
+	}
+}
 
 #Merge SNP and indel file if both exists
 if(@mut_files > 0) {
