@@ -12,7 +12,7 @@ use threads;
 use Data::Dumper;
 
 $_ = "" for my($snp, $indel, @chr, $current_chr, $data, $filename, $out, $genome, $merge_line, $genome_dir, $ref_name, $sort_check);
-$_ = 0 for my($filter, $same, $help, $hetero, $add, $force, $lines_f1, $lines_f2, $lines_all, $line_count, $num_strains, $outfile_open, $last_h, $none_number_chromosome, $core, $no_genome);
+$_ = 0 for my($filter, $same, $help, $hetero, $add, $force, $lines_f1, $lines_f2, $lines_all, $line_count, $num_strains, $outfile_open, $last_h, $none_number_chromosome, $core, $no_genome, $wait);
 $_ = () for my($lines, @merge_line, $header, @split, $snps, $indels, $f1, $f2, %strains_to_use, @mut_files, @header, @strains_to_use, @s, @i, %lookup_no_number, %lookup_number, @last, @allele, @all, @test_spaces);
 
 $none_number_chromosome = 1000;
@@ -429,25 +429,9 @@ sub check_file_existance{
 	if(-e $data . "/" . $header) {
 		print STDERR "Folder for " . $header . " already exists!\n";
 		if($force == 1) {
-			print STDERR "Deleting folder " . $header . "!\n";
-			print STDERR "Waiting for 10 seconds\n";
-			print STDERR "Press Ctrl + C to interrupt\n";
-			for(my $j = 0; $j < 10; $j++) {
-				print STDERR ".";
-			       sleep(1);
-			}
-			print STDERR "\n";
-			`rm -rf $data/$header/*`;
+			$wait = 1;
 		} elsif($add == 1) {
-		#	print STDERR "Folder exists, but data will be added\n";
-		#	print STDERR "If data already exists in this folder it will be overwritten!\n";
-		#	print STDERR "\nWaiting for 3 seconds\n";
-		#	print STDERR "Press Ctrl + C to interrupt\n";
-		#	for(my $j = 0; $j < 3; $j++) {
-		#		print STDERR ".";
-		##		sleep(1);
-		#	}
-		#	print STDERR "\n";
+			$wait = 1;
 		} else {
 			print STDERR "If you want to overwrite this folder use -force!\n";
 			exit;
@@ -457,6 +441,28 @@ sub check_file_existance{
 	}
 }
 
+if($wait == 1) {
+	if($force == 1) {
+		print STDERR "Deleting folder " . $header . "!\n";
+		print STDERR "Waiting for 10 seconds\n";
+		print STDERR "Press Ctrl + C to interrupt\n";
+		for(my $j = 0; $j < 10; $j++) {
+			print STDERR ".";
+		       sleep(1);
+		}
+		print STDERR "\n";
+		`rm -rf $data/$header/*`;
+	} elsif($add == 1) {
+		print STDERR "If data already exists in this folder it will be overwritten!\n";
+		print STDERR "\nWaiting for 3 seconds\n";
+		print STDERR "Press Ctrl + C to interrupt\n";
+		for(my $j = 0; $j < 3; $j++) {
+			print STDERR ".";
+			sleep(1);
+		}
+		print STDERR "\n";
+	}
+}
 #Open filehandles and save them in a array
 sub open_filehandles{
 	my $header_number = $_[0];
