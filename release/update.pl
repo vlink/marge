@@ -6,8 +6,8 @@ use Getopt::Long;
 use config;
 use Data::Dumper;
 
-$_ = () for my(@split, @MARGE_folders, @motif_bg, @motif_analysis_folders, %save_output, @tmp, $list);
-$_ = 0 for my($MARGE_folders_list, $motif_bg_list, $motif_window, $motif_analysis_list, $software_update);
+$_ = () for my(@split, @MARGE_folders, @motif_bg, @motif_analysis_folders, %save_output, @tmp, $list, @STAR_index, @bowtie_index);
+$_ = 0 for my($MARGE_folders_list, $motif_window, $motif_analysis_list, $bowtie_index_list, $STAR_index_list, $motif_bg_list);
 $_ = "" for my($tmp_output, $tmp_error, $command, $MARGE_genome, $file);
 
 my $url = "http://homer.ucsd.edu/MARGE/";
@@ -17,15 +17,20 @@ sub printCMD{
 	print STDERR "The script offers downloads for MARGE folders and individualzed genomes, as well as background scans for motifs and pre-processed files for motif analysis per strain (200bp)\n";
 	print STDERR "\n\n";
 	print STDERR "Usage:\n";
-	print STDERR "-genome <genome>: The genome for which the motifs were scanned for (e.g. mm10/hg19)\n";
-	print STDERR "-MARGE_folders <list of folders>: Downloads the list of all folders specified in the list. If all: downloads all available folders\n";
-	print STDERR "-MARGE_folders_list: Lists all MARGE folders that are availabe for downloadn\n";
-	print STDERR "-motif_bg <list of motifs>: Downloads all the motif background scans for the motifs listed here. If all: downloads all availabile motifs\n";
-	print STDERR "-motif_bg_list: Lists all motif backgrounds for genome specified in motif_genome\n";
-	print STDERR "-motif_analysis_folders <list of folders> : Downloads all the preparsed motif analysis backgrounds specified in the list . If all: downloads all availabe backgrounds\n";
-	print STDERR "-motif_window <bp>: Motif window for which files should be downloaded (default in HOMER motif analysis - 200bp)\n";
-	print STDERR "-motif_analysis_list: Lists all motif analysis background scans\n";
-	print STDERR "-software_update: Checks for updates\n";
+	print STDERR "\t-genome <genome>: The genome for which the motifs were scanned for (e.g. mm10/hg19)\n";
+	print STDERR "\t-MARGE_folders <list of folders>: Downloads the list of all folders specified in the list.\n\t\tIf set to all: downloads all available folders\n\t\tIf empty: lists all available folders\n";
+	print STDERR "\t-motif_bg <list of motifs>: Downloads all the motif background scans for the motifs listed here.\n\t\tIf set to all: downloads all availabile motifs\n\t\tIf empty: lists all motif backgrounds for genome specified in motif_genome\n";
+	print STDERR "\t-motif_analysis_folders <list of folders> : Downloads all the preparsed motif analysis backgrounds specified in the list.\n\t\tIf set to all: downloads all availabe preparsed motif backgrounds\n\t\tIf empty: lists all available preparsed motif backgrounds\n";
+	print STDERR "\t-motif_window <bp>: Motif window for which files should be downloaded (default in HOMER motif analysis - 200bp)\n";
+	print STDERR "\t-STAR_index <list of individuals/strains>: Downloads the STAR indicies for all individuals specified.\n\t\tIf set to all: downloads all available STAR indicies\n\t\tIf empty: lists all available STAR indicies\n";
+	print STDERR "\t-bowtie_index <ist of individuals/strains>: Downloads the bowtie indices for all individuals specified.\n\t\tIf set to all: downloads all availabe bowtie indicies\n\t\tIf empty: lists all available bowtie indicies\n";
+	print STDERR "\nList of all content to download:\n";
+	print STDERR "\t-MARGE_folders_list: lists all available MARGE folders\n";
+	print STDERR "\t-motif_analysis_list: lists all available motif analysis backgorunds\n";
+	print STDERR "\t-bowtie_index_list: lists all available bowtie indices\n";
+	print STDERR "\t-STAR_index_list: lists all available STAR indicies\n";
+	print STDERR "\t-motif_bg_list: lists all available backgrounds for for distance plots\n";
+	print STDERR "\n\n\n";
 	exit;
 }
 #CHECK FOR UPDATES
@@ -34,34 +39,45 @@ if(@ARGV < 1) {
         &printCMD();
 }
 
-GetOptions(	"MARGE_folders=s{,}" => \@MARGE_folders,
-		"MARGE_folders_list" => \$MARGE_folders_list,
+GetOptions(	"MARGE_folders:s{,}" => \@MARGE_folders,
+		"bowtie_index:s{,}" => \@bowtie_index,
+		"STAR_index:s{,}" => \@STAR_index,
 		"genome=s" => \$MARGE_genome,
-		"motif_bg=s{,}" => \@motif_bg,
-		"motif_bg_list" => \$motif_bg_list,	
-		"motif_analysis_folders=s{,}" => \@motif_analysis_folders,
+		"motif_bg:s{,}" => \@motif_bg,
+		"motif_analysis_folders:s{,}" => \@motif_analysis_folders,
 		"motif_window=s" => \$motif_window,
+		"MARGE_folders_list" => \$MARGE_folders_list,
 		"motif_analysis_list" => \$motif_analysis_list,
-		"software_update" => \$software_update)
+		"bowtie_index_list" => \$bowtie_index_list,
+		"motif_bg_list" => \$motif_bg_list,
+		"STAR_index_list" => \$STAR_index_list)
 	or die(&printCMD());
 
 my $config = config::read_config();
 
+if((@MARGE_folders == 1 && $MARGE_folders[0] eq "") || $MARGE_folders_list == 1) {
 #First check for all the lists
-if($MARGE_folders_list == 1) {
 	&list_MARGE_folders(1);
 	exit;
 }
-if($motif_bg_list == 1) {
+
+if((@motif_bg == 1 && $motif_bg[0] eq "") || $motif_bg_list == 1) {
 	&list_motif_bg(1);
 	exit;
 }
-if($motif_analysis_list == 1) {
-	&list_motif_analysis(1);
+
+if((@bowtie_index == 1 && $bowtie_index[0] eq "") || $bowtie_index_list == 1) {
+	&list_bowtie_indicies(1);
 	exit;
 }
-if($software_update == 1) {
-	print STDERR "We need to add this routine in here\n";
+
+if((@STAR_index == 1 && $STAR_index[0] eq "") || $STAR_index_list == 1) {
+	&list_STAR_indicies(1);
+	exit;
+}
+
+if((@motif_analysis_folders && $motif_analysis_folders[0] eq "") || $motif_analysis_list == 1) {
+	&list_motif_analysis(1);
 	exit;
 }
 
@@ -93,6 +109,7 @@ if(@MARGE_folders >= 1) {
 	for(my $i = 0; $i < @MARGE_folders; $i++) {
 		if(!exists $list->{$MARGE_genome}->{$MARGE_folders[$i]}) {
 			print STDERR "Could not find " . $MARGE_folders[$i] . " for " . $MARGE_genome . "\n";
+			print STDERR "Run this script without specifying any indicies or with -MARGE_folders_list to see a list of all available indicies\n";
 		} else {
 			&download_file_MARGE($MARGE_genome, $MARGE_folders[$i]);
 		}
@@ -131,12 +148,74 @@ if(@motif_analysis_folders >= 1) {
 	for(my $i = 0; $i < @motif_analysis_folders; $i++) {
 		if(!exists $list->{$MARGE_genome}->{$motif_window}->{$motif_analysis_folders[$i]}) {
 			print STDERR "Could not find " . $motif_analysis_folders[$i] . " for " . $MARGE_genome . " with window " . $motif_window . "\n";
-			print STDERR "Run this script with parameter -motif_analysis_list to see what is available\n";  
+			print STDERR "Run this script without specifying any motif analysis folders or with parameter -motif_analysis_list to see what is available\n";  
 		} else {
 			&download_motif_analysis($MARGE_genome, $motif_analysis_folders[$i], $motif_window);
 		}
 	}
 }
+
+if(@STAR_index == 1) {
+	@tmp = split(",", $STAR_index[0]);
+	if(@tmp > @STAR_index) {
+		@STAR_index = @tmp;
+	}
+}
+
+for(my $i = 0; $i < @STAR_index; $i++) {
+	$STAR_index[$i] =~ s/,//g;
+	$STAR_index[$i] = uc($STAR_index[$i]);
+}
+
+if(@STAR_index >= 1) {
+	$list = &list_STAR_indicies(0);
+	if(@STAR_index == 1 && $STAR_index[0] eq "ALL") {
+		@STAR_index = ();
+		foreach my $s (keys %{$list->{$MARGE_genome}}) {
+			push @STAR_index, $s;
+		}
+	}
+	for(my $i = 0; $i < @STAR_index; $i++) {
+		if(!exists $list->{$MARGE_genome}->{$STAR_index[$i]}) {
+			print STDERR "Could not find " . $STAR_index[$i] . " for " . $MARGE_genome . "\n";
+			print STDERR "Run this script without specifying any indicies or with -STAR_index_list to see a list of all available indicies\n";
+		} else {
+			&download_STAR_index($MARGE_genome, $STAR_index[$i]);
+		}
+	}	
+}
+
+if(@bowtie_index == 1) {
+	@tmp = split(",", $bowtie_index[0]);
+	if(@tmp > @bowtie_index) {
+		@bowtie_index = @tmp;
+	}
+}
+
+for(my $i = 0; $i < @bowtie_index; $i++) {
+	$bowtie_index[$i] =~ s/,//g;
+	$bowtie_index[$i] = uc($bowtie_index[$i]);
+}
+
+if(@bowtie_index >= 1) {
+	$list = &list_bowtie_indicies(0);
+	if(@bowtie_index == 1 && $bowtie_index[0] eq "ALL") {
+		@bowtie_index = ();
+		foreach my $s (keys %{$list->{$MARGE_genome}}) {
+			push @bowtie_index, $s;
+		}
+	}
+	for(my $i = 0; $i < @bowtie_index; $i++) {
+		if(!exists $list->{$MARGE_genome}->{$bowtie_index[$i]}) {
+			print STDERR "Could not find " . $bowtie_index[$i] . " for " . $MARGE_genome . "\n";
+			print STDERR "Run this script without specifying any indicies or with -list_bowtie_index to see a list of all available indicies\n";
+		} else {
+			&download_bowtie_index($MARGE_genome, $bowtie_index[$i]);
+		}
+	}	
+}
+
+
 
 if(@motif_bg == 1) {
 	@tmp = split(",", $motif_bg[0]);
@@ -151,8 +230,21 @@ for(my $i = 0; $i < @motif_bg; $i++) {
 }
 
 if(@motif_bg >= 1) {
-	print STDERR "Waiting for data to come in!\n";
-	exit;
+	$list = &list_motif_bg(0);
+	if(@motif_bg == 1 && $motif_bg[0] eq "ALL") {
+		@motif_bg = ();
+		foreach my $m (keys %{$list->{$MARGE_genome}}) {
+			push @motif_bg, $m;
+		}
+	}
+	for(my $i = 0; $i < @motif_bg; $i++) {
+		if(!exists $list->{$MARGE_genome}->{$motif_bg[$i]}) {
+			print STDERR "Could not find " . $motif_bg[$i] . " for " . $MARGE_genome . "\n";
+			print STDERR "Run this script without specifiying any motif backgrounds or with -list_motif_bg to see a list of all available motif backgorunds\n";
+		} else {
+			&download_motif_bg($MARGE_genome, $motif_bg[$i]);
+		}
+	}
 }
 
 sub download_file_MARGE{
@@ -172,6 +264,59 @@ sub download_file_MARGE{
 	if(-e $g . "_" . $f . ".tar.gz") {
 		`$command`;
 	}
+}
+
+sub download_motif_bg{
+	my $g = $_[0];
+	my $f = $_[1];
+	print STDERR "Downloading " . $f . "\n";
+	$command = "wget " . $url . "/motif_bg/" . $g . "_" . $f . " .tar.gz";
+	`$command`;
+	#Unzip file
+	print STDERR "Extracting and moving " . $f . "\n";
+	$command = "tar xfvz " . $g . "_" . $f . ".tar.gz";
+	`$command`;
+	$command = "mv " . uc($f) . " " . $config->{'motif_bg_path'};
+	`$command`;
+	$command = "rm " . $g . "_" . $f . ".tar.gz";
+	if(-e $g . "_" . $f . ".tar.gz") {
+		`$command`;	
+	}
+}
+
+sub download_STAR_index{
+	my $g = $_[0];
+	my $f = $_[1];
+	print STDERR "Downloading " . $f . "\n";
+	$command = "wget " . $url . "/STAR_index/" . $g . "_" . lc($f) . ".tar.gz";
+	`$command`;
+	#Unzip file
+	print STDERR "Extracting file " . $f . "\n";
+	$command = "tar xvfz " . $g . "_" . $f . ".tar.gz";
+	`$command`;
+	$command = "rm " . $g . "_" . $f . ".tar.gz";
+	if(-e $g . "_" . $f . ".tar.gz") {
+		`$command`;
+	}
+	print STDERR "Index " . $f . " successfully downloaded and extracted - please move to your STAR index directory\n";
+}
+
+
+sub download_bowie_index{
+	my $g = $_[0];
+	my $f = $_[1];
+	print STDERR "Downloading " . $f . "\n";
+	$command = "wget " . $url . "/bowtie_index/" . $g . "_" . lc($f) . ".tar.gz";
+	`$command`;
+	#Unzip file
+	print STDERR "Extracting file " . $f . "\n";
+	$command = "tar xvfz " . $g . "_" . $f . ".tar.gz";
+	`$command`;
+	$command = "rm " . $g . "_" . $f . ".tar.gz";
+	if(-e $g . "_" . $f . ".tar.gz") {
+		`$command`;
+	}
+	print STDERR "Index " . $f . " successfully downloaded and extracted - please move to your bowtie2 index directory\n";
 }
 
 sub download_motif_analysis{
@@ -245,7 +390,7 @@ sub list_motif_bg {
 	open FH, "<$tmp_output";
 	foreach my $line (<FH>) {
 		chomp $line;
-		@split = split("_", substr($line, 0, length($line) - 4));
+		@split = split("_", substr($line, 0, length($line) - 7));
 		$save_output{$split[0]}{$split[1]} = 1;
 	}
 	`rm $tmp_output`;
@@ -287,3 +432,56 @@ sub list_motif_analysis {
 	}
 	return \%save_output;
 }
+
+sub list_bowtie_indicies {
+	my $print = $_[0];
+	$tmp_output = "output_" . rand(5) . ".txt";
+	$tmp_error = "error_" . rand(5) . ".txt";
+	`wget -O $tmp_output $url/bowtie_index/list.txt 2> $tmp_error`;
+	open FH, "<$tmp_output";
+	foreach my $line (<FH>) {
+		chomp $line;
+		@split = split("_", $line);
+		$save_output{$split[0]}{$split[1]} = 1;
+	}
+	close FH;
+	`rm $tmp_output`;
+	`rm $tmp_error`;
+	if($print == 1) {
+		foreach my $genome (keys %save_output) {
+			print "Bowtie indicies for individuals based on " . $genome . " genome\n";
+			foreach my $s (sort {$a cmp $b} keys %{$save_output{$genome}}) {
+				print "\t\t" . $s . "\n";
+			}
+		}
+	}
+	return \%save_output;
+}
+
+sub list_STAR_indicies {
+	my $print = $_[0];
+	$tmp_output = "output_" . rand(5) . ".txt";
+	$tmp_error = "error_" . rand(5) . ".txt";
+	my @a;
+	`wget -O $tmp_output $url/STAR_index/list.txt 2> $tmp_error`;
+	open FH, "<$tmp_output";
+	foreach my $line (<FH>) {
+		chomp $line;
+		@split = split("_", $line);
+		@a = split('\.', $split[1]);
+		$save_output{$split[0]}{$a[0]} = 1;
+	}
+	close FH;
+	`rm $tmp_output`;
+	`rm $tmp_error`;
+	if($print == 1) {
+		foreach my $genome (keys %save_output) {
+			print "STAR indicies for individuals based on " . $genome . " genome\n";
+			foreach my $s (sort {$a cmp $b} keys %{$save_output{$genome}}) {
+				print "\t\t" . $s . "\n";
+			}
+		}
+	}
+	return \%save_output;
+}
+
