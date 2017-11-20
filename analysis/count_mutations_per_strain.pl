@@ -226,18 +226,13 @@ if($hetero == 0) {
 									}
 								}
 							} else {
-								#Check if it is the same
-								#
-								#FIX IT HERE
-								#
-								if((exists $save{$strains[$i]}{$chr}{'1'}{$pos} && exists $save{$strains[$i]}{$chr}{'2'}{$pos} && exists $save{$strains[$j]}{$chr}{'1'}{$pos} && exists $save{$strains[$j]}{$chr}{'2'}{$pos}) &&
-									(($save{$strains[$i]}{$chr}{'1'}{$pos}{'o'} eq $save{$strains[$j]}{$chr}{'1'}{$pos}{'o'} && $save{$strains[$i]}{$chr}{'2'}{$pos}{'o'} eq $save{$strains[$j]}{$chr}{'2'}{$pos}{'o'} && $save{$strains[$i]}{$chr}{'1'}{$pos}{'m'} eq $save{$strains[$j]}{$chr}{'1'}{$pos}{'m'} && $save{$strains[$i]}{$chr}{'2'}{$pos}{'m'} eq $save{$strains[$i]}{$chr}{'2'}{$pos}{'m'})) || 
+								if((exists $save{$strains[$i]}{$chr}{'1'}{$pos} && exists $save{$strains[$i]}{$chr}{'2'}{$pos} && exists $save{$strains[$j]}{$chr}{'1'}{$pos} && exists $save{$strains[$j]}{$chr}{'2'}{$pos}) && 
+									((($save{$strains[$i]}{$chr}{'1'}{$pos}{'o'} eq $save{$strains[$j]}{$chr}{'1'}{$pos}{'o'} && $save{$strains[$i]}{$chr}{'2'}{$pos}{'o'} eq $save{$strains[$j]}{$chr}{'2'}{$pos}{'o'} && $save{$strains[$i]}{$chr}{'1'}{$pos}{'m'} eq $save{$strains[$j]}{$chr}{'1'}{$pos}{'m'} && $save{$strains[$i]}{$chr}{'2'}{$pos}{'m'} eq $save{$strains[$i]}{$chr}{'2'}{$pos}{'m'})) || 
 									(($save{$strains[$i]}{$chr}{'1'}{$pos}{'o'} eq $save{$strains[$j]}{$chr}{'2'}{$pos}{'o'} && $save{$strains[$i]}{$chr}{'2'}{$pos}{'o'} eq $save{$strains[$j]}{$chr}{'1'}{$pos}{'o'} && $save{$strains[$i]}{$chr}{'1'}{$pos}{'m'} eq $save{$strains[$j]}{$chr}{'2'}{$pos}{'m'} && $save{$strains[$i]}{$chr}{'2'}{$pos}{'m'} eq $save{$strains[$i]}{$chr}{'1'}{$pos}{'m'})) || 
-									(($save{$strains[$i]}{$chr}{'1'}{$pos}{'o'} eq $save{$strains[$j]}{$chr}{'1'}{$pos}{'o'} && $save{$strains[$i]}{$chr}{'2'}{$pos}{'o'} eq $save{$strains[$j]}{$chr}{'2'}{$pos}{'o'} && $save{$strains[$i]}{$chr}{'1'}{$pos}{'m'} eq $save{$strains[$j]}{$chr}{'1'}{$pos}{'m'} && $save{$strains[$i]}{$chr}{'2'}{$pos}{'m'} eq $save{$strains[$i]}{$chr}{'2'}{$pos}{'m'}))) {
+									(($save{$strains[$i]}{$chr}{'1'}{$pos}{'o'} eq $save{$strains[$j]}{$chr}{'1'}{$pos}{'o'} && $save{$strains[$i]}{$chr}{'2'}{$pos}{'o'} eq $save{$strains[$j]}{$chr}{'2'}{$pos}{'o'} && $save{$strains[$i]}{$chr}{'1'}{$pos}{'m'} eq $save{$strains[$j]}{$chr}{'1'}{$pos}{'m'} && $save{$strains[$i]}{$chr}{'2'}{$pos}{'m'} eq $save{$strains[$i]}{$chr}{'2'}{$pos}{'m'})))) {
 									next;
 								} else {
 									if((exists $save{$strains[$i]}{$chr}{'1'}{$pos}{'o'} && (length($save{$strains[$i]}{$chr}{'1'}{$pos}{'o'}) > 1 || length($save{$strains[$i]}{$chr}{'1'}{$pos}{'m'}) > 1)) || (exists $save{$strains[$i]}{$chr}{'2'}{$pos} && (length($save{$strains[$i]}{$chr}{'2'}{$pos}{'o'}) > 1 || length($save{$strains[$i]}{$chr}{'2'}{$pos}{'m'}) > 1)) || (exists $save{$strains[$j]}{$chr}{'1'}{$pos}{'o'} && (length($save{$strains[$j]}{$chr}{'1'}{$pos}{'o'}) > 1 || length($save{$strains[$j]}{$chr}{'1'}{$pos}{'m'}) > 1)) || (exists $save{$strains[$j]}{$chr}{'2'}{$pos} && (length($save{$strains[$j]}{$chr}{'2'}{$pos}{'o'}) > 1 || length($save{$strains[$j]}{$chr}{'2'}{$pos}{'m'}) > 1))) {
-										#if((exists $save{$strains[$i]}{$chr}{'1'}{$pos} && length($save{$strains[$i]}{$chr}{'1'}{$pos}) > 1) || (exists $save{$strains[$i]}{$chr}{'2'}{$pos} && length($save{$strains[$i]}{$chr}{'2'}{$pos}) > 1) || (exists $save{$strains[$j]}{$chr}{'1'}{$pos} && length($save{$strains[$j]}{$chr}{'1'}{$pos}) > 1) || (exists $save{$strains[$j]}{$chr}{'2'}{$pos} && length($save{$strains[$j]}{$chr}{'2'}{$pos}) > 1)) {
 										if($summary{$strains[$i]}{$chr}{$pos} == 1 && $summary{$strains[$j]}{$chr}{$pos} == 1) {
 											$indels_homo_homo++;
 										} elsif($summary{$strains[$i]}{$chr}{$pos} == 2 && $summary{$strains[$j]}{$chr}{$pos} == 1) {
@@ -263,34 +258,11 @@ if($hetero == 0) {
 						}
 					}
 				}
-				#Check if mutation exists in second strain
-				if(exists $summary{$strains[$j]}) {
-					foreach my $chr (keys %{$summary{$strains[$j]}}) {
-						foreach my $pos (keys %{$summary{$strains[$j]}{$chr}}) {
-							if((exists $save{$strains[$j]}{$chr}{'1'}{$pos} && (length($save{$strains[$j]}{$chr}{'1'}{$pos}{'o'}) > 1 || length($save{$strains[$j]}{$chr}{'1'}{$pos}{'m'}) > 1)) || 
-								(exists $save{$strains[$j]}{$chr}{'2'}{$pos} && (length($save{$strains[$j]}{$chr}{'2'}{$pos}{'o'}) > 1 || length($save{$strains[$j]}{$chr}{'2'}{$pos}{'m'}) > 1))) {
-								if($summary{$strains[$j]}{$chr}{$pos} == 1) {
-									$indels_homo_homo++;
-								} else {
-									$indels_homo_hetero++;
-								}
-							} else {
-								if($summary{$strains[$j]}{$chr}{$pos} == 1) {
-									$snps_homo_homo++;
-								} else {
-									$snps_homo_hetero++;
-								}
-
-							}
-
-
-						}
-					}
-				}
 				print STDERR $strains[$i] . " vs " . $strains[$j] . "\t";
 				print STDERR $snps_homo_homo . "\t" . $snps_homo_hetero . "\t" . $snps_hetero_homo . "\t" . $snps_hetero_hetero . "\t";
 				print STDERR $indels_homo_homo . "\t" . $indels_homo_hetero . "\t" . $indels_hetero_homo . "\t" . $indels_hetero_hetero . "\n";
 			}
+
 		}
 	} else {
 		print STDERR "Private mutations for heterozygous individuals\n";

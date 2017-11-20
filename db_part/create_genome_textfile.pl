@@ -1,6 +1,6 @@
-#!/usr/bin/perl -w
-
+#!/usr/bin/env perl
 use strict;
+use warnings;
 use Getopt::Long;
 BEGIN {push @INC, '/home/vlink/mouse_strains/marge/db_part'};
 use processing;
@@ -13,12 +13,12 @@ $_ = 0 for my ($hetero);
 
 sub printCMD{ 
 	print STDERR "Usage:\n";
-	print STDERR "\t-genome <genome>: Path to folder with fastq files per chromosome\n";
+	print STDERR "\t-genome <genome>: Path to folder with fasta files per chromosome\n";
 	print STDERR "\t-ind <individuals>: one or several individuals (comma separated)\n";
-	print STDERR "\t-data <path to folder with individuals mutations> (default defined in config)\n";
-	print STDERR "\t-out <name of the output directory>: Script automatically creates a directory for each strain (default in config)\n";
+	print STDERR "\t-data_dir <path to folder with individuals mutations> (default defined in config)\n";
+	print STDERR "\t-genome_dir <directory where genomes are saved>: Script automatically creates a directory for each strain (default in config)\n";
 	print STDERR "\t-ref <name for reference>: creates folder for reference genome (if nothing is specified folder is called REFERENCE\n";
-	print STDERR "\t-hetero: Genome is heterozygous (Default: homozygouse)\n";
+	print STDERR "\t-hetero: Genome is heterozygous (Default: homozygous)\n";
 	exit;	
 }
 
@@ -33,8 +33,8 @@ config::check_parameters(\%mandatory, \%convert);
 
 GetOptions(	"genome=s" => \$genome,
 		"ind=s{,}" => \@strains,
-		"out=s" => \$output,
-		"data=s" => \$data,
+		"genome_dir=s" => \$output,
+		"data_dir=s" => \$data,
 		"ref=s" => \$ref_genome,
 		"hetero" => \$hetero)
 or die (&printCMD());

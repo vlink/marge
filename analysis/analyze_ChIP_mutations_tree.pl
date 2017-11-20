@@ -14,10 +14,11 @@ use Set::IntervalTree;
 use Data::Dumper;
 use Memory::Usage;
 use 5.014;
+use Sys::CPU;
 
 $_ = "" for my($genome, $file, $tf, $filename, $output, $ab, $plots, $overlap, $tmp_out, $data, $tmp_center, $genome_dir, $center_dist, $tf_dir_name, $longest_seq, $motif_measure, $GLMM_output);
 $_ = () for my(@strains, %peaks, @split, @split_one, @split_two, %seq, %seq_far_motif, %seq_no_motif, %PWM, @fileHandlesMotif, %index_motifs, %tag_counts, %fc, %block, %ranked_order, %mut_one, %mut_two, %delta_score, %delete, %remove, %mut_pos_analysis, %dist_plot, %dist_plot_background, %motif_scan_scores, %lookup_strain, %last_strain, %tree, %peaks_recentered, %seq_recentered, @header_recenter, %recenter_conversion, $correlation, $pvalue, %wrong_direction, %right_direction, %middle_direction, %tf_for_direction, %num_of_peaks, @tf_dir, $seq, @strains_working, @Threads, @running, $current_thread);
-$_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $filter_out, $print_block, $core, $rand_tmp_mut, $rand_tmp_dist);
+$_ = 0 for my($hetero, $allele, $region, $delta, $keep, $mut_only, $tg, $filter_tg, $fc_significant, $mut_pos, $dist_plot, $effect, $center, $analyze_motif, $analyze_no_motif, $analyze_far_motif, $longest_seq_motif, $longest_seq_no_motif, $longest_seq_far_motif, $motif_diff, $motif_diff_percentage, $delta_tag, $delta_threshold, $delta_tick, $fc_low, $fc_high, $filter_no_mut, $filter_out, $print_block, $core, $rand_tmp_mut, $rand_tmp_dist, $no_correction);
 my $line_number = 1;
 
 sub printCMD {
@@ -56,11 +57,13 @@ sub printCMD {
 	print STDERR "\t-measure [Motif|Motif_score]: For all versus all analysis. Either the existance of the motif (Motif) or the exact motif score (Motif_score) is considered in the GLMM (default: Motif)\n";
 
 	print STDERR "\nOptional parameters - only change them if you are what you are doing:\n";
+	print STDERR "\t-no_correction: Turns off multiple testing correction\n";
 	print STDERR "\t-motif_diff <difference>: Difference in the motif score to count it as mutated motif (for pairwise analysis) - can either be a percentage or absolute number (please use % for percentage - default 50% - also turned on when only using -delta)\n";
 	print STDERR "\t-delta_tag: Does not use foldchange but delta of the tag counts between the individuals\n";
 	print STDERR "\t-delta_threshold: Difference between tag counts that is counted as significant (default: 100)\n";
 	print STDERR "\t-fc_pos: Foldchange threshold to count peaks as strain specific vs not (Default: 2fold)\n";
 	print STDERR "\t-overlap: Count motif as not mutated if the overlap n basepairs (complete|half|#bp)\n";
+	print STDERR "\t-print_block: Outputs temproray data structure\n";
 
 	print STDERR "\nAdditional options:\n";
         print STDERR "\t-hetero: Data is heterozygous\n";
@@ -118,6 +121,7 @@ GetOptions(     "genome=s" => \$genome,
 		"-genome_dir=s" => \$genome_dir,
 		"-motif_diff=s" => \$motif_diff,
 		"-tg=s" => \$tg,
+		"-no_correction" => \$no_correction,
 		"-mut_only" => \$mut_only, 
 		"-mut_pos" => \$mut_pos, 
 		"-overlap=s" => \$overlap,
@@ -166,7 +170,7 @@ if($center == 1 && $center_dist eq "") {
 	$center_dist = 25;
 }
 if(($ab eq "" || $genome eq "" || $center == 0) && $dist_plot == 1) {
-	print STDERR "Distance plots not possible without anchor TF, genome, and center for the motif\n";
+	print STDERR "Distance plots not possible without anchor TF (-AB), genome (-genome), and center (-center) for the motif\n";
 	print STDERR "Do not generate distance plots!\n";
 	print STDERR "Waiting for 10 seconds - if you want to abort and restart hit Ctrl + C\n";
 	for(my $i = 0; $i < 10; $i++) {
@@ -216,6 +220,13 @@ for(my $i = 0; $i < @strains; $i++) {
 #	$core = 4;
 #}
 if($core == 0) { $core = 1; }
+my $system_core = Sys::CPU::cpu_count();
+if($system_core < $core) {
+	print STDERR "Your system has only " . $system_core . " cores\n";
+	print STDERR "You specified " . $core . " cores\n";
+	print STDERR "Adjusting number of cores to maximal system cores!\n";
+	$core = $system_core;
+}
 
 if($dist_plot == 1) {
 	$rand_tmp_dist = rand();
@@ -522,7 +533,7 @@ sub screen_and_plot{
 					$skipped{$motif_array[$j]} = 1;
 					next;
 				}
-				print OUT "print(\"" . $motif_array[$j] . " in thread " . $i . " (" . $i . " of " . $end_index . " (" . ($j/$end_index) . "%))i\")\n";
+				print OUT "print(\"" . $motif_array[$j] . " in thread " . $i . " (" . $i . " of " . $end_index . " (" . ($j/$end_index) . "%))\")\n";
 				print OUT $motif_array[$j] . " <- read.delim(\"" . $filename . "\", header=T)\n";
 				$delete{$filename} = 1;
 				print OUT "write(\"Calculating model for " . $motif_array[$j] . "\", stderr())\n";
@@ -583,7 +594,11 @@ sub screen_and_plot{
 		}
 		foreach my $pvalue ( sort {$a <=> $b } keys %save_pvalues ) {
 			foreach my $motif_name (keys %{$save_pvalues{$pvalue}}) {
-				print GLMM $motif_name . "\t" . $pvalue . "\n";
+				if($no_correction == 1) {
+					print GLMM $motif_name . "\t" . $pvalue . "\n";
+				} else {
+					print GLMM $motif_name . "\t" . ($pvalue * (keys %index_motifs)) . "\n"; 
+				}
 			}
 		}
 		foreach my $motifs (keys %skipped) {
@@ -620,7 +635,7 @@ sub screen_and_plot{
 		if(@strains > 2) { 
 			print STDERR "ChIP AB is defined\n";
 			print STDERR "No analysis run for peaks without mutated PU.1 motif\n";	
-			next;
+			last;
 		} else {
 			my $considered = 0;
 			#check mutation summary file for chipped antibody and remove all peaks with one or more mutated motifs
@@ -703,7 +718,7 @@ sub process_motifs_for_analysis{
 		$tmp_motif_file = $tmp_out . "_" . $motifs . ".txt";
 		open OUT, ">$tmp_motif_file";
 		print OUT ">" . $motifs . "\t" . $motifs . "\t" . $motif_scan_scores{$motifs} . "\n";
-		foreach my $pos (sort {$a cmp $b} keys %{$PWM{$motifs}}) {
+		foreach my $pos (sort {$a <=> $b} keys %{$PWM{$motifs}}) {
 			print OUT $PWM{$motifs}{$pos}{'A'} . "\t" . $PWM{$motifs}{$pos}{'C'} . "\t" . $PWM{$motifs}{$pos}{'G'} . "\t" . $PWM{$motifs}{$pos}{'T'} . "\n";
 		}
 		close OUT;
@@ -719,8 +734,8 @@ sub process_motifs_for_analysis{
 		%block = %$block_ref;
 	#		$mu->record('merged all motifs in block');
 		if($print_block == 1) {
-			print Dumper %block;
-			exit; 
+			my $tmp_b = Dumper %block;
+			print STDERR $tmp_b . "\n";
 		}
 		analysis::output_motifs(\%block, $output . "_" . $motifs . ".txt", \%tag_counts, \@strains, \%index_motifs, \%fc, \%recenter_conversion, $motif_diff, $motif_diff_percentage, $allele);
 		if($dist_plot == 1) {
@@ -1265,9 +1280,15 @@ sub generate_R_files {
 				#Add the barplots for the t-tests and calculate the p-values for the comparisons of the curves
 				if($cal_pvalue == 1) {
 					print R "boxplot(c(no_mut), c(one), c(two), boxwex=" . (int($width_boxplot/3) - 10) . ", add=TRUE, at=c(" . ($number_peaks + int($add_additional/3)) . "," . ($number_peaks + (int($add_additional/3) * 2)) . "," . ($number_peaks + (int($add_additional/3) * 3)) . "), col=c(\"grey\", \"red\", \"blue\"), outline=FALSE, axes=FALSE)\n";
-					print R "p_one <- t.test(no_mut, one)\$p.value\n";
-					print R "p_two <- t.test(no_mut, two)\$p.value\n";
-					print R "p_both <- t.test(one, two)\$p.value\n";
+					if($no_correction == 1) {
+						print R "p_one <- (t.test(no_mut, one)\$p.value\n";
+						print R "p_two <- t.test(no_mut, two)\$p.value\n";
+						print R "p_both <- t.test(one, two)\$p.value\n";
+					} else {
+						print R "p_one <- (t.test(no_mut, one)\$p.value) * " . (keys %index_motifs) . "\n";
+						print R "p_two <- (t.test(no_mut, two)\$p.value) * " . (keys %index_motifs) . "\n";
+						print R "p_both <- (t.test(one, two)\$p.value) * " . (keys %index_motifs) . "\n";
+					}
 					print R "legend(\"bottomright\", c(\"p-values: \", paste(\"" . $strains_working[$i] . " vs bg: \", round(p_one, digits=6), sep=\"\"), paste(\"" . $strains_working[$j] . " vs bg: \", round(p_two, digits=6), sep=\"\"), paste(\"" . $strains_working[$i] . " vs " . $strains_working[$j] . ": \", round(p_both, digits=6), sep=\"\")), text.col=c(\"black\", \"red\", \"blue\", \"purple\"), cex=0.8, bty=\'n\')\n"; 
 				}
 				
@@ -1289,7 +1310,11 @@ sub generate_R_files {
 					print R_DEN "lines(kde_one, col=\"red\", lwd=4)\n";
 					print R_DEN "lines(kde_two, col=\"blue\", lwd=4)\n";
 					print R_DEN "legend(\"topleft\", c(\"background\", \"" . $strains_working[$i] . "\", \"" . $strains_working[$j] . "\"), col=c(\"black\", \"red\", \"blue\"), lty=1, lwd=4, bty=\'n\', cex=0.8)\n";
-					print R_DEN "legend(\"topright\", c(\"p-values: \", paste(\"" . $strains_working[$i] . " vs bg: \", round(ks_all_one\$p.value, digits=6), sep=\"\"), paste(\"" . $strains_working[$j] . " vs bg: \", round(ks_all_two\$p.value, digits=6), sep=\"\"), paste(\"" . $strains_working[$i] . " vs " . $strains_working[$j] . ": \", round(ks_one_two\$p.value, digits=6), sep=\"\")), text.col=c(\"black\", \"red\", \"blue\", \"purple\"), cex=0.8, bty=\'n\')\n";
+					if($no_correction == 1) { 
+						print R_DEN "legend(\"topright\", c(\"p-values: \", paste(\"" . $strains_working[$i] . " vs bg: \", round(ks_all_one\$p.value, digits=6), sep=\"\"), paste(\"" . $strains_working[$j] . " vs bg: \", round(ks_all_two\$p.value, digits=6), sep=\"\"), paste(\"" . $strains_working[$i] . " vs " . $strains_working[$j] . ": \", round(ks_one_two\$p.value, digits=6), sep=\"\")), text.col=c(\"black\", \"red\", \"blue\", \"purple\"), cex=0.8, bty=\'n\')\n";
+					} else {
+						print R_DEN "legend(\"topright\", c(\"p-values: \", paste(\"" . $strains_working[$i] . " vs bg: \", round((ks_all_one\$p.value) * " . (keys %index_motifs) . ", digits=6), sep=\"\"), paste(\"" . $strains_working[$j] . " vs bg: \", round((ks_all_two\$p.value) * " . (keys %index_motifs) . ", digits=6), sep=\"\"), paste(\"" . $strains_working[$i] . " vs " . $strains_working[$j] . ": \", round((ks_one_two\$p.value) * " . (keys %index_motifs) . ", digits=6), sep=\"\")), text.col=c(\"black\", \"red\", \"blue\", \"purple\"), cex=0.8, bty=\'n\')\n";
+					}
 				}
 			}
 		} 
@@ -1522,18 +1547,6 @@ sub fakrek{
         return 1 if $number == 0;
         return ($number * &fakrek ($number -1));
 }
-
-#Change motif name so it won't break the R script
-#sub motif_name{
-#	my $local_seq = $_[0];
-#	$local_seq =~ s/\-/_/g;
-#	$local_seq =~ s/\+//g;
-#	$local_seq =~ s/://g;
-#	$local_seq =~ s/ //g;
-#	$local_seq =~ s/\?//g;
-#	$local_seq =~ s/\)//g;
-#	return $local_seq;
-#}
 
 sub thread_routine{
 	my $file_thread = $_[0];

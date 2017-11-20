@@ -127,10 +127,35 @@ if(@mut_files > 0) {
 		if(@strains_to_use > 0 && !exists $strains_to_use{$header[$i]}) {
 			next;
 		}
-		&check_file_existance($header[$i]);
+		$wait = &check_file_existance($header[$i]);
 	}
 
 }
+
+if($wait == 1) {
+	if($force == 1) {
+		print STDERR "Deleting folder " . $header . "!\n";
+		print STDERR "Waiting for 10 seconds\n";
+		print STDERR "Press Ctrl + C to interrupt\n";
+		for(my $j = 0; $j < 10; $j++) {
+			print STDERR ".";
+		       sleep(1);
+		}
+		print STDERR "\n";
+		`rm -rf $data/$header/*`;
+	} elsif($add == 1) {
+		print STDERR "If data already exists in this folder it will be overwritten!\n";
+		print STDERR "\nWaiting for 3 seconds\n";
+		print STDERR "Press Ctrl + C to interrupt\n";
+		for(my $j = 0; $j < 3; $j++) {
+			print STDERR ".";
+			sleep(1);
+		}
+		print STDERR "\n";
+	}
+}
+
+
 if($hetero == 1) {
 	$a = 2;
 } else {
@@ -424,6 +449,7 @@ sub write_last_shift{
 #Check existance of folder to not overwrite by accident
 sub check_file_existance{
 	$header = $_[0];
+	my $wait = 0;
         #Save that a header exists
         #Now go through all strains and see if the folder already exists
 	if(-e $data . "/" . $header) {
@@ -439,30 +465,9 @@ sub check_file_existance{
 	} else {
 		`mkdir -p $data/$header`;
 	}
+	return $wait; 
 }
 
-if($wait == 1) {
-	if($force == 1) {
-		print STDERR "Deleting folder " . $header . "!\n";
-		print STDERR "Waiting for 10 seconds\n";
-		print STDERR "Press Ctrl + C to interrupt\n";
-		for(my $j = 0; $j < 10; $j++) {
-			print STDERR ".";
-		       sleep(1);
-		}
-		print STDERR "\n";
-		`rm -rf $data/$header/*`;
-	} elsif($add == 1) {
-		print STDERR "If data already exists in this folder it will be overwritten!\n";
-		print STDERR "\nWaiting for 3 seconds\n";
-		print STDERR "Press Ctrl + C to interrupt\n";
-		for(my $j = 0; $j < 3; $j++) {
-			print STDERR ".";
-			sleep(1);
-		}
-		print STDERR "\n";
-	}
-}
 #Open filehandles and save them in a array
 sub open_filehandles{
 	my $header_number = $_[0];

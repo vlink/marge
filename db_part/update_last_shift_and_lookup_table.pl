@@ -21,9 +21,9 @@ sub printCMD{
 	print STDERR "The -add parameter must have been used\n";
 	print STDERR "The last_shift and lookup tables only contain the last entry, so it needs to be updated and all chromosomes need to be added\n\n\n";
 	print STDERR "Usage:\n";
-	print STDERR "-ind <list of individuals>\n";
-	print STDERR "-hetero: Strain is heterozygous (Default: homozygous)\n";
-	print STDERR "-dir: Directory where mutation files are located - default: folder specified in confing file\n\n\n";
+	print STDERR "\t-ind <list of individuals>\n";
+	print STDERR "\t-hetero: Strain is heterozygous (Default: homozygous)\n";
+	print STDERR "\t-data_dir: Directory where mutation files are located - default: folder specified in config file\n\n\n";
 	exit;
 }
 
@@ -38,7 +38,7 @@ config::check_parameters(\%mandatory, \%convert);
 #Read in command line arguments
 GetOptions(	"-ind=s{,}" => \@strains,
 		"-hetero" => \$hetero,
-		"-dir=s" => \$data)
+		"-data_dir=s" => \$data)
 or die(&printCMD());
 
 if($data eq "") {

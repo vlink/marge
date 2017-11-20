@@ -16,17 +16,17 @@ $_ = () for my(@strains, @split,  %peaks, %exons, @exon_split, %all_exons, @tmp_
 sub printCMD{
         print STDERR "\nUsage:\n";
         print STDERR "\t-file <input file>: coordinates have to be the reference coordinates\n";
-	print STDERR "\t-output <output name>: default <file name>_snps.txt\n";
-        print STDERR "\t-ind: one or several individuals (comma separated)\n";
-	print STDERR "\t-hetero: Strains are heterozygous\n";
-	print STDERR "\n\nOptions for RNA-Seq:\n";
-	print STDERR "\tAnnotation RNA-Seq esp. with exons takes a while\n";
+	print STDERR "\t-output <output file>: default <file name>_snps.txt\n";
+        print STDERR "\t-ind <individuals>: one or several individuals (comma separated)\n";
+	print STDERR "\t-hetero: Strains are heterozygous (Default: homozygous)\n";
+	print STDERR "\n\nOptions for RNA-seq:\n";
+	print STDERR "\tAnnotation of exon-specific mutations for RNA-seq takes a while\n";
         print STDERR "\t-genome <genome> (e.g. mm10/hg38 - to lookup exon and refseq annotations)\n";
 	print STDERR "\t-exons: Just looks for mutations within the exons\n";
-	print STDERR "\t-refseq_file: File with RefSeq IDs (default in HOMER path defined in config)\n";
-	print STDERR "\t-gene_file: File with Gene IDs (default in HOMER path defined in config)\n";
+	print STDERR "\t-refseq_file <file>: File with RefSeq IDs (default in HOMER path defined in config)\n";
+	print STDERR "\t-gene_file <file>: File with Gene IDs (default in HOMER path defined in config)\n";
 	print STDERR "\nAdditional parameters\n";
-	print STDERR "\t-data_dir: path to mutation data (default specified in config)\n\n";
+	print STDERR "\t-data_dir <directory>: default defined in config\n\n";
         exit;
 }
 
@@ -66,7 +66,11 @@ for(my $i = 0; $i < @strains; $i++) {
 if($output eq "") {
 	#Check if input filename has a file ending
 	@split = split('\.', $file);
-	$output = $split[0] . "_snps.txt";
+	$output = $split[0];
+	for(my $i = 1; $i < @split - 1; $i++) {
+		$output .= "." . $split[$i];
+	}
+	$output .= "_snps.txt";
 }
 
 #Save each peak

@@ -33,7 +33,10 @@ my %toDelete = ();
 my $preparse_strain_exists = 0;
 my $config = HomerConfig::loadConfigFile();
 my $prefix;
-my $motif_file = "/home/vlink/mouse_strains/motifs/jenhan_merged_motifs_5.txt"; 
+my $motif_file = "/home/vlink/mouse_strains/motifs/final_motif_file_FDR_0_001.txt"; 
+my $genome_dir = config::read_config()->{'data_folder'};
+my $data_dir = config::read_config()->{'data_folder'}; 
+
 if (@ARGV < 3) {
 	printCMD();
 }
@@ -73,6 +76,8 @@ sub printCMD {
 	print STDERR "\t\t-bg_strain <strain>: Strain used in the background\n";
 	print STDERR "\t\t-compare_motif_file <motif file>: File used to compare de novo motifs to\n";
 	print STDERR "\t\tDefault: " . $motif_file . "\n";
+	print STDERR "\t\t-genome_dir <dir>: directory with fastq files for strains (default defined in config)\n";
+	print STDERR "\t\t-data_dir <dir>: directory with MARGE files for strains (default defined in config)\n";
 	print STDERR "\n\tScanning sequence for motifs\n";
 	print STDERR "\t\t-find <motif file> (This will cause the program to only scan for motifs)\n";
 
@@ -180,6 +185,10 @@ sub parseCMDLine {
 			$cmd->{'bg_strain'} = uc($ARGV[++$i]);
 		} elsif($ARGV[$i] eq '-compare_motif_file') {
 			$motif_file = $ARGV[++$i];
+		} elsif($ARGV[$i] eq '-genome_dir') {
+			$genome_dir = $ARGV[++$i];
+		} elsif($ARGV[$i] eq '-data_dir') {
+			$data_dir = $ARGV[++$i];
 		} elsif ($ARGV[$i] eq '-chopify') {
 			$cmd->{'chopify'} = 1;
 			print STDERR "\tChopping up large background regions to the avg size of target regions\n";
@@ -497,8 +506,8 @@ my $preparsedDir = $cmd->{'preparsedDir'};
 if ($preparsedDir eq '/') {
 	$preparsedDir = $preparsedDirFromConfig;
 }
-my $preparsedDir_strain = config::read_config()->{'data_folder'} . $cmd->{'bg_strain'} . "/preparsed/";
-
+my $preparsedDir_strain = $genome_dir . "/" . $cmd->{'bg_strain'} . "/preparsed/";
+print STDERR $preparsedDir_strain . "\n";
 open IN, $cmd->{'posfile'} or die "!!! Could not open peak/position file $cmd->{'posfile'} !!!\n";
 close IN;
 
@@ -721,8 +730,8 @@ if ($executeFlag==1) {
 		}	
 		#####################
 		#Strain code is added
-		`perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file "$posFileSize" -strains "$cmd->{'fg_strain'}" -output "$tmpFile" -id`;	
-#		print "perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file $posFileSize -strains $cmd->{'fg_strain'} -output $tmpFile -id\n";
+		`perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;	
+		print "perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file " . $posFileSize . " -ind " . $cmd->{'fg_strain'} . " -genome_dir " . $genome_dir . " -output " . $tmpFile . " -data_dir " . $data_dir . " -id\n";	
 		#End of strain code
 		####################
 
@@ -740,8 +749,8 @@ if ($executeFlag==1) {
 		}
 		#####################
 		#Strain code is added
-		`perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file "$posFileSize" -strains "$cmd->{'fg_strain'}" -output "$tmpFile" -id`;	
-#		print "perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file $posFileSize -strains $cmd->{'fg_strain'} -output $tmpFile -id\n";
+		`perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;	
+		print "perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file " . $posFileSize . " -ind " . $cmd->{'fg_strain'} . " -genome_dir " . $genome_dir . " -output " . $tmpFile . " -data_dir " . $data_dir . " -id\n";	
 		#End of strain code
 		####################
 
@@ -784,8 +793,8 @@ if ($executeFlag==1) {
 		close OUT2;
 		#####################
 		#Strain code is added
-		`perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file "$posFileSize" -strains "$cmd->{'fg_strain'}" -output "$tmpFile" -id`;	
-#		print "perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file $posFileSize -strains $cmd->{'fg_strain'} -output $tmpFile -id\n";
+		`perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;	
+		print "perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file " . $posFileSize . " -ind " . $cmd->{'fg_strain'} . " -genome_dir " . $genome_dir . " -output " . $tmpFile . " -data_dir " . $data_dir . " -id\n";	
 		#End of strain code
 		####################
 #		`homerTools extract "$posFileSize" "$genomeDir" $mflag > "$tmpFile"`;
@@ -801,8 +810,8 @@ if ($executeFlag==1) {
 		}
 		#####################
 		#Strain code is added
-		`perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file "$posFileSize" -strains "$cmd->{'fg_strain'}" -output "$tmpFile" -id`;	
-#		print "perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file $posFileSize -strains $cmd->{'fg_strain'} -output $tmpFile -id\n";
+		`perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;	
+		print "perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file " . $posFileSize . " -ind " . $cmd->{'fg_strain'} . " -genome_dir " . $genome_dir . " -output " . $tmpFile . " -data_dir " . $data_dir . " -id\n";	
 		#End of strain code
 		####################
 #		`homerTools extract "$posFileSize" "$genomeDir" $mflag > "$tmpFile"`;
@@ -1253,7 +1262,9 @@ sub generate_strain_bg {
 	print STDERR "\tExtracting sequences\n";
 	my $command = "cp " . $preparsedDir . "/" . $cmd->{'genome'} . "." . $cmd->{'size'} . ".pos " . $posStrain;
 	`$command`;
-	$command = "perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file " . $posStrain . " -strains " . $cmd->{'bg_strain'} . " -output " . $seqStrain . " -id";
+	#print STDERR $command . "\n";
+	$command = "perl /home/vlink/mouse_strains/marge/analysis/extract_seq_from_peakfiles.pl -file " . $posStrain . " -ind " . $cmd->{'bg_strain'} . " -genome_dir " . $genome_dir . " -output " . $seqStrain . " -data_dir " . $data_dir . " -id";
+	#print $command . "\n";
 	`$command`;
 	#Calcualte GC frequency
 	$command = "homerTools freq -gc " . $gcfreqStrain . " " . $seqStrain . " > tmp.txt";

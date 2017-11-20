@@ -179,9 +179,9 @@ print STDERR "Heatmap saved in " . substr($output, 0, length($output) - 2)  . ".
 open OUT, ">$output";
 print OUT "library(\"gplots\")\n";
 print OUT "matrix <- as.matrix(read.delim(\"matrix_" . $output . "\", row.names=1))\n";
-print OUT "matrix[ matrix > " . ($threshold*10) . " ] <- " . ($threshold*10) . "\n";
+print OUT "matrix[ matrix > 1] <- 1\n";
 print OUT "pdf(\"" . substr($output, 0, length($output) - 2) . ".pdf\", width=5, height=10)\n";
-print OUT "custom.color.fun = colorRampPalette(c(\"blue\", \"white\", \"red\"), bias = 1, space = \"rgb\")\n";
+print OUT "custom.color.fun = colorRampPalette(c(\"blue\", \"white\", \"yellow\", \"orange\", \"red\"), bias = 3, space = \"rgb\")\n";
 print OUT "heatmap.2(matrix, trace = \"n\", cexCol = 0.4, scale = \"n\", col=custom.color.fun(10), Colv=NA, Rowv=NA, dendrogram='n', cex=0.5, margin=c(8,12), cexRow=0.3, main=\"" . $title . "\")\n";
 print OUT "dev.off()\n"; 
 close OUT;

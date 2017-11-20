@@ -12,20 +12,20 @@ use analysis_tree;
 use Data::Dumper;
 
 $_ = "" for my($output, $data_dir, $genome_dir, $strain, $chr, $method, $output_file, $print_line);
-$_ = () for my(%peaks, %strand, @split, %tree, %last_strain, @tmp_split, %save_id, $tree, @files, $tree_tmp, @strains, %last, $last, @chr_split, $tree_tmp_1, $tree_tmp_2, %tree_detail, $tree_detail, $tree_tmp_detail_1, $tree_tmp_detail_2, @detail);
+$_ = () for my(%peaks, %strand, @split, %tree, %tree_pos, %last_strain, @tmp_split, %save_id, $tree_pos, $tree, @files, $tree_tmp, @strains, %last, $last, @chr_split, $tree_tmp_1, $tree_tmp_2, %tree_detail, $tree_detail, $tree_tmp_detail_1, $tree_tmp_detail_2, @detail);
 $_ = 0 for my($hetero, $line_number, $id, $verbose);
 
 sub printCMD {
         print STDERR "\n\nUsage:\n";
         print STDERR "\t-ind <individual>: Individual we look for muts versus reference\n";
-	print STDERR "\t-inds <individuals>: Two individuals we look for muts against each otehr\n";
+	print STDERR "\t-inds <individuals>: Two individuals we look for muts against each other\n";
         print STDERR "\t-files <files>: Comma seperated list of files\n";
 	print STDERR "\t-method <bowtie|star>: define mapping method (default: bowtie)\n";
-	print STDERR "\t-hetero: Data is heterozygous\n";
+	print STDERR "\t-hetero: Data is heterozygous (Default: homozygous)\n";
 	print STDERR "\nAdditional parameters:\n";
 	print STDERR "\t-v: verbose mode - progress monitoring\n";
-	print STDERR "\t-data_dir <path to individual mutation data>: default defined in config\n";
-	print STDERR "\t-genome_dir <path to individual genomes>: default defined in config\n\n";
+	print STDERR "\t-data_dir <directory>: default defined in config\n";
+	print STDERR "\t-genome_dir <directory>: default defined in config\n\n";
         exit;
 }
 
@@ -84,7 +84,8 @@ for(my $i = 0; $i < @files; $i++) {
 }
 print STDERR "Read in mutations\n";
 if(@strains < 1) {
-	($tree, $tree_detail, $last) = general::read_strains_mut($strain, $data_dir);
+#	($tree, $tree_detail, $last) = general::read_strains_mut($strain, $data_dir);
+	($tree, $tree_pos, $last) = general::read_strains_mut($strain, $data_dir);
 } else {
 	($tree, $last) = general::read_mutations_from_two_strains($strains[0], $strains[1], $data_dir);
 }
@@ -101,8 +102,10 @@ my $complete_lines = 0;
 
 foreach my $file (@files) {
 	print STDERR $file . "\n";
-	$complete_lines = (split('\s', `wc -l $file`))[0];
-	open(my $fh, "<", $file);
+	if($verbose == 1) {
+		$complete_lines = (split('\s', `wc -l $file`))[0];
+	}
+	open my $fh, "<", $file;
 #	open FH, "<$file";
 	@split = split("/", $file);
 	$output = "";
@@ -125,11 +128,11 @@ foreach my $file (@files) {
 				@split = split('\t', $line);
 				@detail = split(":", $split[1]);
 				@chr_split = split("_", $detail[1]);
-				if(@chr_split > 1) {
-					print STDERR "Your input file was not shifted!\n";
-					print STDERR "Abort\n";
-					exit;
-				}
+				#	if(@chr_split > 1) {
+				#	print STDERR "Your input file was not shifted!\n";
+				#	print STDERR "Abort\n";
+				#	exit;
+				#}
 				print $mut_reads $split[0] . "\tSN:" . $chr_split[0] . "\t" . $split[2] . "\n";
 				print $perfect $split[0] . "\tSN:" . $chr_split[0] . "\t" . $split[2] . "\n";
 			} else {
@@ -141,11 +144,17 @@ foreach my $file (@files) {
 			if($split[2] eq "*") { next; }
 			@chr_split = split("_", $split[2]);
 			if(@chr_split > 1) {
-				print STDERR "Your input file was not shifted!\n";
-				print STDERR "Abort\n";
+			#	print STDERR $line . "\n";
+			#	print STDERR @chr_split . "\n";;
+			#
+			#	print STDERR "Your input file was not shifted!\n";
+			#	print STDERR "Abort\n";
+			#	exit;
+				$split[2] = $chr_split[0];
 			}
+			$chr = substr($split[2], 3);
 			if(!exists $tree->{$chr}) { next; }
-			$print_line = $split[0] . "\t" . $split[1] . "\tchr" . $split[2];
+			$print_line = $split[0] . "\t" . $split[1] . "\t" . $split[2];
 			for(my $i = 3; $i < @split; $i++) {
 				$print_line .= "\t" . $split[$i];
 			}
@@ -177,8 +186,8 @@ foreach my $file (@files) {
 				if($split[3] + length($split[9]) > $last->{$chr}->{'1'}->{'pos'} || $split[3] + length($split[9]) > $last->{$chr}->{'2'}->{'pos'}) { $next++; next; }
 				$tree_tmp_1 = $tree->{$chr}->{'1'}->fetch($split[3], $split[3] + length($split[9]));
 				$tree_tmp_2 = $tree->{$chr}->{'2'}->fetch($split[3], $split[3] + length($split[9]));
-				$tree_tmp_detail_1 = $tree_detail->{$chr}->{'1'}->fetch($split[3], $split[3] + length($split[9]));
-				$tree_tmp_detail_2 = $tree_detail->{$chr}->{'2'}->fetch($split[3], $split[3] + length($split[9]));
+				$tree_tmp_detail_1 = $tree_pos->{$chr}->{'1'}->fetch($split[3], $split[3] + length($split[9]));
+				$tree_tmp_detail_2 = $tree_pos->{$chr}->{'2'}->fetch($split[3], $split[3] + length($split[9]));
 				if(exists $tree_tmp_1->[0]->{'mut'} && !exists $tree_tmp_2->[0]->{'mut'}) {
 					print $mut_reads $print_line . "\n";
 					$printed_lines++;

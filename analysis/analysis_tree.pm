@@ -477,7 +477,6 @@ sub background_dist_plot{
 	for(1 .. $core) {
 		my $pid = fork;
 		if(not $pid) {
-			print STDERR "start pid:  " . $pid . "\n";
 			&process_background_scanning(\@{$save_motifs[$count_fork]}, $count_fork, $motif_scan_score, $genome, $background_folder);
 			exit();
 		}
@@ -488,7 +487,6 @@ sub background_dist_plot{
 		&monitor_scanning_process($count);
 		exit();
 	}
-	print STDERR "\n\n";
 	for(1 .. ($core+1)) {
 		wait();
 	}
@@ -832,6 +830,7 @@ sub calculate_motif_score{
 	my $motif = $_[0];
 	my $local_seq = $_[1];
 	my $orientation = $_[2];
+	if($local_seq =~ m/N/) { return 0; }
 	#Sometimes motif is missing because of indel
 	if(!defined $local_seq || length($local_seq) == 0) {
 		$score = 0;
@@ -1245,29 +1244,10 @@ sub process_background_scanning {
 	for(my $i = 0; $i < @fork_motifs; $i++) {
 		if(!defined $fork_motifs[$i]) { next; }
 		$motif = $fork_motifs[$i];
-		print STDERR "motif: " . $motif . "\n";
-#	}
-#	print STDERR "Scanning for these motifs\n";
-#	foreach my $m (sort {$a cmp $b} keys %scan_candidates) {
-#		print STDERR "\t$m\n";
-#	}
-#	if(keys %scan_candidates > 0) {
-#		print STDERR "Scanning for motifs will take a long time - proceed?\n";
-#		print STDERR "Press Ctrl + C if you want to stop\n";
-#		print STDERR "Waiting for 10 seconds\n";
-#		for(my $i = 0; $i < 10; $i++) {
-#			print STDERR ".";
-#			sleep(1);
-#		}
-#		print STDERR "\n";
-#	}
-	#Scan for motifs that were not already proprocessed
-#	if(keys %scan_candidates > 0) {
 		$tmp_motif = "tmp" . rand() . ".txt";
 		$delete->{$tmp_motif} = 1;
 		open TMP, ">$tmp_motif";
 	#	foreach my $motif (keys %scan_candidates) {
-		print STDERR "motif: " . $motif . "\n";
 			print TMP ">consensus_" . $motif . "\t$motif\t" . $motif_scan_score->{$motif} . "\n";
 			foreach my $pos (sort {$a <=> $b} keys %{$PWM{$motif}}) {
 				print TMP $PWM{$motif}{$pos}{'A'} . "\t" . $PWM{$motif}{$pos}{'C'} . "\t" . $PWM{$motif}{$pos}{'G'} . "\t" . $PWM{$motif}{$pos}{'T'} . "\n";
@@ -1278,7 +1258,8 @@ sub process_background_scanning {
 		print STDERR "Scan motifs genome wide\n";
 		$tmp_motif2 = "tmp" . rand();
 		$delete->{$tmp_motif2} = 1;
-		$command = "scanMotifGenomeWide.pl " . $tmp_motif . " " . $genome . " > " . $tmp_motif2;
+		$command = "scanMotifGenomeWide.pl " . $tmp_motif . " " . $genome . " > " . $tmp_motif2 . " 2> error_" . $tmp_motif2;
+		$delete->{"error_" . $tmp_motif2} = 1;
 		print STDERR $command . "\n";
 		`$command`;
 		open(my $fh, "<", $tmp_motif2);
@@ -1312,7 +1293,6 @@ sub process_background_scanning {
 sub monitor_scanning_process{
 	my $final_number = 0;
 	my $all = $_[0];
-	print STDERR "all: " . $all . "\n";
 	my $lines;
 	my @n;
 	print STDERR "\n\n";

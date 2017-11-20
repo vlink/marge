@@ -58,7 +58,7 @@ sub read_strains_data {
 sub read_strains_mut {
 	my $strain = $_[0];
 	my $data_dir = $_[1];
-	$_ = () for my (%tree_mut, @mut_files, @split, @name, %last);
+	$_ = () for my (%tree_mut, @mut_files, @split, @name, %last, %tree_pos);
 	$_ = "" for my ($chr, $allele);
 	@mut_files = `ls $data_dir/$strain/*mut 2> /dev/null`;
 	foreach my $file (@mut_files) {
@@ -75,19 +75,22 @@ sub read_strains_mut {
 		print STDERR "\tfor chromosome" . $chr . " - allele " . $allele . "\n";
 		open FH, "<$file";
 		my $tree = Set::IntervalTree->new;
+		my $tree_pos = Set::IntervalTree->new;
 		foreach my $line (<FH>) {
 			chomp $line;
 			@split = split('\t', $line);
-			$tree->insert( {'mut'=>1 }, $split[0], $split[0] + length($split[2])); 
+			$tree->insert( {'mut'=> $split[0] }, $split[0], $split[0] + length($split[2]));
+		       	$tree_pos->insert( {'pos'=> $split[1] . "->" . $split[2] }, $split[0], $split[0] + length($split[2]));	
 		}
 		close FH;
 		$tree_mut{$chr}{$allele} = $tree;
+		$tree_pos{$chr}{$allele} = $tree_pos;
 	}
 	$file = $data_dir . "/" . $strain . "/last_shift_ref.txt";
 	if(-e $file) {
 		%last = %{retrieve($file)};
 	}
-	return (\%tree_mut, \%last);
+	return (\%tree_mut, \%tree_pos, \%last);
 }
 
 sub read_mutations_from_two_strains {

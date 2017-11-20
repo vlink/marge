@@ -7,7 +7,7 @@ my @split;
 
 #Read in config file and return different varibales in a hash
 sub read_config{
-	open CONFIG, "<config.txt";
+	open CONFIG, "</home/vlink/mouse_strains/marge/general/config.txt";
 	my %parameters;
 	my @split;
 	foreach my $line (<CONFIG>) {
@@ -20,19 +20,6 @@ sub read_config{
 	}
 	close CONFIG;
 	return \%parameters;
-}
-
-#Return the reference genome for the different strains
-sub reference_genome{
-	open REF, "<references.txt";
-	foreach my $line (<REF>) {
-		chomp $line;
-		@split = split('\t', $line);
-		if($split[0] eq $_[0]) {
-			return $split[1];
-		}
-	}
-	return 0;
 }
 
 #Check that parameters specified in mand are in the programm call

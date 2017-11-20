@@ -16,15 +16,15 @@ $_ = () for my(@strains, %peaks, %strand, @split, %tree, %lookup_strain, %last_s
 $_ = 0 for my($hetero, $allele, $line_number, $id);
 
 sub printCMD {
-        print STDERR "\n\nUsage:\n";
+        print STDERR "\nUsage:\n";
         print STDERR "\t-ind <individuals>: Comma-separated list of individuals\n";
         print STDERR "\t-file <file>: File with genomic coordinates to pull the sequences\n";
-	print STDERR "\t-output: Name of the output files (default: sequences.txt)\n";
+	print STDERR "\t-output <file>: Name of the output files (Default: sequences.txt)\n";
 	print STDERR "\t-id: Uses peak ID as identifer for sequences - can only be used when only one individual was specified\n";
-	print STDERR "\t-hetero: Data is heterozygous\n";
+	print STDERR "\t-hetero: Data is heterozygous (Default: homozygous)\n";
 	print STDERR "\nAdditional parameters:\n";
-	print STDERR "\t-data_dir <path to strain mutation data>: default defined in config\n";
-	print STDERR "\t-genome_dir <path to strain genomes>: default defined in config\n\n";
+	print STDERR "\t-data_dir <directory>: default defined in config\n";
+	print STDERR "\t-genome_dir <directory>: default defined in config\n\n";
         exit;
 }
 
