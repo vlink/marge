@@ -3,16 +3,16 @@ use strict;
 use warnings;
 use Getopt::Long;
 use Storable;
-BEGIN {push @INC, '/home/vlink/mouse_strains/marge/general'}
+BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/mouse_strains/marge/general'}
 use config;
-BEGIN {push @INC, '/home/vlink/mouse_strains/marge/db_part'};
+BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/mouse_strains/marge/db_part'};
 use processing;
 use Set::IntervalTree;
 use threads;
 use Data::Dumper;
 
-$_ = "" for my($snp, $indel, @chr, $current_chr, $data, $filename, $out, $genome, $merge_line, $genome_dir, $ref_name, $sort_check);
-$_ = 0 for my($filter, $same, $help, $hetero, $add, $force, $lines_f1, $lines_f2, $lines_all, $line_count, $num_strains, $outfile_open, $last_h, $none_number_chromosome, $core, $no_genome, $wait);
+$_ = "" for my($snp, $indel, @chr, $current_chr, $data, $filename, $out, $genome, $merge_line, $genome_dir, $ref_name, $sort_output);
+$_ = 0 for my($filter, $same, $help, $hetero, $add, $force, $lines_f1, $lines_f2, $lines_all, $line_count, $num_strains, $outfile_open, $last_h, $none_number_chromosome, $core, $no_genome, $wait, $sort_check);
 $_ = () for my($lines, @merge_line, $header, @split, $snps, $indels, $f1, $f2, %strains_to_use, @mut_files, @header, @strains_to_use, @s, @i, %lookup_no_number, %lookup_number, @last, @allele, @all, @test_spaces);
 
 $none_number_chromosome = 1000;
@@ -31,6 +31,7 @@ sub printCMD{
 	print STDERR "\t-ref <name>: Software generates a reference genome folder with all necessary files for further analysis - Folder is called REFERENCE, if nothing is specified here\n";
 	print STDERR "\t-force: Overwrites existing folder\n";
 	print STDERR "\t-add: Adds data to existing folder - if file exists it is overwritten\n";
+	print STDERR "\t-no-check: Does not check if input files are sorted\n";
 	print STDERR "\t-core <number of cores>: default 1\n";
 	print STDERR "\nConfig parameters - these parameters are defined in the config, but can be changed\n";
 	print STDERR "\tCAUTION: If these parameters are changed, the config file either needs to be adjusted or they need to be defined for every script\n";
@@ -39,8 +40,8 @@ sub printCMD{
 	print STDERR "\nFilter VCF files:\n";
 	print STDERR "\tFor a more sophisticated filtering - use vcftools\n";
 	print STDERR "\t-filter - Filters out all mutations that did not pass all filters\n"; 	
-	print STDERR "\t-same - Filters out all mutations that are homozygous\n";
-	print STDERR "\t\twhen position is homozygous and -same is not defined the first allele is taken without any further evaluation\n";
+	print STDERR "\t-same - Filters out all mutations that are heterozygous\n";
+	print STDERR "\t\twhen position is heterozygous and -same is not defined the first allele is taken without any further evaluation\n";
 	print STDERR "\n\n";
 	print STDERR "\t-h | --help: shows help\n";
 	exit;
@@ -64,6 +65,7 @@ GetOptions(	"files=s{,}" => \@mut_files,
 		"ref=s" => \$ref_name,
 		"filter" => \$filter,
 		"same" => \$same,
+		"no-check" => \$sort_check,
 		"hetero" => \$hetero,
 		"h" => \$help,
 		"force" => \$force,
@@ -109,13 +111,26 @@ if($help == 1) {
 }
 
 
-#define header
+#define header and check if file is sorted
 if(@mut_files > 0) {
 	@test_spaces = split('\t', $mut_files[0]);
 	if(@test_spaces > @mut_files) {
 		@mut_files = @test_spaces;
 	}
 	$mut_files[0] =~ s/,//g;
+	for(my $i = 0; $i < @mut_files; $i++) {
+		print STDERR "Checking if " . $mut_files[$i] . " is sorted by chromosome and position.\nThis make take a while.\nIf you want to skip this step, restart with -no-check. If the file is not sorted, output files are overwritten.\n\n";
+		$sort_output = `grep -v \"^#\" $mut_files[$i] | sort -c -k1,1 -k2,2n 2>&1`;
+		if($sort_output ne "") {
+			print STDERR "File " . $mut_files[$i] . " is not sorted!\n";
+			print STDERR "Please sort file!\n";
+		       	print STDERR "grep \"^#\" " . $mut_files[$i] . " > <sorted file>\n";
+			print STDERR "grep -v \"^#\" " . $mut_files[$i] . " \| sort -k1,1 -k2,2n >> <sorted file>\n\n";
+			exit;
+		} else {
+			print STDERR "File " . $mut_files[$i] . " is sorted.\n\n";
+		}
+	}
 	$header = `grep -m 1 \'#CHROM\' $mut_files[0]`;
 	chomp $header;
 	if($header eq "") {
