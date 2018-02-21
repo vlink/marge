@@ -8,5 +8,8 @@ MARGE was originally developed to analyze transcription factor binding data in d
 
 ## Installation
 
-A detailed description on how to install MARGE, as well as how to run it, can be found in MARGE_documentation.pdf
+A detailed description on how to install MARGE, as well as how to run it, can be found in MARGE_documentation.pdf. In short, download MARGE_v1.0.tar.gz, unzip it and run the installation script (install.pl).
 
+## Bug Report
+
+Please send all bug reports to verena.m.link@gmail.com. We will try to address everything as soon as possible.
