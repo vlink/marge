@@ -1054,6 +1054,7 @@ sub get_seq_for_peaks {
 				if(exists $lookup->{$strains[$i]}->{$chr_num}) {
 					$chr_num = $lookup->{$strains[0]}->{$chr};
 				}
+				if(!defined $chr_num || $chr_num eq ""} { next; }
 				if($chr !~ /\d+/ && !exists $lookup->{$strains[$i]}->{$chr}) {
 				#	print STDERR "Skip peaks for chromosome " . $chr . " in get_seq_for_peaks\n";
 					print STDERR "Skip peaks for chromosome " . $chr . " allele " . $allele_num . " in get_seq_for_peaks\n";
