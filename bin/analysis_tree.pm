@@ -876,7 +876,11 @@ sub rev_comp{
 	my @split = split('', $rev);
 	my $comp = "";
 	foreach my $c (@split) {
-		$comp .= $comp{$c};
+		if(!exists $comp{$c}) {
+			$comp .= "N";
+		} else {
+			$comp .= $comp{$c};
+		}
 	}	
 	return $comp;
 }
