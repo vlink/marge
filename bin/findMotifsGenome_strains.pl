@@ -514,11 +514,17 @@ if (!exists($config->{'GENOMES'}->{$cmd->{'genome'}})) {
 	$preparsedDirFromConfig = $genomeDir . "preparsed/";
 }
 my $preparsedDir = $cmd->{'preparsedDir'};
-if ($preparsedDir eq '/') {
-	$preparsedDir = $preparsedDirFromConfig;
-}
+print STDERR "preparsedDir: " . $preparsedDir . "\n";
 my $preparsedDir_strain = $genome_dir . "/" . $cmd->{'bg_strain'} . "/preparsed/";
-print STDERR $preparsedDir_strain . "\n";
+print STDERR "preparsedDir_strains: " . $preparsedDir_strain . "\n";
+if ($preparsedDir eq '/') {
+	$preparsedDir = $preparsedDir_strain;
+} else {
+	$preparsedDir_strain = $preparsedDir;
+}
+print STDERR "After logic:\n";
+print STDERR "preparsed Strain: " . $preparsedDir_strain . "\n";
+print STDERR "preparsedDir: " . $preparsedDir . "\n";
 open IN, $cmd->{'posfile'} or die "!!! Could not open peak/position file $cmd->{'posfile'} !!!\n";
 close IN;
 
@@ -655,33 +661,7 @@ if ($cmd->{'bg'} eq '') {
 			}
 		}
 		print STDERR "\tPreparsing genome for $bestFragSize bp fragments...(will probably take 1-5 min)\n"; 
-		my $gg = $cmd->{'genome'};
-		if ($customGenome ne '') {
-			$gg = $customGenome;
-		}
-		# check if we can write to the preparsed directory
-		if (-w "$preparsedDir") {
-		} else {
-			`mkdir -p "$preparsedDir"`;
-			if (-w "$preparsedDir") {
-			} else {
-				print STDERR "!!! Warning: Looks like you do not have permission to write the preparsed\n";
-				print STDERR "!!! genome files to the following directory:\n";
-				print STDERR "!!!   $preparsedDir\n";
-				print STDERR "!!! Consider one of the two options:\n";
-				print STDERR "!!!   1.) Get your system admin to set the directory to be writeable to you and/or\n";
-				print STDERR "!!!       your group.\n";
-				print STDERR "!!!          -or-\n";
-				print STDERR "!!!   2.) Use the \"-preparsedDir <directory>\" option to specify a directory that\n";
-				print STDERR "!!!       you do have permission to write files to.\n";
-				print STDERR "\n";
-				exit;
-			}
-		}
-	
-		`preparseGenome.pl "$gg" $mflag -size $bestFragSize -preparsedDir "$$preparsedDir"`;
-		print STDERR "Generating strain background\n";
-		&generate_strain_bg();
+		my &generate_strain_bg();
 	}
 
 	#$bestFragSize = $cmd->{'size'};
