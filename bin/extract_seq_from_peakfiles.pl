@@ -86,8 +86,7 @@ if(@strains > 1 && $id == 1) {
 	$id = 0;
 }
 
-print STDERR "Saving peaks\n";
-print STDERR "This it is: " . $file . "\n";
+print STDERR "Saving peaks from " . $file . "\n";
 open FH, "<$file";
 foreach my $line (<FH>) {
 	chomp $line;
