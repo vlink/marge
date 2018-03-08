@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 use strict;
-use warnings
+use warnings;
 package general;
 
 # Copyright Verena M. Link <vlink@ucsd.edu>
