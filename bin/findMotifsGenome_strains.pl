@@ -661,7 +661,7 @@ if ($cmd->{'bg'} eq '') {
 			}
 		}
 		print STDERR "\tPreparsing genome for $bestFragSize bp fragments...(will probably take 1-5 min)\n"; 
-		my &generate_strain_bg();
+		&generate_strain_bg();
 	}
 
 	#$bestFragSize = $cmd->{'size'};
