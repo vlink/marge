@@ -514,17 +514,12 @@ if (!exists($config->{'GENOMES'}->{$cmd->{'genome'}})) {
 	$preparsedDirFromConfig = $genomeDir . "preparsed/";
 }
 my $preparsedDir = $cmd->{'preparsedDir'};
-print STDERR "preparsedDir: " . $preparsedDir . "\n";
 my $preparsedDir_strain = $genome_dir . "/" . $cmd->{'bg_strain'} . "/preparsed/";
-print STDERR "preparsedDir_strains: " . $preparsedDir_strain . "\n";
 if ($preparsedDir eq '/') {
 	$preparsedDir = $preparsedDir_strain;
 } else {
 	$preparsedDir_strain = $preparsedDir;
 }
-print STDERR "After logic:\n";
-print STDERR "preparsed Strain: " . $preparsedDir_strain . "\n";
-print STDERR "preparsedDir: " . $preparsedDir . "\n";
 open IN, $cmd->{'posfile'} or die "!!! Could not open peak/position file $cmd->{'posfile'} !!!\n";
 close IN;
 
