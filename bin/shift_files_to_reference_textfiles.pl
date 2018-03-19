@@ -25,7 +25,7 @@ use general;
 use Set::IntervalTree;
 use Data::Dumper;
 
-$_ = 0 for my ($sam, $peak, $tag, $help, $allele, $bed, $bismark, $bedpe, $hic, $keep_alleles, $coord, $coord2);
+$_ = 0 for my ($sam, $peak, $tag, $help, $allele, $bed, $bismark, $bedpe, $hic, $keep_alleles, $coord, $coord2, $gtf);
 $_ = "" for my ($dir, $chr, $last, $data_dir, $out_name, $last_strain);
 $_ = () for my (@files, @strains, @split, %last, %lookup, %tree, @tmp, $fetch, $pos_shifted);
 
@@ -45,6 +45,7 @@ sub printCMD {
 	print STDERR "\t-bismark: shifts cytosine report output from BISMARK\n";
 	print STDERR "\t-hic: shifts HiC tag directories\n";
 	print STDERR "\t-bedpe: shifts bedpe files (from PLAC-Seq pipeline)\n";
+	print STDERR "\t-gtf: shifts gtf files\n";
 	print STDERR "\nAdditional parameters:\n";
 	print STDERR "\t-data_dir <directory>: default defined in config\n";
 	print STDERR "\n\n";
@@ -72,6 +73,7 @@ GetOptions(     "dir=s" => \$dir,
 		"bedpe" => \$bedpe,
 		"hic" => \$hic,
                 "h" => \$help,
+		"gtf" => \$gtf,
 		"keep_alleles" => \$keep_alleles,
                 "help" => \$help)
         or die (&printCMD());
@@ -80,7 +82,7 @@ GetOptions(     "dir=s" => \$dir,
 if($help == 1) {
         &printCMD();
 }
-if($sam == 0 && $peak == 0 && $tag == 0 && $bed == 0 && $bismark == 0 && $hic == 0 && $bedpe == 0) {
+if($sam == 0 && $peak == 0 && $tag == 0 && $bed == 0 && $bismark == 0 && $hic == 0 && $bedpe == 0 && $gtf == 0) {
 	$sam = 1;
 }
 if(@files == 0 && $dir eq "") {
@@ -110,6 +112,9 @@ if(@files == 0) {
 	}
 	if($hic == 1) {
 		@files = `ls $dir/* -d`;
+	}
+	if($gtf == 1) {
+		@files = `ls $dir/*gtf`;
 	}
 }
 #Check if files and strains have the same length
@@ -169,6 +174,9 @@ for(my $i = 0; $i < @strains; $i++) {
 	} elsif($bedpe == 1) {
 		$out_name = substr($files[$i], 0, length($files[$i]) - 6) . "_shifted_from_" . $strains[$i] . ".bedpe";
 		&shift_bedpe($files[$i], $strains[$i], $out_name);
+	} elsif($gtf == 1) {
+		$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_from_" . $strains[$i] . ".gtf";
+		&shift_gtf($files[$i], $strains[$i], $out_name);
 	} else {
 		$out_name = $files[$i];
 		while(substr($out_name, length($out_name) - 1) eq "/") {
@@ -590,3 +598,37 @@ sub shift_bedpe{
 	close $fh;
 	close $out;
 }
+
+sub shift_gtf{
+	my $file = $_[0];
+	my $strain = $_[1];
+	my $out_file = $_[2];
+	print STDERR "shifting " . $file . "\n";
+	open my $out, ">", $out_file or die "Can't open $out_file: $!\n";
+	open my $fh, "<", $file or die "Can't open $file: $!\n";
+	my $start;
+	my $end;
+	my $allele = 1;
+	while(my $line = <$fh>) {
+		chomp $line;
+		if(substr($line, 0, 1) eq "#") { print $out $line . "\n"; next; }
+		@split = split('\t', $line);
+		$chr = $split[0];
+		if(!exists $last{$chr}{$allele}) {
+			$start = $split[3];
+			$end = $split[4];
+		} else {
+			$start = &shift($chr, $allele, $split[3]);
+			$end = &shift($chr, $allele, $split[4]);
+		}
+		if($end < $start) { $end = $start + 1; }
+		print $out $chr . "\t" . $split[1] . "\t" . $split[2] . "\t" . $start . "\t" . $end;
+		for(my $i = 5; $i < @split; $i++) {
+			print $out "\t" . $split[$i];
+		}
+		print $out "\n";
+	}
+	close $fh;
+	close $out;
+}
+
