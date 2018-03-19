@@ -115,7 +115,7 @@ sub printCMD {
 	print STDERR "\tMARGE.pl shift\n";
 	print STDERR "\t\tThis script shifts the data mapped to the individual genome to the reference coordinates. This step is necessary to compare genomic loci between different individuals, as well as for visualization of data in the different genome browsers.\n\n";
 	print STDERR "\tMARGE.pl shift_to_strain\n";
-	print STDERR "\t\tThis script shifts the data mapped to the reference genome to the coordinates of the individual. Please note that this script will be used very rarely. To analyze the data it is better to shift all strains data to the reference coordinates, not vice versa!\n";
+	print STDERR "\t\tThis script shifts the data mapped to the reference genome to the coordinates of the individual. Please note that this script will be used very rarely. To analyze the data it is better to shift all strains data to the reference coordinates, not vice versa!\n\n";
 	print STDERR "\tMARGE.pl allele_specific_reads\n";
 	print STDERR "\t\tFor heterozygous data, this script only keeps reads that were perfectly mapped (to avoid bias introduced by SNPs) and also outputs a file with reads that overlap mutations (to call allele-specific binding\n\n";
 	print STDERR "\tMARGE.pl annotate_allele_specific\n";
