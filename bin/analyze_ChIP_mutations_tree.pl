@@ -1294,7 +1294,7 @@ sub generate_R_files {
 				if($cal_pvalue == 1) {
 					print R "boxplot(c(no_mut), c(one), c(two), boxwex=" . (int($width_boxplot/3) - 10) . ", add=TRUE, at=c(" . ($number_peaks + int($add_additional/3)) . "," . ($number_peaks + (int($add_additional/3) * 2)) . "," . ($number_peaks + (int($add_additional/3) * 3)) . "), col=c(\"grey\", \"red\", \"blue\"), outline=FALSE, axes=FALSE)\n";
 					if($no_correction == 1) {
-						print R "p_one <- (t.test(no_mut, one)\$p.value\n";
+						print R "p_one <- t.test(no_mut, one)\$p.value\n";
 						print R "p_two <- t.test(no_mut, two)\$p.value\n";
 						print R "p_both <- t.test(one, two)\$p.value\n";
 					} else {
