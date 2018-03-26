@@ -603,7 +603,7 @@ my $bgSeq = "";
 
 if ($cmd->{'bg'} eq '') {
 	$preparseFound = 0;
-	$prefix = $cmd->{'genome'};
+	$prefix = $cmd->{'fg_strain'};
 	if ($cmd->{'mask'}) {
 		$prefix .= "r";
 	}
@@ -1238,12 +1238,12 @@ sub addFDR {
 }
 
 sub generate_strain_bg {
-	my $file_bg = $preparsedDir . "/" . $cmd->{'genome'} . "." . $cmd->{'size'} . ".pos";
-	my $posStrain = $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $cmd->{'size'} . ".pos";
-	my $seqStrain =  $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $cmd->{'size'} . ".seq";
-	my $gcfreqStrain =  $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $cmd->{'size'} . ".cgfreq";
-	my $cgBinsStrain =  $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $cmd->{'size'} . ".cgbins";
-	my $gcBinsStrain =  $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $cmd->{'size'} . ".gcbins";
+	my $file_bg = $preparsedDir . "/" . $cmd->{'genome'} . "." . $bestFragSize . ".pos";
+	my $posStrain = $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $bestFragSize . ".pos";
+	my $seqStrain =  $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $bestFragSize . ".seq";
+	my $gcfreqStrain =  $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $bestFragSize . ".cgfreq";
+	my $cgBinsStrain =  $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $bestFragSize . ".cgbins";
+	my $gcBinsStrain =  $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $bestFragSize . ".gcbins";
 	if(!-e $preparsedDir_strain) {
 		`mkdir $preparsedDir_strain`;
 	}
