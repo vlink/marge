@@ -288,7 +288,7 @@ sub shift_peak_file{
 	open my $fh, "<", $file or die "Can't open $file: $!\n";
 	while (my $line = <$fh>) {
 		if(substr($line, 0, 1) eq "#") {
-			print $out $line . "\n";
+			print $out $line;
 			next;
 		}
 		chomp $line;
