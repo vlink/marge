@@ -287,6 +287,10 @@ sub shift_peak_file{
         open my $out, ">", $out_file or die "Can't open $out_file: $!\n";
 	open my $fh, "<", $file or die "Can't open $file: $!\n";
 	while (my $line = <$fh>) {
+		if(substr($line, 0, 1) eq "#") {
+			print $out $line . "\n";
+			next;
+		}
 		chomp $line;
 		@split = split('\t', $line);
 		@tmp = split("_", $split[1]);
