@@ -1,9 +1,5 @@
 #!/usr/bin/env perl
 use warnings;
-use lib "/bioinformatics/homer/.//bin";
-my $homeDir = "/bioinformatics/homer/./";
-BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/code/marge/bin'}
-
 
 # Copyright Verena M. Link <vlink@ucsd.edu>
 # 
@@ -38,7 +34,7 @@ my %toDelete = ();
 my $preparse_strain_exists = 0;
 my $config = HomerConfig::loadConfigFile();
 my $prefix;
-my $motif_file = "/gpfs/data01/glasslab/home/vlink/mouse_strains/motifs/final_motif_file_FDR_0_001.txt"; 
+my $motif_file = "PATH_TO_HOMER_MOTIF_FILE"; 
 my $genome_dir = config::read_config()->{'data_folder'};
 my $data_dir = config::read_config()->{'data_folder'}; 
 
@@ -514,12 +510,11 @@ if (!exists($config->{'GENOMES'}->{$cmd->{'genome'}})) {
 	$preparsedDirFromConfig = $genomeDir . "preparsed/";
 }
 my $preparsedDir = $cmd->{'preparsedDir'};
-my $preparsedDir_strain = $genome_dir . "/" . $cmd->{'bg_strain'} . "/preparsed/";
 if ($preparsedDir eq '/') {
-	$preparsedDir = $preparsedDir_strain;
-} else {
-	$preparsedDir_strain = $preparsedDir;
+	$preparsedDir = $preparsedDirFromConfig;
 }
+my $preparsedDir_strain = $genome_dir . "/" . $cmd->{'bg_strain'} . "/preparsed/";
+print STDERR $preparsedDir_strain . "\n";
 open IN, $cmd->{'posfile'} or die "!!! Could not open peak/position file $cmd->{'posfile'} !!!\n";
 close IN;
 
@@ -603,7 +598,7 @@ my $bgSeq = "";
 
 if ($cmd->{'bg'} eq '') {
 	$preparseFound = 0;
-	$prefix = $cmd->{'fg_strain'};
+	$prefix = $cmd->{'genome'};
 	if ($cmd->{'mask'}) {
 		$prefix .= "r";
 	}
@@ -656,6 +651,32 @@ if ($cmd->{'bg'} eq '') {
 			}
 		}
 		print STDERR "\tPreparsing genome for $bestFragSize bp fragments...(will probably take 1-5 min)\n"; 
+		my $gg = $cmd->{'genome'};
+		if ($customGenome ne '') {
+			$gg = $customGenome;
+		}
+		# check if we can write to the preparsed directory
+		if (-w "$preparsedDir") {
+		} else {
+			`mkdir -p "$preparsedDir"`;
+			if (-w "$preparsedDir") {
+			} else {
+				print STDERR "!!! Warning: Looks like you do not have permission to write the preparsed\n";
+				print STDERR "!!! genome files to the following directory:\n";
+				print STDERR "!!!   $preparsedDir\n";
+				print STDERR "!!! Consider one of the two options:\n";
+				print STDERR "!!!   1.) Get your system admin to set the directory to be writeable to you and/or\n";
+				print STDERR "!!!       your group.\n";
+				print STDERR "!!!          -or-\n";
+				print STDERR "!!!   2.) Use the \"-preparsedDir <directory>\" option to specify a directory that\n";
+				print STDERR "!!!       you do have permission to write files to.\n";
+				print STDERR "\n";
+				exit;
+			}
+		}
+	
+		`preparseGenome.pl "$gg" $mflag -size $bestFragSize -preparsedDir "$$preparsedDir"`;
+		print STDERR "Generating strain background\n";
 		&generate_strain_bg();
 	}
 
@@ -720,7 +741,7 @@ if ($executeFlag==1) {
 		}	
 		#####################
 		#Strain code is added
-		`perl /gpfs/data01/glasslab/home/vlink/code/marge/bin/extract_seq_from_peakfiles.pl -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;	
+		`perl PATH_TO_GET_SEQ_FILES -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;	
 		#End of strain code
 		####################
 
@@ -739,7 +760,7 @@ if ($executeFlag==1) {
 		}
 		#####################
 		#Strain code is added
-		`perl /gpfs/data01/glasslab/home/vlink/code/marge/bin/extract_seq_from_peakfiles.pl -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;
+		`perl PATH_TO_GET_SEQ_FILES -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;
 
 		#End of strain code
 		####################
@@ -783,7 +804,7 @@ if ($executeFlag==1) {
 		close OUT2;
 		#####################
 		#Strain code is added
-		`perl /gpfs/data01/glasslab/home/vlink/code/marge/bin/extract_seq_from_peakfiles.pl -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;	
+		`perl PATH_TO_GET_SEQ_FILES -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;	
 		#End of strain code
 		####################
 #		`homerTools extract "$posFileSize" "$genomeDir" $mflag > "$tmpFile"`;
@@ -799,7 +820,7 @@ if ($executeFlag==1) {
 		}
 		#####################
 		#Strain code is added
-		`perl /gpfs/data01/glasslab/home/vlink/code/marge/bin/extract_seq_from_peakfiles.pl -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;	
+		`perl PATH_TO_GET_SEQ_FILES -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;	
 		#End of strain code
 		####################
 #		`homerTools extract "$posFileSize" "$genomeDir" $mflag > "$tmpFile"`;
@@ -1238,12 +1259,12 @@ sub addFDR {
 }
 
 sub generate_strain_bg {
-	my $file_bg = $preparsedDir . "/" . $cmd->{'genome'} . "." . $bestFragSize . ".pos";
-	my $posStrain = $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $bestFragSize . ".pos";
-	my $seqStrain =  $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $bestFragSize . ".seq";
-	my $gcfreqStrain =  $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $bestFragSize . ".cgfreq";
-	my $cgBinsStrain =  $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $bestFragSize . ".cgbins";
-	my $gcBinsStrain =  $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $bestFragSize . ".gcbins";
+	my $file_bg = $preparsedDir . "/" . $cmd->{'genome'} . "." . $cmd->{'size'} . ".pos";
+	my $posStrain = $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $cmd->{'size'} . ".pos";
+	my $seqStrain =  $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $cmd->{'size'} . ".seq";
+	my $gcfreqStrain =  $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $cmd->{'size'} . ".cgfreq";
+	my $cgBinsStrain =  $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $cmd->{'size'} . ".cgbins";
+	my $gcBinsStrain =  $preparsedDir_strain . "/" . $cmd->{'bg_strain'} . "." . $cmd->{'size'} . ".gcbins";
 	if(!-e $preparsedDir_strain) {
 		`mkdir $preparsedDir_strain`;
 	}
@@ -1251,7 +1272,7 @@ sub generate_strain_bg {
 	my $command = "cp " . $preparsedDir . "/" . $cmd->{'genome'} . "." . $cmd->{'size'} . ".pos " . $posStrain;
 	`$command`;
 	#print STDERR $command . "\n";
-	$command = "perl /gpfs/data01/glasslab/home/vlink/code/marge/bin/extract_seq_from_peakfiles.pl -file " . $posStrain . " -ind " . $cmd->{'bg_strain'} . " -genome_dir " . $genome_dir . " -output " . $seqStrain . " -data_dir " . $data_dir . " -id";
+	$command = "perl PATH_TO_GET_SEQ_FILES -file " . $posStrain . " -ind " . $cmd->{'bg_strain'} . " -genome_dir " . $genome_dir . " -output " . $seqStrain . " -data_dir " . $data_dir . " -id";
 	#print $command . "\n";
 	`$command`;
 	#Calcualte GC frequency

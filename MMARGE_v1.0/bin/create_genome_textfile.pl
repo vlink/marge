@@ -18,7 +18,6 @@ use warnings;
 
 
 use Getopt::Long;
-BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/code/marge/bin'};
 use processing;
 use config;
 

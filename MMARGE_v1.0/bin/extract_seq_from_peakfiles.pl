@@ -1,5 +1,4 @@
 #!/usr/bin/env perl
-BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/code/marge/bin'}
 use strict;
 use warnings;
 
@@ -86,7 +85,8 @@ if(@strains > 1 && $id == 1) {
 	$id = 0;
 }
 
-print STDERR "Saving peaks from " . $file . "\n";
+print STDERR "Saving peaks\n";
+print STDERR "This it is: " . $file . "\n";
 open FH, "<$file";
 foreach my $line (<FH>) {
 	chomp $line;

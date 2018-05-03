@@ -1,5 +1,4 @@
 #!/usr/bin/env perl
-BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/code/marge/bin'};
 use strict;
 use warnings;
 
@@ -17,6 +16,7 @@ use warnings;
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
+
 use POSIX;
 use Getopt::Long;
 use Storable;
@@ -26,6 +26,7 @@ use general;
 use analysis_tree;
 use Set::IntervalTree;
 use Data::Dumper;
+use Memory::Usage;
 use 5.014;
 use Sys::CPU;
 
@@ -91,6 +92,8 @@ sub printCMD {
         exit;
 }
 
+#my $mu = Memory::Usage->new();
+#my $start_mu = $mu->record('starting work');
 
 if(@ARGV < 1) {
         &printCMD();
@@ -262,6 +265,7 @@ my ($index_motif_ref, $PWM_ref, $score_ref) = analysis::read_motifs($tf);
 %index_motifs = %$index_motif_ref;
 %motif_scan_scores = %$score_ref;
 print STDERR "Save index file\n";
+#$mu->record('read_motifs');
 
 #Add motifs to direction hash
 if(@tf_dir == 1 && $tf_dir[0] eq "all") {
@@ -343,6 +347,7 @@ foreach my $line (<FH>) {
 	}
 }
 close FH;
+#$mu->record('after save peaks');
 if($line_number == 1) {
 	print STDERR "File was empty!\n";
 	print STDERR "No peaks are saved!\n";
@@ -363,6 +368,7 @@ for(my $i = 0; $i < @strains; $i++) {
 	$lookup_strain{$strains[$i]} = $lookup;
 	$last_strain{$strains[$i]} = $last;
 }
+#$mu->record('saved strains data');
 
 #Get all sequences from file and save them in hash
 &get_files_from_seq();
@@ -425,6 +431,8 @@ if($keep == 0) {
 		`rm $d`
 	}
 }
+
+#$mu->dump();
 sub get_files_from_seq{
         $tmp_out = "tmp" . rand();
         $delete{$tmp_out} = 1;
@@ -500,6 +508,7 @@ sub screen_and_plot{
 		my @motif_array;
 		foreach my $motif (keys %index_motifs) {
 			push @motif_array, $motif;
+			print STDERR $motif . "\n";
 		}
 		my $part = int((@motif_array)/$core) + 1;
 		my $end_index;
@@ -736,6 +745,7 @@ sub process_motifs_for_analysis{
 		#Merge the hash (when overlap is set, merge the overlapping motifs, calculate motif score if motif was not found)
 		$block_ref = analysis::merge_block(\%block, $overlap, \@strains, $seq, \%tree, \%lookup_strain, \%last_strain, $allele);
 		%block = %$block_ref;
+	#		$mu->record('merged all motifs in block');
 		if($print_block == 1) {
 			my $tmp_b = Dumper %block;
 			print STDERR $tmp_b . "\n";
@@ -1284,7 +1294,7 @@ sub generate_R_files {
 				if($cal_pvalue == 1) {
 					print R "boxplot(c(no_mut), c(one), c(two), boxwex=" . (int($width_boxplot/3) - 10) . ", add=TRUE, at=c(" . ($number_peaks + int($add_additional/3)) . "," . ($number_peaks + (int($add_additional/3) * 2)) . "," . ($number_peaks + (int($add_additional/3) * 3)) . "), col=c(\"grey\", \"red\", \"blue\"), outline=FALSE, axes=FALSE)\n";
 					if($no_correction == 1) {
-						print R "p_one <- t.test(no_mut, one)\$p.value\n";
+						print R "p_one <- (t.test(no_mut, one)\$p.value\n";
 						print R "p_two <- t.test(no_mut, two)\$p.value\n";
 						print R "p_both <- t.test(one, two)\$p.value\n";
 					} else {

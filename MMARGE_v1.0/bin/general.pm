@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
-use strict;
 use warnings;
+use strict;
 package general;
 
 # Copyright Verena M. Link <vlink@ucsd.edu>
@@ -102,7 +102,7 @@ sub read_strains_mut {
 		$tree_mut{$chr}{$allele} = $tree;
 		$tree_pos{$chr}{$allele} = $tree_pos;
 	}
-	my $file = $data_dir . "/" . $strain . "/last_shift_ref.txt";
+	$file = $data_dir . "/" . $strain . "/last_shift_ref.txt";
 	if(-e $file) {
 		%last = %{retrieve($file)};
 	}
@@ -129,7 +129,7 @@ sub read_mutations_from_two_strains {
 		} else {
 			$allele = $split[2];
 		}
-		print STDERR "\tfor chromosome" . $chr . " - allele " . $allele . "\n";
+		print STDERR "\tfor chromosome" . $chr . " - allele " . $allel . "\n";
 		open FH, "<$file";
 		foreach my $line (<FH>) {
 			chomp $line;
@@ -138,7 +138,8 @@ sub read_mutations_from_two_strains {
 		}
 		close FH;
 	}
-	my $file = $data_dir . "/" . $strain_one . "/last_shift_ref.txt";
+
+	$file = $data_dir . "/" . $strain_one . "/last_shift_ref.txt";
 	if(-e $file) {
 		%last = %{retrieve($file)};
 	}

@@ -18,7 +18,6 @@ use warnings;
 
 
 use Getopt::Long;
-BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/code/marge/bin'}
 use config;
 $_ = () for my(@files, @names, %delete);
 $_ = 0 for my($sig, $threshold);

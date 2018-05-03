@@ -1,5 +1,4 @@
 #!/usr/bin/env perl
-BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/code/marge/bin'}
 use strict;
 use warnings;
 
@@ -30,10 +29,6 @@ $_ = "" for my ($dir, $chr, $last, $data_dir, $out_name, $last_strain);
 $_ = () for my (@files, @strains, @split, %last, %lookup, %tree, @tmp, $fetch, $pos_shifted);
 
 sub printCMD {
-	print STDERR "\nCAUTION:\n";
-	print STDERR "This script is very rarely used. It shifts files FROM the reference genome TO the individual genome.\n";
-	print STDERR "It is NOT recommended to run the analysis that way!\n";
-	print STDERR "Please make sure you really want to shift in this direction!\n\n";
         print STDERR "\nUsage:\n\n";
 	print STDERR "\t-dir <directory with files to shift>: has to be the same individual\n";
 	print STDERR "\t-files <list with files>: comma separated list\n";
@@ -49,7 +44,7 @@ sub printCMD {
 	print STDERR "\t-bismark: shifts cytosine report output from BISMARK\n";
 	print STDERR "\t-hic: shifts HiC tag directories\n";
 	print STDERR "\t-bedpe: shifts bedpe files (from PLAC-Seq pipeline)\n";
-	print STDERR "\t-gtf: shifts gtf file\n";
+	print STDERR "\t-gtf: shifts gtf files\n";
 	print STDERR "\nAdditional parameters:\n";
 	print STDERR "\t-data_dir <directory>: default defined in config\n";
 	print STDERR "\n\n";
@@ -76,8 +71,8 @@ GetOptions(     "dir=s" => \$dir,
 		"bismark" => \$bismark,
 		"bedpe" => \$bedpe,
 		"hic" => \$hic,
-		"gtf" => \$gtf,
                 "h" => \$help,
+		"gtf" => \$gtf,
 		"keep_alleles" => \$keep_alleles,
                 "help" => \$help)
         or die (&printCMD());
@@ -157,36 +152,36 @@ if($data_dir eq "") {
 print STDERR "Save shifting vector\n";
 for(my $i = 0; $i < @strains; $i++) {
 	if($last_strain ne $strains[$i]) {
-		my($tree_ref, $last, $lookup) = general::read_strains_data($strains[$i], $data_dir, "ref_to_strain");
+		my($tree_ref, $last, $lookup) = general::read_strains_data($strains[$i], $data_dir, "strain_to_ref");
 		%tree = %{$tree_ref};
 		%last = %{$last};
 		%lookup = %{$lookup};
 		print STDERR "\tsuccessful for $strains[$i]\n";
 	}
 	if($sam == 1) {
-		$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_to_" . $strains[$i] . ".sam";
+		$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_from_" . $strains[$i] . ".sam";
 		&shift_sam_file($files[$i], $strains[$i], $out_name);
 	} elsif($peak == 1) {
-		$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_to_" . $strains[$i] . ".txt";
+		$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_from_" . $strains[$i] . ".txt";
 		&shift_peak_file($files[$i], $strains[$i], $out_name);
 	} elsif($bed == 1) {
-		$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_to_" . $strains[$i] . ".txt";
+		$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_from_" . $strains[$i] . ".txt";
 		&shift_bed_file($files[$i], $strains[$i], $out_name);
 	} elsif($bismark == 1) {
-		$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_to_" . $strains[$i] . ".txt";
+		$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_from_" . $strains[$i] . ".txt";
 		&shift_bismark($files[$i], $strains[$i], $out_name);
 	} elsif($bedpe == 1) {
-		$out_name = substr($files[$i], 0, length($files[$i]) - 6) . "_shifted_to_" . $strains[$i] . ".bedpe";
+		$out_name = substr($files[$i], 0, length($files[$i]) - 6) . "_shifted_from_" . $strains[$i] . ".bedpe";
 		&shift_bedpe($files[$i], $strains[$i], $out_name);
 	} elsif($gtf == 1) {
-		$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_to_" . $strains[$i] . ".gtf";
+		$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_from_" . $strains[$i] . ".gtf";
 		&shift_gtf($files[$i], $strains[$i], $out_name);
 	} else {
 		$out_name = $files[$i];
 		while(substr($out_name, length($out_name) - 1) eq "/") {
 			$out_name = substr($out_name, 0, length($out_name) - 1);
 		}
-		$out_name .= "_shifted_to_" . $strains[$i];
+		$out_name .= "_shifted_from_" . $strains[$i];
 		if($hic == 1) {
 			&shift_hic_directory($files[$i], $out_name);
 		} else {
@@ -463,6 +458,9 @@ sub shift_hic_directory{
 	}
 }
 
+
+
+
 sub shift_bed_file{
 	my $file = $_[0];
 	my $strain = $_[1];
@@ -600,22 +598,21 @@ sub shift_bedpe{
 	close $out;
 }
 
-
 sub shift_gtf{
 	my $file = $_[0];
 	my $strain = $_[1];
 	my $out_file = $_[2];
+	print STDERR "shifting " . $file . "\n";
+	open my $out, ">", $out_file or die "Can't open $out_file: $!\n";
+	open my $fh, "<", $file or die "Can't open $file: $!\n";
 	my $start;
 	my $end;
-	$allele = 1;
-        open my $out, ">", $out_file or die "Can't open $out_file: $!\n";
-	open my $fh, "<", $file or die "Can't open $file: $!\n";
-	while (my $line = <$fh>) {
+	my $allele = 1;
+	while(my $line = <$fh>) {
 		chomp $line;
 		if(substr($line, 0, 1) eq "#") { print $out $line . "\n"; next; }
 		@split = split('\t', $line);
 		$chr = $split[0];
-		#chromosomes without mutations can not be shifted
 		if(!exists $last{$chr}{$allele}) {
 			$start = $split[3];
 			$end = $split[4];
@@ -624,13 +621,13 @@ sub shift_gtf{
 			$end = &shift($chr, $allele, $split[4]);
 		}
 		if($end < $start) { $end = $start + 1; }
-		print $out $split[0] . "\t" . $split[1] . "\t" . $split[2] . "\t" . $start . "\t" . $end;
-		for(my $j = 5; $j < @split; $j++) {
-			print $out "\t" . $split[$j];
+		print $out $chr . "\t" . $split[1] . "\t" . $split[2] . "\t" . $start . "\t" . $end;
+		for(my $i = 5; $i < @split; $i++) {
+			print $out "\t" . $split[$i];
 		}
 		print $out "\n";
 	}
-	close $out;
 	close $fh;
+	close $out;
 }
 

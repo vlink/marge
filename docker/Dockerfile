@@ -1,13 +1,13 @@
 # Copyright Verena M. Link <vlink@ucsd.edu>
 # 
-# This dockerfile was generated to install MARGE
+# This dockerfile was generated to install MMARGE
 #
-# MARGE is free software: you can redistribute it and/or modify
+# MMARGE is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# MARGE is distributed in the hope that it will be useful,
+# MMARGE is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
@@ -44,17 +44,17 @@ RUN perl homer/configureHomer.pl -install
 ENV PATH $PATH://homer//bin/
 #Add path to bashrc
 
-##Install MARGE
-RUN wget http://homer.ucsd.edu/MARGE/MARGE_v1.0.tar.gz
-RUN tar fxvz MARGE_v1.0.tar.gz
-RUN chown -R root:root /MARGE_v1.0*
+##Install MMARGE
+RUN wget http://homer.ucsd.edu/MMARGE/MMARGE_v1.0.tar.gz
+RUN tar fxvz MMARGE_v1.0.tar.gz
+RUN chown -R root:root /MMARGE_v1.0*
 RUN curl -L http://cpanmin.us | perl - --self-upgrade
 RUN cpanm Set::IntervalTree
 RUN cpanm Statistics::Basic
 RUN cpanm Sys::CPU
-WORKDIR /MARGE_v1.0
+WORKDIR /MMARGE_v1.0
 RUN perl configure.pl
 RUN perl install.pl
-ENV PATH $PATH:/MARGE_v1.0/bin/
-RUN chmod -R a+x /MARGE_v1.0/bin/
+ENV PATH $PATH:/MMARGE_v1.0/bin/
+RUN chmod -R a+x /MMARGE_v1.0/bin/
 WORKDIR /

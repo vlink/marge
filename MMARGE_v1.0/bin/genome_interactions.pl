@@ -17,7 +17,6 @@ use warnings;
 # GNU General Public License for more details.
 
 
-BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/code/marge/bin'}
 use Getopt::Long;
 use config;
 use general;

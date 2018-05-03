@@ -1,5 +1,4 @@
-#!/usr/bin/evn perl
-BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/code/marge/bin'}
+#!/usr/bin/env perl
 use strict;
 use warnings;
 

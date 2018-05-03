@@ -1,6 +1,5 @@
 #!/usr/bin/env perl
 use warnings;
-BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/code/marge/bin'}
 use strict;
 
 # Copyright Verena M. Link <vlink@ucsd.edu>

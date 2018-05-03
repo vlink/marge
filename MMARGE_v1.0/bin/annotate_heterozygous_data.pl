@@ -1,5 +1,4 @@
-##!/usr/bin/env perl
-BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/code/marge/bin'};
+#!/usr/bin/env perl
 use strict;
 use warnings;
 
@@ -16,6 +15,7 @@ use warnings;
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
+
 
 use Getopt::Long;
 use Storable;

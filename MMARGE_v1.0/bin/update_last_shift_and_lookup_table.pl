@@ -19,7 +19,6 @@ use warnings;
 
 use Getopt::Long;
 use Storable;
-BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/code/marge/bin'}
 use config;
 use processing;
 use Set::IntervalTree;

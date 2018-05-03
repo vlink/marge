@@ -1,4 +1,5 @@
 #!/usr/bin/env perl
+package analysis;
 use strict;
 use warnings;
 
@@ -16,8 +17,8 @@ use warnings;
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/code/marge/bin'}
-package analysis;
+
+
 use config;
 use POSIX;
 #use Statistics::Basic qw(:all);
@@ -876,11 +877,7 @@ sub rev_comp{
 	my @split = split('', $rev);
 	my $comp = "";
 	foreach my $c (@split) {
-		if(!exists $comp{$c}) {
-			$comp .= "N";
-		} else {
-			$comp .= $comp{$c};
-		}
+		$comp .= $comp{$c};
 	}	
 	return $comp;
 }
@@ -1058,7 +1055,6 @@ sub get_seq_for_peaks {
 				if(exists $lookup->{$strains[$i]}->{$chr_num}) {
 					$chr_num = $lookup->{$strains[0]}->{$chr};
 				}
-				if(!defined $chr_num || $chr_num eq "") { next; }
 				if($chr !~ /\d+/ && !exists $lookup->{$strains[$i]}->{$chr}) {
 				#	print STDERR "Skip peaks for chromosome " . $chr . " in get_seq_for_peaks\n";
 					print STDERR "Skip peaks for chromosome " . $chr . " allele " . $allele_num . " in get_seq_for_peaks\n";

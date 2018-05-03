@@ -1,5 +1,5 @@
-#!/usr/bin/perl
-
+#!/usr/bin/env perl
+use warnings;
 package config;
 use strict;
 
@@ -22,7 +22,7 @@ my @split;
 
 #Read in config file and return different varibales in a hash
 sub read_config{
-	open CONFIG, "</gpfs/data01/glasslab/home/vlink/code/marge/general/config.txt";
+	open CONFIG, "<CHANGE_TO_CONFIG_FILE";
 	my %parameters;
 	my @split;
 	foreach my $line (<CONFIG>) {

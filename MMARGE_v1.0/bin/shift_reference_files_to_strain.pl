@@ -1,5 +1,4 @@
 #!/usr/bin/env perl
-BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/code/marge/bin'}
 use strict;
 use warnings;
 
@@ -34,7 +33,7 @@ sub printCMD {
 	print STDERR "This script is very rarely used. It shifts files FROM the reference genome TO the individual genome.\n";
 	print STDERR "It is NOT recommended to run the analysis that way!\n";
 	print STDERR "Please make sure you really want to shift in this direction!\n\n";
-        print STDERR "\nUsage:\n\n";
+	print STDERR "\nUsage:\n\n";
 	print STDERR "\t-dir <directory with files to shift>: has to be the same individual\n";
 	print STDERR "\t-files <list with files>: comma separated list\n";
 	print STDERR "\t-ind: one or several individuals - comma separated\n";

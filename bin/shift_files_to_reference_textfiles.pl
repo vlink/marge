@@ -5,14 +5,14 @@ use warnings;
 
 # Copyright Verena M. Link <vlink@ucsd.edu>
 # 
-# This file is part of MARGE
+# This file is part of MMARGE
 #
-# MARGE is free software: you can redistribute it and/or modify
+# MMARGE is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
 #
-# MARGE is distributed in the hope that it will be useful,
+# MMARGE is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
@@ -24,6 +24,7 @@ use config;
 use general;
 use Set::IntervalTree;
 use Data::Dumper;
+#use Memory::Usage;
 
 $_ = 0 for my ($sam, $peak, $tag, $help, $allele, $bed, $bismark, $bedpe, $hic, $keep_alleles, $coord, $coord2, $gtf);
 $_ = "" for my ($dir, $chr, $last, $data_dir, $out_name, $last_strain);
@@ -150,6 +151,9 @@ if($data_dir eq "") {
 }
 #Save all vectors befor shifting!
 #There is only one strain specified - all files are shifted with the same vector
+#my $mu = Memory::Usage->new();
+#$mu->record('shifting_vector');
+#$mu->record('record_before_shifting_vector');
 print STDERR "Save shifting vector\n";
 for(my $i = 0; $i < @strains; $i++) {
 	if($last_strain ne $strains[$i]) {
@@ -159,9 +163,11 @@ for(my $i = 0; $i < @strains; $i++) {
 		%lookup = %{$lookup};
 		print STDERR "\tsuccessful for $strains[$i]\n";
 	}
+	#$mu->record('record_after_shifting_vector');
 	if($sam == 1) {
 		$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_from_" . $strains[$i] . ".sam";
 		&shift_sam_file($files[$i], $strains[$i], $out_name);
+		#$mu->record('after_sam_file');
 	} elsif($peak == 1) {
 		$out_name = substr($files[$i], 0, length($files[$i]) - 4) . "_shifted_from_" . $strains[$i] . ".txt";
 		&shift_peak_file($files[$i], $strains[$i], $out_name);
@@ -191,6 +197,7 @@ for(my $i = 0; $i < @strains; $i++) {
 	}
 	$last_strain = $strains[$i];
 }
+#$mu->dump();
 
 #Shifts position
 sub shift{
