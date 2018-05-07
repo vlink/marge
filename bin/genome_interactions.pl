@@ -140,6 +140,10 @@ if(@gene > 0 || @transcript > 0) {
 }
 &write_codons();
 
+if(@strains == 0) {
+	print STDERR "\nMissing individuals!\nPlease specify -ind!\n\n";
+	exit;
+}
 for(my $i = 0; $i < @strains; $i++) {
 	$strains[$i] =~ s/,//g;
 	$strains[$i] = uc($strains[$i]);
