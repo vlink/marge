@@ -113,7 +113,7 @@ sub printCMD {
 	print STDERR "\t\tThis script adds all mutations within specified genomic  forloci for each individual at the end of the input file.\n\n";
 	print "\n\nData handling\n";
 	print STDERR "\tMMARGE.pl shift\n";
-	print STDERR "\t\tThis script shifts the data mapped to the individual genome to the reference coordinates. This step is necessary to compare genomic loci between different individuals, as well as for visualization of data in the different genome browsers.\n\n";
+	print STDERR "\t\tThis script shifts the data from coordinates of individual genomes (after mapping to the individual genomes) to the reference coordinates. This step is necessary to compare genomic loci between different individuals, as well as for visualization of data in the different genome browsers.\n\n";
 	print STDERR "\tMMARGE.pl shift_to_strain\n";
 	print STDERR "\t\tThis script shifts the data mapped to the reference genome to the coordinates of the individual. Please note that this script will be used very rarely. To analyze the data it is better to shift all strains data to the reference coordinates, not vice versa!\n\n";
 	print STDERR "\tMMARGE.pl allele_specific_reads\n";
