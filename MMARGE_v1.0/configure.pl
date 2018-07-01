@@ -93,19 +93,19 @@ print STDERR "HOMER found in " . $homer_path . "\n\n";
 print STDERR "Creating folder structure for MMARGE\n";
 $cmd = "mkdir -p $install_dir/config";
 $return_code = system($cmd);
-&failed($success, $install_dir . "/config");
+&failed($return_code, $install_dir . "/config");
 
 $cmd = "mkdir -p $install_dir/bin";
 $return_code = system($cmd);
-&failed($success, $install_dir . "/bin");
+&failed($return_code, $install_dir . "/bin");
 
 $cmd = "mkdir -p $data_folder/motif_distribution_background";
 $return_code = system($cmd);
-&failed($success, $data_folder . "/motif_distribution_background");
+&failed($return_code, $data_folder . "/motif_distribution_background");
 
 $cmd = "mkdir -p $data_folder/motif_bg";
 $return_code = system($cmd);
-&failed($success, $data_folder . "/motif_bg");
+&failed($return_code, $data_folder . "/motif_bg");
 
 print STDERR "\n\n";
 print STDERR "Writing config file\n";
@@ -152,7 +152,7 @@ print STDERR "Please run install.pl to finish MMARGE installation!\n\n\n";
 sub check_system_programs{
 	my $program = $_[0];
 	my $check = `which $_[0]`;
-	@split = split('\s', $check);
+	my @split = split('\s', $check);
 	if($check eq "" || (@split > 1 && $split[1] eq "no")) {
 		print STDERR "Program $_[0] not found!\n";
 		print STDERR "Please install $_[0] and restart this script\n";
