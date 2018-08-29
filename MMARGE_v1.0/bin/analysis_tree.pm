@@ -1,5 +1,4 @@
 #!/usr/bin/env perl
-package analysis;
 use strict;
 use warnings;
 
@@ -19,6 +18,7 @@ use warnings;
 
 
 
+package analysis;
 use config;
 use POSIX;
 #use Statistics::Basic qw(:all);
