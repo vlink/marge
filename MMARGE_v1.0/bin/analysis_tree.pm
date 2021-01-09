@@ -19,7 +19,7 @@ use warnings;
 
 
 package analysis;
-use config;
+use config_MMARGE;
 use POSIX;
 #use Statistics::Basic qw(:all);
 #use Statistics::Distributions;
@@ -96,6 +96,7 @@ sub analyze_motifs{
 	my $allele = $_[5];
 	my $region = $_[6];
 	my $original_chr_num;
+	my $version = Set::IntervalTree->VERSION;
 	open(my $fh, "<", $motif_file);
 	while(my $line = <$fh>) {
                 chomp $line;
@@ -127,17 +128,22 @@ sub analyze_motifs{
 		#Check if there is a interval tree for this strain and chromosome
 		if(defined $tree->{$header[3]}->{$chr_num}->{$allele_num}) {
 			#Get shifting vector for the beginning of the sequence that was used to scan for the motif
-		#	$tree_tmp = $tree->{$header[3]}->{$chr_num}->fetch($pos_beginning, $pos_beginning + 1);
-			#$tree_tmp = $tree->{$header[3]}->{$chr_num}->{$allele_num}->fetch($pos_beginning, $pos_beginning + 1);
-			$tree_tmp = $tree->{$header[3]}->{$chr_num}->{$allele_num}->fetch($pos_beginning, $pos_beginning);
+			if($version eq "0.12") {
+				$tree_tmp = $tree->{$header[3]}->{$chr_num}->{$allele_num}->fetch($pos_beginning, $pos_beginning + 1);
+			} else {
+				$tree_tmp = $tree->{$header[3]}->{$chr_num}->{$allele_num}->fetch($pos_beginning, $pos_beginning);
+			}
 			if(!exists $tree_tmp->[0]->{'shift'}) {
 				$shift_beginning = $last->{$header[3]}->{$original_chr_num}->{$allele_num}->{'shift'};
 			} else {
 				$shift_beginning = $tree_tmp->[0]->{'shift'};
 			}
 			#Get shifting vector for the position of the motif
-			#$tree_tmp = $tree->{$header[3]}->{$chr_num}->{$allele_num}->fetch($motif_start, $motif_start + 1);
-			$tree_tmp = $tree->{$header[3]}->{$chr_num}->{$allele_num}->fetch($motif_start, $motif_start);
+			if($version eq "0.12") {
+				$tree_tmp = $tree->{$header[3]}->{$chr_num}->{$allele_num}->fetch($motif_start, $motif_start + 1);
+			} else {
+				$tree_tmp = $tree->{$header[3]}->{$chr_num}->{$allele_num}->fetch($motif_start, $motif_start);
+			}
 			if(!exists $tree_tmp->[0]->{'shift'}) {
 				$shift_current = $last->{$header[3]}->{$original_chr_num}->{$allele_num}->{'shift'};
 			} else {
@@ -171,6 +177,7 @@ sub merge_block {
 	my $last = $_[6];
 	my $allele = $_[7];
 	my $chr_num_original;
+	my $version = Set::IntervalTree->VERSION;
         #Now run through all motifs and see if they are in all the other strains
 	foreach my $chr_pos (keys %block) {
 		$current_pos = (split("_", $chr_pos))[1];
@@ -251,16 +258,22 @@ sub merge_block {
 						#			print STDERR "Last\n";
 									$current_shift = $last->{$strains[$i]}->{$chr_num_original}->{$al}->{'pos'};
 								} else {
-									#$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
-									$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos);
+									if($version eq "0.12") {
+										$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
+									} else {
+										$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos);
+									}
 								#	print STDERR "From sequence\n";
 									$current_shift = $tree_tmp->[0]->{'shift'};
 								}
 								if($current_pos >= $last->{$strains[$i]}->{$chr_num_original}->{$al}->{'pos'}) {
 									$prev_shift = $last->{$strains[$i]}->{$chr_num_original}->{$al}->{'pos'};
-								} else { 
-									#$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos, $current_pos + 1);
-									$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos, $current_pos);
+								} else {
+									if($version eq "0.12") { 
+										$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos, $current_pos + 1);
+									} else {
+										$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$al}->fetch($current_pos, $current_pos);
+									}
 									$prev_shift = $tree_tmp->[0]->{'shift'};
 								}
 							#	print STDERR "motif: " . $motif . "\t";
@@ -613,6 +626,7 @@ sub analyze_motif_pos{
 	my $allele = $_[12];
 	my $region = $_[13];
 	my $chr_num_original;
+	my $version = Set::IntervalTree->VERSION;
 	foreach my $last_line (keys %block) {
 		chomp $last_line;
 		@header = split("_", $last_line);
@@ -674,15 +688,21 @@ sub analyze_motif_pos{
 										if($current_pos + $motif_pos >= $last->{$strains[$i]}->{$chr_num_original}->{$a1}->{'pos'}) {
 											$current_shift = $last->{$strains[$i]}->{$chr_num_original}->{$a1}->{'shift'};
 										} else {
-											#$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$a1}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
-											$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$a1}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos);
+											if($version eq "0.12") {
+												$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$a1}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
+											} else {
+												$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$a1}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos);
+											}
 											$current_shift = $tree_tmp->[0]->{'shift'};
 										}
 										if($current_pos >= $last->{$strains[$i]}->{$chr_num_original}->{$a1}->{'pos'}) {
 											$prev_shift = $last->{$strains[$i]}->{$chr_num_original}->{$a1}->{'shift'};
 										} else {
-											#$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$a1}->fetch($current_pos, $current_pos + 1);
-											$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$a1}->fetch($current_pos, $current_pos);
+											if($version eq "0.12") {
+												$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$a1}->fetch($current_pos, $current_pos + 1);
+											} else {
+												$tree_tmp = $tree->{$strains[$i]}->{$chr_num}->{$a1}->fetch($current_pos, $current_pos);
+											}
 											$prev_shift = $tree_tmp->[0]->{'shift'};
 										}
 										$shift_vector = $current_shift - $prev_shift;	
@@ -709,15 +729,21 @@ sub analyze_motif_pos{
 										if($current_pos + $motif_pos >= $last->{$strains[$j]}->{$chr_num_original}->{$a2}->{'pos'}) {
 											$current_shift = $last->{$strains[$j]}->{$chr_num_original}->{$a2}->{'shift'};
 										} else {
-											#$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->{$a2}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
-											$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->{$a2}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos);
+											if($version eq "0.12") {
+												$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->{$a2}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos + 1);
+											} else {
+												$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->{$a2}->fetch($current_pos + $motif_pos, $current_pos + $motif_pos);
+											}
 											$current_shift = $tree_tmp->[0]->{'shift'};
 										}
 										if($current_pos >= $last->{$strains[$j]}->{$chr_num_original}->{$a2}->{'pos'}) {
 											$prev_shift = $last->{$strains[$j]}->{$chr_num_original}->{$a2}->{'shift'};
 										} else {
-											#$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->{$a2}->fetch($current_pos, $current_pos + 1);
-											$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->{$a2}->fetch($current_pos, $current_pos);
+											if($version eq "0.12") {
+												$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->{$a2}->fetch($current_pos, $current_pos + 1);
+											} else {
+												$tree_tmp = $tree->{$strains[$j]}->{$chr_num}->{$a2}->fetch($current_pos, $current_pos);
+											}
 											$prev_shift = $tree_tmp->[0]->{'shift'};
 										}
 										$shift_vector = $current_shift - $prev_shift;	
@@ -1004,6 +1030,7 @@ sub get_seq_for_peaks {
 	$_ = 0 for my ($general_offset, $seq_number, $newlines, $longest_seq, $no_shift, $filter_no_mut, $length, $ref_start, $working_start, $working_stop, $byte_offset, $chr_num, $shift_vector, $mut, $allele_num); 
 	$_ = "" for my($seq, $h, $header, $seq_first, $filename);
 	$_ = () for my(@fileHandles, %current_pos, @tmp_split, %seen_part, @split_part, %seq); 
+	my $version = Set::IntervalTree->VERSION;
 	my $current_tree = Set::IntervalTree->new;
 	open OUT, ">$_[0]";
 	my %peaks = %{$_[1]};
@@ -1075,16 +1102,22 @@ sub get_seq_for_peaks {
 					$working_stop = $peaks{$chr}{$start_pos} + int($region/2);
 					#Calculate strain specific offset from shifting vector
 					if($no_shift == 0) {
-						#$ref_start = $current_tree->fetch($working_start, $working_start + 1);
-						$ref_start = $current_tree->fetch($working_start, $working_start);
+						if($version eq "0.12") {
+							$ref_start = $current_tree->fetch($working_start, $working_start + 1);
+						} else {
+							$ref_start = $current_tree->fetch($working_start, $working_start);
+						}
 						if(!exists $ref_start->[0]->{'shift'}) {
 							$shift_vector = $last->{$strains[$i]}->{$chr}->{$allele_num}->{'shift'};
 						} else {
 							$shift_vector = $ref_start->[0]->{'shift'};
 						}
 						$working_start = $working_start + $shift_vector;
-						#$ref_start = $current_tree->fetch($working_stop, $working_stop + 1);
-						$ref_start = $current_tree->fetch($working_stop, $working_stop);
+						if($version eq "0.12") {
+							$ref_start = $current_tree->fetch($working_stop, $working_stop + 1);
+						} else {
+							$ref_start = $current_tree->fetch($working_stop, $working_stop);
+						}
 						if(!exists $ref_start->[0]->{'shift'}) {
 							$shift_vector = $last->{$strains[$i]}->{$chr}->{$allele_num}->{'shift'};
 						} else {
