@@ -2,7 +2,8 @@
 use warnings;
 use lib "/bioinformatics/homer/.//bin";
 my $homeDir = "/bioinformatics/homer/./";
-BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/code/marge/bin'}
+BEGIN {push @INC, '/Users/linkvm/software/marge/bin'}
+BEGIN {push @INC, "/Users/linkvm/software/homer/bin"}
 
 
 # Copyright Verena M. Link <vlink@ucsd.edu>
@@ -26,7 +27,7 @@ BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/code/marge/bin'}
 use POSIX;
 use HomerConfig;
 use Statistics;
-use config;
+use config_MMARGE;
 
 my $reduceThresh = 0.6;
 my $percentSimilar = 0.20;
@@ -38,9 +39,9 @@ my %toDelete = ();
 my $preparse_strain_exists = 0;
 my $config = HomerConfig::loadConfigFile();
 my $prefix;
-my $motif_file = "/gpfs/data01/glasslab/home/vlink/mouse_strains/motifs/final_motif_file_FDR_0_001.txt"; 
-my $genome_dir = config::read_config()->{'data_folder'};
-my $data_dir = config::read_config()->{'data_folder'}; 
+my $motif_file = "/Users/linkvm/software/marge/MMARGE_v1.0/config/homer_motifs.txt "; 
+my $genome_dir = config_MMARGE::read_config()->{'data_folder'};
+my $data_dir = config_MMARGE::read_config()->{'data_folder'}; 
 
 if (@ARGV < 3) {
 	printCMD();
@@ -720,7 +721,7 @@ if ($executeFlag==1) {
 		}	
 		#####################
 		#Strain code is added
-		`perl /gpfs/data01/glasslab/home/vlink/code/marge/bin/extract_seq_from_peakfiles.pl -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;	
+		`perl /Users/linkvm/software/marge/bin/extract_seq_from_peakfiles.pl -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;	
 		#End of strain code
 		####################
 
@@ -729,22 +730,25 @@ if ($executeFlag==1) {
 		`removePoorSeq.pl "$tmpFile2" $cmd->{'maxN'} > "$targetSeq"`;
 		`rm "$tmpFile" "$tmpFile2"`;
 	} elsif ($cmd->{'bg'} ne '') {
-		`cat "$cleanPosFile" "$cleanBgFile" > "$tmpFile2"`;
-		
+        #Instead of merging the bg and fg files, we extract the sequences per strain
+		#`cat "$cleanPosFile" "$cleanBgFile" > "$tmpFile2"`;
+		my $posBGSize = $posFileSize . "_BG";
 		if ($cmd->{'size'} ne 'given') {
-			#print STDERR "resizePosFile.pl " . $tmpFile2 . " " . $cmd->{'size'}  . " " . $cmd->{'sizeMove'} . " > " . $posFileSize . "\n";
-			`resizePosFile.pl "$tmpFile2" $cmd->{'size'} $cmd->{'sizeMove'} > "$posFileSize"`;
-		} else {
-			`cp "$tmpFile2" "$posFileSize"`;
+			`resizePosFile.pl "$cleanPosFile" $cmd->{'size'} $cmd->{'sizeMove'} > "$posFileSize"`;
+			`resizePosFile.pl "$cleanBgFile" $cmd->{'size'} $cmd->{'sizeMove'} > "$posBGSize"`;
 		}
+
 		#####################
 		#Strain code is added
-		`perl /gpfs/data01/glasslab/home/vlink/code/marge/bin/extract_seq_from_peakfiles.pl -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;
-
+        my $tmpFile_fg = $tmpFile . "_fg";
+        my $tmpFile_bg = $tmpFile . "_bg";
+        #Get sequences for foreground
+		`perl /Users/linkvm/software/marge/bin/extract_seq_from_peakfiles.pl -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile_fg" -data_dir "$data_dir" -id`;
+		`perl /Users/linkvm/software/marge/bin/extract_seq_from_peakfiles.pl -file "$posBGSize" -ind "$cmd->{'bg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile_bg" -data_dir "$data_dir" -id`;
+i       `cat $tmpFile_fg $tmpFile_bg > $tmpFile`;
 		#End of strain code
 		####################
 
-		#print STDERR "cleanUpSequences.pl " . $tmpFile . " > " . $tmpFile2. "\n";
 		`cleanUpSequences.pl "$tmpFile" > "$tmpFile2"`;
 		`removePoorSeq.pl "$tmpFile2" $cmd->{'maxN'} > "$targetSeq"`;
 		`rm "$tmpFile" "$tmpFile2"`;
@@ -783,7 +787,7 @@ if ($executeFlag==1) {
 		close OUT2;
 		#####################
 		#Strain code is added
-		`perl /gpfs/data01/glasslab/home/vlink/code/marge/bin/extract_seq_from_peakfiles.pl -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;	
+		`perl /Users/linkvm/software/marge/bin/extract_seq_from_peakfiles.pl -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;	
 		#End of strain code
 		####################
 #		`homerTools extract "$posFileSize" "$genomeDir" $mflag > "$tmpFile"`;
@@ -799,7 +803,7 @@ if ($executeFlag==1) {
 		}
 		#####################
 		#Strain code is added
-		`perl /gpfs/data01/glasslab/home/vlink/code/marge/bin/extract_seq_from_peakfiles.pl -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;	
+		`perl /Users/linkvm/software/marge/bin/extract_seq_from_peakfiles.pl -file "$posFileSize" -ind "$cmd->{'fg_strain'}" -genome_dir "$genome_dir" -output "$tmpFile" -data_dir "$data_dir" -id`;	
 		#End of strain code
 		####################
 #		`homerTools extract "$posFileSize" "$genomeDir" $mflag > "$tmpFile"`;
@@ -1251,7 +1255,7 @@ sub generate_strain_bg {
 	my $command = "cp " . $preparsedDir . "/" . $cmd->{'genome'} . "." . $cmd->{'size'} . ".pos " . $posStrain;
 	`$command`;
 	#print STDERR $command . "\n";
-	$command = "perl /gpfs/data01/glasslab/home/vlink/code/marge/bin/extract_seq_from_peakfiles.pl -file " . $posStrain . " -ind " . $cmd->{'bg_strain'} . " -genome_dir " . $genome_dir . " -output " . $seqStrain . " -data_dir " . $data_dir . " -id";
+	$command = "perl /Users/linkvm/software/marge/bin/extract_seq_from_peakfiles.pl -file " . $posStrain . " -ind " . $cmd->{'bg_strain'} . " -genome_dir " . $genome_dir . " -output " . $seqStrain . " -data_dir " . $data_dir . " -id";
 	#print $command . "\n";
 	`$command`;
 	#Calcualte GC frequency
