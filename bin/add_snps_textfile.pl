@@ -16,11 +16,11 @@ use warnings;
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
 
-BEGIN {push @INC, '/gpfs/data01/glasslab/home/vlink/code/marge/bin'};
+BEGIN {push @INC, '/Users/linkvm/software/marge/bin'};
 use Getopt::Long;
-use config;
+use config_MMARGE;
 use processing;
-my $config = config::read_config();
+my $config = config_MMARGE::read_config();
 use Data::Dumper;
 
 $_ = "" for my($genome, $file, $output, $start, $filename, $gene_file, $refseq_file, $exon_ref, $header, $data, $line);
@@ -50,7 +50,7 @@ if(@ARGV < 1) {
 
 my %mandatory = ('-file' => 1, '-ind' => 1);
 my %convert = map { $_ => 1 } @ARGV;
-config::check_parameters(\%mandatory, \%convert);
+config_MMARGE::check_parameters(\%mandatory, \%convert);
 
 GetOptions(     "genome=s" => \$genome,
                 "file=s" => \$file,
@@ -65,7 +65,7 @@ GetOptions(     "genome=s" => \$genome,
 
 #Set variables
 if($data eq "") {
-	$data = config::read_config()->{'data_folder'};
+	$data = config_MMARGE::read_config()->{'data_folder'};
 } 
 if($hetero == 1) {
 	$allele = 2;
@@ -88,6 +88,7 @@ if($output eq "") {
 }
 
 #Save each peak
+my $count_overwrites = 0;
 open FH, "<$file";
 foreach my $line (<FH>) {
 	chomp $line;
@@ -95,11 +96,20 @@ foreach my $line (<FH>) {
 	if(substr($line, 0, 1) eq "#" || substr($split[1], 0, 3) ne "chr" || length($split[1]) < 4 ) { $header = $line; next; }
 	@tmp_split = split("_", $split[1]);
 	$chr = substr($tmp_split[0], 3);
+    if(exists $peaks{$chr}{$split[2]}) {
+        print STDERR "WARNING: There is already information saved for chr" . $chr . " position " . $split[2] . "\n";
+        print STDERR "This data is being overwritten\n";
+        $count_overwrites++;
+    }
 	$peaks{$chr}{$split[2]}{'end'} = $split[3];
 	$peaks{$chr}{$split[2]}{'id'} = $split[0];
 	$peaks{$chr}{$split[2]}{'line'} = $line;
 }
 close FH;
+if($count_overwrites > 0) {
+    print STDERR "WARNING: Data was compressed, because several genomic locations started at the same nucleotide\n";
+    print STDERR "In total " . $count_overwrites . " data points were overwritten\n";
+}
 
 #Only the exons of the genes from this RNA-Seq experiment should be annotated
 if($exons == 1) {
